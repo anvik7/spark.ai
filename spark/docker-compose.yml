@@ -1,0 +1,21 @@
+services:
+  spark:
+    build: .
+    ports: ["8000:8000"]
+    env_file: .env
+    environment:
+      # Uncomment to use the bundled Postgres instead of SQLite:
+      # DATABASE_URL: postgresql+psycopg://spark:spark@db:5432/spark
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    # depends_on: [db]
+
+  # Optional Postgres for production. Uncomment + set DATABASE_URL above.
+  # db:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_USER: spark
+  #     POSTGRES_PASSWORD: spark
+  #     POSTGRES_DB: spark
+  #   volumes: ["pgdata:/var/lib/postgresql/data"]
+# volumes:
+#   pgdata:

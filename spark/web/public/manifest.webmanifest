@@ -1,0 +1,12 @@
+{
+  "name": "Spark",
+  "short_name": "Spark",
+  "description": "Capture a thought in seconds. Spark tags it, files it, and brings it back before you forget.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ECE9E2",
+  "theme_color": "#ECE9E2",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

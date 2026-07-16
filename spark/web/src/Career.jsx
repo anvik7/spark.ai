@@ -1,0 +1,233 @@
+import React, { useState } from "react";
+
+// Self-contained: reads the auth token directly and calls /api/career/audit.
+// Styled with the app's CSS variables so it matches without editing index.css.
+async function runAudit(body) {
+  const token = localStorage.getItem("spark_token") || "";
+  const res = await fetch("/api/career/audit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Audit failed");
+  return data;
+}
+
+const pct = (n) => `${Math.round(n * 100)}%`;
+const scoreColor = (s) =>
+  s >= 70 ? "var(--ok)" : s >= 40 ? "var(--marigold)" : "var(--danger)";
+
+function Ring({ score }) {
+  const r = 46, c = 2 * Math.PI * r, off = c * (1 - score / 100);
+  return (
+    <svg viewBox="0 0 110 110" style={{ width: 120, height: 120 }}>
+      <circle cx="55" cy="55" r={r} fill="none" stroke="var(--line)" strokeWidth="9" />
+      <circle cx="55" cy="55" r={r} fill="none" stroke={scoreColor(score)} strokeWidth="9"
+        strokelinecap="round" strokeDasharray={c} strokeDashoffset={off}
+        transform="rotate(-90 55 55)" style={{ transition: "stroke-dashoffset .8s ease" }} />
+      <text x="55" y="52" textAnchor="middle" fontFamily="var(--display)"
+        fontSize="26" fontWeight="600" fill="var(--ink)">{score}</text>
+      <text x="55" y="70" textAnchor="middle" fontFamily="var(--mono)"
+        fontSize="9" fill="var(--ink-faint)">/ 100</text>
+    </svg>
+  );
+}
+
+export default function Career({ onNavigate }) {
+  const [gh, setGh] = useState("");
+  const [resume, setResume] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [data, setData] = useState(null);
+
+  const analyze = async () => {
+    setErr(""); setBusy(true); setData(null);
+    try {
+      setData(await runAudit({ github_username: gh.trim(), resume_text: resume.trim() }));
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="screen">
+      <div className="eyebrow">Career OS</div>
+      <h1 className="title">Where do you stand?</h1>
+      <p className="sub">Drop your GitHub or paste your resume. Spark scores you against
+        live market demand and tells you the exact next thing to learn.</p>
+
+      <div className="field" style={{ marginBottom: 10 }}>
+        <label>GitHub username</label>
+        <input value={gh} onChange={(e) => setGh(e.target.value)} placeholder="e.g. torvalds"
+          onKeyDown={(e) => e.key === "Enter" && analyze()} />
+      </div>
+      <div className="field">
+        <label>…or paste resume text (optional)</label>
+        <textarea value={resume} onChange={(e) => setResume(e.target.value)} rows={4}
+          placeholder="Skills, projects, technologies…"
+          style={{ width: "100%", padding: "12px 14px", border: "1px solid var(--line)",
+            borderRadius: 11, background: "var(--surface)", fontSize: 14, resize: "vertical" }} />
+      </div>
+      {err && <div className="err">{err}</div>}
+      <button className="btn full" onClick={analyze} disabled={busy || (!gh.trim() && !resume.trim())}>
+        {busy ? <span className="spin" /> : "Analyse my readiness"}
+      </button>
+
+      {data && (
+        <div style={{ marginTop: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Ring score={data.readiness} />
+            <div>
+              <div className="eyebrow" style={{ margin: 0 }}>Market readiness</div>
+              <p className="sub" style={{ margin: "6px 0 0" }}>{data.note}</p>
+              {data.demand_source && (
+                <span className="tag" style={{ marginTop: 8, fontSize: 10.5,
+                  color: data.demand_source.includes("live") ? "var(--ok)" : "var(--ink-faint)",
+                  background: data.demand_source.includes("live") ? "rgba(92,127,98,.1)" : "var(--surface-2)" }}>
+                  {data.demand_source.includes("live") ? "● " : "○ "}demand: {data.demand_source}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {data.strengths?.length > 0 && (
+            <>
+              <div className="eyebrow">Your strengths</div>
+              <div className="tags" style={{ marginBottom: 16 }}>
+                {data.strengths.map((s) => (
+                  <span className="tag" key={s.skill}
+                    style={{ color: "var(--ok)", background: "rgba(92,127,98,.1)" }}>
+                    {s.skill}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="eyebrow">Highest-leverage gaps</div>
+          {data.gaps.map((g) => (
+            <div key={g.skill} style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 5 }}>
+                <strong>{g.skill}</strong>
+                <span style={{ fontFamily: "var(--mono)", color: "var(--ink-faint)", fontSize: 11 }}>
+                  demand {pct(g.demand)} · you {pct(g.proficiency)}
+                </span>
+              </div>
+              <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: pct(g.demand), background: "var(--line)" }}>
+                  <div style={{ height: "100%", width: g.demand ? pct(g.proficiency / g.demand) : "0%",
+                    background: "var(--marigold)" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {data.locked?.includes("plan") && (
+            <>
+              <div className="eyebrow" style={{ marginTop: 18 }}>Your learning plan</div>
+              <article className="card" style={{ position: "relative", overflow: "hidden" }}>
+                <div style={{ filter: "blur(5px)", userSelect: "none", pointerEvents: "none" }}>
+                  <p className="summary">Close your top gap: {data.gaps?.[0]?.skill || "your weakest skill"}</p>
+                  <p className="raw">Why it matters, a focused ~3-hour path, and a project to prove it.</p>
+                  <p style={{ fontSize: 13.5, margin: "6px 0 0" }}>📚 A plan tuned to every gap above</p>
+                </div>
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 10,
+                  background: "rgba(250,248,243,0.45)" }}>
+                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>🔒 Your exact next steps</p>
+                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro →</button>
+                </div>
+              </article>
+            </>
+          )}
+
+          {data.plan?.length > 0 && (
+            <>
+              <div className="eyebrow" style={{ marginTop: 18 }}>Your learning plan</div>
+              {data.plan.map((p, i) => (
+                <article className="card kind-link" key={i}>
+                  <p className="summary">{p.skill}</p>
+                  <p className="raw">{p.why}</p>
+                  <p style={{ fontSize: 13.5, margin: "0 0 6px" }}>📚 {p.plan}</p>
+                  <p style={{ fontSize: 13.5, margin: 0, color: "var(--ink-soft)" }}>🔨 {p.project}</p>
+                </article>
+              ))}
+            </>
+          )}
+
+          {data.locked?.includes("resume_audit") && (
+            <>
+              <div className="eyebrow" style={{ marginTop: 18 }}>Resume audit</div>
+              <article className="card" style={{ position: "relative", overflow: "hidden" }}>
+                <div style={{ filter: "blur(5px)", userSelect: "none", pointerEvents: "none" }}>
+                  <p className="summary">An AI recruiter's read on your resume</p>
+                  <p className="raw">✓ Strengths · △ Weaknesses · ⚠ ATS issues · → concrete rewrite fixes</p>
+                </div>
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 10,
+                  background: "rgba(250,248,243,0.45)" }}>
+                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>🔒 Full resume audit</p>
+                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro →</button>
+                </div>
+              </article>
+            </>
+          )}
+
+          {data.resume_audit && (
+            <>
+              <div className="eyebrow" style={{ marginTop: 18 }}>Resume audit</div>
+              <article className="card">
+                {data.resume_audit.summary && (
+                  <p className="summary">{data.resume_audit.summary}</p>
+                )}
+                {data.resume_audit.strengths?.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>✓ Strengths</p>
+                    {data.resume_audit.strengths.map((s, i) => (
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                    ))}
+                  </div>
+                )}
+                {data.resume_audit.weaknesses?.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>△ Weaknesses</p>
+                    {data.resume_audit.weaknesses.map((s, i) => (
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                    ))}
+                  </div>
+                )}
+                {data.resume_audit.ats_issues?.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px", color: "var(--marigold)" }}>
+                      ⚠ ATS issues</p>
+                    {data.resume_audit.ats_issues.map((s, i) => (
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                    ))}
+                  </div>
+                )}
+                {data.resume_audit.fixes?.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px", color: "var(--ok)" }}>
+                      → Suggested fixes</p>
+                    {data.resume_audit.fixes.map((s, i) => (
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </>
+          )}
+
+          {data.demand_source?.includes("Adzuna") && (
+            <p className="raw" style={{ marginTop: 16, fontSize: 11, color: "var(--ink-faint)",
+              textAlign: "center" }}>
+              Job market data powered by{" "}
+              <a href="https://www.adzuna.in/" target="_blank" rel="noopener noreferrer"
+                style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>Adzuna</a>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

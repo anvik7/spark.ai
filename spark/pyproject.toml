@@ -1,0 +1,15 @@
+[project]
+name = "spark"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[tool.pyright]
+venvPath = ".."
+venv = ".venv"
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+reportGeneralTypeIssues = false
+reportArgumentType = false
+reportAssignmentType = false
+reportAttributeAccessIssue = false
+reportDeprecated = false
