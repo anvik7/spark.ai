@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback } from "react";
 const SPEECH_OK = typeof window !== "undefined" &&
   ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-function useVoiceCapture({ onTranscript }) {
+function useVoiceCapture({ onTranscript, onError }) {
   const recRef = useRef(null);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
@@ -26,12 +26,23 @@ function useVoiceCapture({ onTranscript }) {
       setInterim(inter);
     };
     rec.onend = () => { setListening(false); setInterim(""); };
-    rec.onerror = () => { setListening(false); setInterim(""); };
+    rec.onerror = (e) => {
+      console.error("SpeechRecognition error:", e.error);
+      setListening(false);
+      setInterim("");
+      const messages = {
+        "not-allowed": "Mic permission blocked — check your browser's site settings.",
+        "no-speech": "No speech detected — try again, speak right after tapping.",
+        "audio-capture": "No microphone found on this device.",
+        "network": "Voice needs internet access to Google's speech service — check your connection.",
+      };
+      onError?.(messages[e.error] || `Voice error: ${e.error || "unknown"}`);
+    };
     rec.start();
     recRef.current = rec;
     setListening(true);
     return true;
-  }, [onTranscript]);
+  }, [onTranscript, onError]);
 
   const stop = useCallback(() => {
     recRef.current?.stop();
@@ -83,7 +94,7 @@ export default function Capture({ onSaved }) {
     setText(prev => prev ? prev.trim() + " " + t.trim() : t.trim());
   }, []);
 
-  const { listening, interim, start, stop } = useVoiceCapture({ onTranscript });
+  const { listening, interim, start, stop } = useVoiceCapture({ onTranscript, onError: setErr });
 
   const toggleVoice = () => {
     setErr("");
@@ -156,7 +167,7 @@ export default function Capture({ onSaved }) {
               display: "inline-block", animation: "blink 1s ease infinite",
             }} />
             <span style={{ fontSize: 12, color: "#fff", fontWeight: 500 }}>
-              Listening — speak now. Hindi &amp; Telugu work too.
+              Listening — speak now.
             </span>
           </div>
         )}
@@ -212,11 +223,11 @@ export default function Capture({ onSaved }) {
             }}>
             📄
           </button>
-          <input ref={fileRef} type="file" accept=".pdf,image/*"
+          <input ref={fileRef} type="file" accept=".pdf,image/png,image/jpeg,image/heic,image/webp"
             style={{ display: "none" }} onChange={onFile} />
 
           <span style={{ flex: 1, fontSize: 12, color: "var(--ink-faint)", overflow: "hidden", whiteSpace: "nowrap" }}>
-            {busy ? "Saving…" : listening ? "Tap ⏹ to stop, then edit if needed" : "Hindi / Telugu voice works too"}
+            {busy ? "Saving…" : listening ? "Tap ⏹ to stop, then edit if needed" : ""}
           </span>
 
           <button onClick={save} disabled={busy || !hasText || listening}

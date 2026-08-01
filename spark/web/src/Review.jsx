@@ -163,9 +163,14 @@ export default function Review() {
           {/* Revealed content */}
           {revealed ? (
             <div style={{ animation: "fadeUp .2s ease both" }}>
-              <p className="summary" style={{ marginBottom: 10 }}>
-                {card.summary || card.raw}
+              <p className="raw" style={{ marginBottom: 10, whiteSpace: "pre-wrap" }}>
+                {card.raw}
               </p>
+              {card.summary && card.summary !== card.raw && (
+                <p className="summary" style={{ marginBottom: 10, fontSize: 13, fontStyle: "italic" }}>
+                  {card.summary}
+                </p>
+              )}
               {card.tags?.length > 0 && (
                 <div className="tags">
                   {card.tags.map(t => <span className="tag" key={t}>#{t}</span>)}

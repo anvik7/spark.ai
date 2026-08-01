@@ -77,6 +77,7 @@ class InterviewIn(BaseModel):
 
 class SearchIn(BaseModel):
     q: str
+    mode: str = "ask"   # "ask" = Q&A briefing, "draft" = generate writing from notes
 
 
 def _public_user(session, user: User) -> dict:
@@ -198,6 +199,7 @@ async def create_voice_card(file: UploadFile = File(...),
 async def create_file_card(file: UploadFile = File(...),
                            user: User = Depends(current_user)):
     data = await file.read()
+    is_pdf = data[:5] == b"%PDF-"  # real PDFs always start with this magic number
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
@@ -209,7 +211,11 @@ async def create_file_card(file: UploadFile = File(...),
         ok, msg = subscription.check_ai_quota(session, user)
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
-        fields = build_card_fields("pdf", pdf_bytes=data)
+        if is_pdf:
+            fields = build_card_fields("pdf", pdf_bytes=data)
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Only PDF files are supported here — use the image capture for photos.")
         return _card_out(_save_card(session, user, fields))
 
 @app.get("/api/cards")
@@ -317,9 +323,62 @@ def connect(body: SearchIn, user: User = Depends(current_user)):
                        or any(ql in t.lower() for t in c.tags)][:25]
 
         notes = [c.summary or c.raw[:160] for c in matches]
-        briefing = llm.synthesize(body.q, notes)
+        if body.mode == "draft":
+            briefing = llm.draft(body.q, notes)
+        else:
+            briefing = llm.synthesize(body.q, notes)
         return {"briefing": briefing,
                 "cards": [_card_out(c) for c in matches]}
+
+
+# --- draft (write content FROM saved cards) ---------------------------------
+
+class DraftIn(BaseModel):
+    instruction: str          # e.g. "write a LinkedIn post about my React learnings"
+    tag: str = ""             # optional: restrict source cards to this tag
+    q: str = ""               # optional: restrict by semantic search query
+
+
+@app.post("/api/draft")
+def draft_content(body: DraftIn, user: User = Depends(current_user)):
+    """Turn saved cards into a piece of writing (post, essay, summary)."""
+    if not body.instruction.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "instruction is required")
+    with get_session() as session:
+        db_user: User | None = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        ok, msg = subscription.check_ai_quota(session, db_user)
+        if not ok:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
+
+        cards = session.exec(select(Card).where(Card.user_id == user.id)).all()
+
+        # Filter by tag if provided
+        if body.tag.strip():
+            tl = body.tag.strip().lower()
+            cards = [c for c in cards if tl in [t.lower() for t in c.tags]]
+
+        # Semantic filter if a query is given
+        if body.q.strip() and cards:
+            try:
+                qvec = embeddings.embed(body.q)
+                scored = []
+                for c in cards:
+                    row = session.get(CardEmbedding, c.id)
+                    if row and row.vector:
+                        cvec = json.loads(row.vector)
+                        scored.append((embeddings.cosine(qvec, cvec), c))
+                    else:
+                        scored.append((0.0, c))
+                scored.sort(key=lambda x: -x[0])
+                cards = [c for s, c in scored[:20] if s > 0] or [c for _, c in scored[:20]]
+            except Exception:
+                pass  # fall through to all cards
+
+        notes = [c.summary or c.raw[:300] for c in cards[:25]]
+        text = llm.draft(body.instruction.strip(), notes)
+        return {"draft": text, "source_count": len(notes)}
 
 
 # --- career intelligence ----------------------------------------------------
@@ -405,7 +464,7 @@ def create_order(user: User = Depends(current_user)):
     import razorpay as rz
     s = get_settings()
     client = rz.Client(auth=(s.razorpay_key_id, s.razorpay_key_secret))
-    order = client.order.create({"amount": 19900, "currency": "INR", "receipt": f"spark_{user.id}"})
+    order = client.order.create({"amount": 19900, "currency": "INR", "receipt": f"spark_{user.id}"})  # type: ignore
     return {"order_id": order["id"], "amount": order["amount"], "key_id": s.razorpay_key_id}
 
 

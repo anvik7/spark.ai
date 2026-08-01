@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 
 // Self-contained: reads the auth token directly and calls /api/career/audit.
 // Styled with the app's CSS variables so it matches without editing index.css.
@@ -11,6 +11,18 @@ async function runAudit(body) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "Audit failed");
+  return data;
+}
+
+async function addToCapture(text) {
+  const token = localStorage.getItem("spark_token") || "";
+  const res = await fetch("/api/cards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ kind: "text", raw: text }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Could not save");
   return data;
 }
 
@@ -31,6 +43,58 @@ function Ring({ score }) {
       <text x="55" y="70" textAnchor="middle" fontFamily="var(--mono)"
         fontSize="9" fill="var(--ink-faint)">/ 100</text>
     </svg>
+  );
+}
+
+// Gap row with "+ Add goal" button that saves the skill into Spark Capture
+function GapRow({ g }) {
+  const [saved, setSaved] = useState(false);
+
+  const handleAddGoal = async () => {
+    try {
+      await addToCapture(
+        `Study goal: close my gap in ${g.skill} (market demand ${pct(g.demand)}, I am at ${pct(g.proficiency)})`
+      );
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) { /* silent fail - non-critical action */ }
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between",
+        alignItems: "center", fontSize: 13.5, marginBottom: 5,
+      }}>
+        <strong>{g.skill}</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "var(--mono)", color: "var(--ink-faint)", fontSize: 11 }}>
+            demand {pct(g.demand)} · you {pct(g.proficiency)}
+          </span>
+          <button
+            onClick={handleAddGoal}
+            style={{
+              fontSize: 10.5, padding: "3px 8px", borderRadius: 12,
+              border: `1px solid ${saved ? "var(--ok)" : "var(--line)"}`,
+              background: saved ? "rgba(92,127,98,.1)" : "var(--surface-2)",
+              color: saved ? "var(--ok)" : "var(--ink-soft)",
+              cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap",
+            }}
+          >
+            {saved ? "✓ Saved" : "+ Add goal"}
+          </button>
+        </div>
+      </div>
+      <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: pct(g.demand), background: "var(--line)" }}>
+          <div style={{
+            height: "100%",
+            width: g.demand ? pct(g.proficiency / g.demand) : "0%",
+            background: "var(--marigold)",
+          }} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -62,9 +126,9 @@ export default function Career({ onNavigate }) {
           onKeyDown={(e) => e.key === "Enter" && analyze()} />
       </div>
       <div className="field">
-        <label>…or paste resume text (optional)</label>
+        <label>or paste resume text (optional)</label>
         <textarea value={resume} onChange={(e) => setResume(e.target.value)} rows={4}
-          placeholder="Skills, projects, technologies…"
+          placeholder="Skills, projects, technologies..."
           style={{ width: "100%", padding: "12px 14px", border: "1px solid var(--line)",
             borderRadius: 11, background: "var(--surface)", fontSize: 14, resize: "vertical" }} />
       </div>
@@ -73,6 +137,13 @@ export default function Career({ onNavigate }) {
         {busy ? <span className="spin" /> : "Analyse my readiness"}
       </button>
 
+      {busy && !data && (
+        <div style={{ marginTop: 22 }}>
+          <div className="skeleton" style={{ height: 120, borderRadius: "var(--r-l)", marginBottom: 16 }} />
+          <div className="skeleton" style={{ height: 60, borderRadius: "var(--r)", marginBottom: 10 }} />
+          <div className="skeleton" style={{ height: 60, borderRadius: "var(--r)" }} />
+        </div>
+      )}
       {data && (
         <div style={{ marginTop: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -84,7 +155,7 @@ export default function Career({ onNavigate }) {
                 <span className="tag" style={{ marginTop: 8, fontSize: 10.5,
                   color: data.demand_source.includes("live") ? "var(--ok)" : "var(--ink-faint)",
                   background: data.demand_source.includes("live") ? "rgba(92,127,98,.1)" : "var(--surface-2)" }}>
-                  {data.demand_source.includes("live") ? "● " : "○ "}demand: {data.demand_source}
+                  {data.demand_source.includes("live") ? "- " : "o "}demand: {data.demand_source}
                 </span>
               )}
             </div>
@@ -106,20 +177,7 @@ export default function Career({ onNavigate }) {
 
           <div className="eyebrow">Highest-leverage gaps</div>
           {data.gaps.map((g) => (
-            <div key={g.skill} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 5 }}>
-                <strong>{g.skill}</strong>
-                <span style={{ fontFamily: "var(--mono)", color: "var(--ink-faint)", fontSize: 11 }}>
-                  demand {pct(g.demand)} · you {pct(g.proficiency)}
-                </span>
-              </div>
-              <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: pct(g.demand), background: "var(--line)" }}>
-                  <div style={{ height: "100%", width: g.demand ? pct(g.proficiency / g.demand) : "0%",
-                    background: "var(--marigold)" }} />
-                </div>
-              </div>
-            </div>
+            <GapRow key={g.skill} g={g} />
           ))}
 
           {data.locked?.includes("plan") && (
@@ -129,13 +187,13 @@ export default function Career({ onNavigate }) {
                 <div style={{ filter: "blur(5px)", userSelect: "none", pointerEvents: "none" }}>
                   <p className="summary">Close your top gap: {data.gaps?.[0]?.skill || "your weakest skill"}</p>
                   <p className="raw">Why it matters, a focused ~3-hour path, and a project to prove it.</p>
-                  <p style={{ fontSize: 13.5, margin: "6px 0 0" }}>📚 A plan tuned to every gap above</p>
+                  <p style={{ fontSize: 13.5, margin: "6px 0 0" }}>A plan tuned to every gap above</p>
                 </div>
                 <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
                   alignItems: "center", justifyContent: "center", gap: 10,
                   background: "rgba(250,248,243,0.45)" }}>
-                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>🔒 Your exact next steps</p>
-                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro →</button>
+                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>Your exact next steps</p>
+                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro</button>
                 </div>
               </article>
             </>
@@ -148,8 +206,8 @@ export default function Career({ onNavigate }) {
                 <article className="card kind-link" key={i}>
                   <p className="summary">{p.skill}</p>
                   <p className="raw">{p.why}</p>
-                  <p style={{ fontSize: 13.5, margin: "0 0 6px" }}>📚 {p.plan}</p>
-                  <p style={{ fontSize: 13.5, margin: 0, color: "var(--ink-soft)" }}>🔨 {p.project}</p>
+                  <p style={{ fontSize: 13.5, margin: "0 0 6px" }}>{p.plan}</p>
+                  <p style={{ fontSize: 13.5, margin: 0, color: "var(--ink-soft)" }}>{p.project}</p>
                 </article>
               ))}
             </>
@@ -161,13 +219,13 @@ export default function Career({ onNavigate }) {
               <article className="card" style={{ position: "relative", overflow: "hidden" }}>
                 <div style={{ filter: "blur(5px)", userSelect: "none", pointerEvents: "none" }}>
                   <p className="summary">An AI recruiter's read on your resume</p>
-                  <p className="raw">✓ Strengths · △ Weaknesses · ⚠ ATS issues · → concrete rewrite fixes</p>
+                  <p className="raw">Strengths, Weaknesses, ATS issues, and concrete rewrite fixes</p>
                 </div>
                 <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
                   alignItems: "center", justifyContent: "center", gap: 10,
                   background: "rgba(250,248,243,0.45)" }}>
-                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>🔒 Full resume audit</p>
-                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro →</button>
+                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>Full resume audit</p>
+                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro</button>
                 </div>
               </article>
             </>
@@ -182,35 +240,35 @@ export default function Career({ onNavigate }) {
                 )}
                 {data.resume_audit.strengths?.length > 0 && (
                   <div style={{ marginTop: 8 }}>
-                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>✓ Strengths</p>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>Strengths</p>
                     {data.resume_audit.strengths.map((s, i) => (
-                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>- {s}</p>
                     ))}
                   </div>
                 )}
                 {data.resume_audit.weaknesses?.length > 0 && (
                   <div style={{ marginTop: 10 }}>
-                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>△ Weaknesses</p>
+                    <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px" }}>Weaknesses</p>
                     {data.resume_audit.weaknesses.map((s, i) => (
-                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>- {s}</p>
                     ))}
                   </div>
                 )}
                 {data.resume_audit.ats_issues?.length > 0 && (
                   <div style={{ marginTop: 10 }}>
                     <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px", color: "var(--marigold)" }}>
-                      ⚠ ATS issues</p>
+                      ATS issues</p>
                     {data.resume_audit.ats_issues.map((s, i) => (
-                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>- {s}</p>
                     ))}
                   </div>
                 )}
                 {data.resume_audit.fixes?.length > 0 && (
                   <div style={{ marginTop: 10 }}>
                     <p className="raw" style={{ fontWeight: 600, margin: "0 0 4px", color: "var(--ok)" }}>
-                      → Suggested fixes</p>
+                      Suggested fixes</p>
                     {data.resume_audit.fixes.map((s, i) => (
-                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>• {s}</p>
+                      <p className="raw" key={i} style={{ margin: "0 0 3px" }}>- {s}</p>
                     ))}
                   </div>
                 )}

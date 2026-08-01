@@ -34,7 +34,7 @@ export default function Landing({ onGetStarted }) {
         alignItems: "center", justifyContent: "space-between", padding: "20px 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Chakra size={26} />
-          <span style={{ fontWeight: 700, fontSize: 19 }}>Spark.AI</span>
+          <span className="logo-mark" style={{ fontSize: 19 }}>Spark.AI</span>
         </div>
         <button onClick={onGetStarted} style={{ background: "none", border: "none",
           color: "var(--ink-soft,#55504a)", fontSize: 15, cursor: "pointer" }}>Log in</button>

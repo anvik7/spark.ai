@@ -3,6 +3,7 @@ import React from "react";
 export function Chakra({ size = 24 }) {
   return (
     <svg
+      className="logo-icon"
       width={size}
       height={size}
       viewBox="0 0 100 100"

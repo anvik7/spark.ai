@@ -8,6 +8,10 @@ import Landing from "./Landing.jsx";
 import Review from "./Review.jsx";
 import Capture from "./Capture.jsx";
 import Upgrade from "./Upgrade.jsx";
+import Login from "./Login.jsx";
+import Signup from "./Signup.jsx";
+import Account from "./Account.jsx";
+
 /* ---------- tiny inline icons ---------- */
 const Ico = {
   pen: <path d="M4 20h4L18 10l-4-4L4 16v4Z M14 6l4 4" />,
@@ -18,6 +22,7 @@ const Ico = {
   paper: <path d="M14 3v5h5 M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" />,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
+  account: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />,
 };
 const Svg = ({ d, cls = "ico" }) => (
   <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -38,15 +43,28 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [refreshCards, setRefreshCards] = useState(0);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
 
   useEffect(() => {
     if (!hasToken()) { setBooting(false); return; }
     api.me().then(setUser).catch(() => setToken("")).finally(() => setBooting(false));
   }, []);
 
+  useEffect(() => {
+    const onUnauthorized = () => { setUser(null); setShowAuth(true); };
+    window.addEventListener("spark:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("spark:unauthorized", onUnauthorized);
+  }, []);
+
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2600); };
   const reload = () => setRefreshCards((r) => r + 1);
   const refreshUser = () => api.me().then(setUser).catch(() => {});
+
+  const handleNav = (targetTab) => {
+    setShowUpgrade(false);
+    setShowAccount(false);
+    setTab(targetTab);
+  };
 
   if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
   if (!user) return showAuth ? <Auth onAuthed={(u) => setUser(u)} /> : <Landing onGetStarted={() => setShowAuth(true)} />;
@@ -54,34 +72,49 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="wordmark"><Chakra size={22} /><b>Spark.AI</b></div>
-        <button className={`plan-chip ${user.plan === "pro" ? "pro" : ""}`}
-          onClick={() => setShowUpgrade(true)}>
-          {user.plan === "pro" ? "Pro" : `Free · ${user.card_count}/${user.free_card_limit}`}
-        </button>
+        <div className="wordmark" onClick={() => { setShowUpgrade(false); setShowAccount(true); }} style={{ cursor: "pointer" }}>
+          <Chakra size={22} /><span className="logo-mark">Spark.AI</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className={`plan-chip ${user.plan === "pro" ? "pro" : ""}`}
+            onClick={() => { setShowAccount(false); setShowUpgrade(true); }}>
+            {user.plan === "pro" ? "Pro" : `Free · ${user.card_count}/${user.free_card_limit}`}
+          </button>
+          <button
+            className={`nav-btn ${showAccount ? "active" : ""}`}
+            style={{ padding: 6, borderRadius: "50%", background: "none", border: "none", cursor: "pointer", color: "var(--ink)" }}
+            onClick={() => { setShowUpgrade(false); setShowAccount(a => !a); }}
+            title="Account"
+          >
+            <Svg d={Ico.account} cls="ico" />
+          </button>
+        </div>
       </header>
 
-      {showUpgrade
-        ? <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
-        : <>
-            {tab === "capture" && <Capture onSaved={() => setRefreshCards(r => r + 1)} />}
-            {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
-            {tab === "review" && <Review />}
-            {tab === "connect" && <Connect />}
-            {tab === "career" && <Career onNavigate={setTab} />}
-            {tab === "coach" && <Interview />}
-          </>
-      }
+      {showAccount ? (
+        <Account user={user} onLogout={() => { setShowAccount(false); setUser(null); }} />
+      ) : showUpgrade ? (
+        <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
+      ) : (
+        <>
+          {tab === "capture" && <Capture onSaved={() => setRefreshCards(r => r + 1)} />}
+          {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
+          {tab === "review" && <Review />}
+          {tab === "connect" && <Connect />}
+          {tab === "career" && <Career onNavigate={handleNav} />}
+          {tab === "coach" && <Interview />}
+        </>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
 
       <nav className="nav">
-        <NavBtn id="capture" tab={tab} set={setTab} icon={Ico.pen} label="Capture" />
-        <NavBtn id="cards" tab={tab} set={setTab} icon={Ico.cards} label="Cards" />
-        <NavBtn id="review" tab={tab} set={setTab} icon={Ico.review} label="Review" />
-        <NavBtn id="connect" tab={tab} set={setTab} icon={Ico.connect} label="Connect" />
-        <NavBtn id="career" tab={tab} set={setTab} icon={Ico.career} label="Career" />
-        <NavBtn id="coach" tab={tab} set={setTab} icon={Ico.coach} label="Coach" />
+        <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.pen} label="Capture" />
+        <NavBtn id="cards" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.cards} label="Cards" />
+        <NavBtn id="review" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.review} label="Review" />
+        <NavBtn id="connect" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.connect} label="Connect" />
+        <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
+        <NavBtn id="coach" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.coach} label="Coach" />
       </nav>
     </div>
   );
@@ -98,51 +131,16 @@ function NavBtn({ id, tab, set, icon, label }) {
 /* ---------- Auth ---------- */
 function Auth({ onAuthed }) {
   const [mode, setMode] = useState("signup");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    setErr(""); setBusy(true);
-    try {
-      const r = mode === "signup"
-        ? await api.signup(email, password, name)
-        : await api.login(email, password);
-      setToken(r.token);
-      onAuthed(r.user);
-    } catch (e) { setErr(e.message || "Something went wrong"); }
-    finally { setBusy(false); }
+  
+  const handleAuth = (user) => {
+    setToken(localStorage.getItem("spark_token"));
+    onAuthed(user);
   };
 
-  return (
-    <div className="auth">
-      <div className="wordmark" style={{ marginBottom: 22 }}><Chakra size={24} /><b style={{ fontSize: 24 }}>Spark</b></div>
-      <h1>{mode === "signup" ? "Start your second brain." : "Welcome back."}</h1>
-      <p>Capture a thought in seconds. Spark tags it, files it, and brings it back before you forget it.</p>
-      {mode === "signup" && (
-        <div className="field"><label>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></div>
-      )}
-      <div className="field"><label>Email</label>
-        <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" /></div>
-      <div className="field"><label>Password</label>
-        <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password}
-          onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder={mode === "signup" ? "At least 8 characters" : "Your password"} /></div>
-      {err && <div className="err">{err}</div>}
-      <button className="btn full" onClick={submit} disabled={busy || !email || !password}>
-        {busy ? <span className="spin" /> : mode === "signup" ? "Create account" : "Sign in"}
-      </button>
-      <div className="switch">
-        {mode === "signup" ? "Already have an account? " : "New here? "}
-        <button onClick={() => { setErr(""); setMode(mode === "signup" ? "login" : "signup"); }}>
-          {mode === "signup" ? "Sign in" : "Create one"}
-        </button>
-      </div>
-    </div>
-  );
+  if (mode === "login") {
+    return <Login onAuthed={handleAuth} goToSignup={() => setMode("signup")} />;
+  }
+  return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} />;
 }
 
 
@@ -189,8 +187,8 @@ function Cards({ flash, onChange }) {
   const [tags, setTags] = useState([]);
   const [active, setActive] = useState(null);
 
-  const load = (tag) => api.cards(tag ? { tag } : {}).then(setCards);
-  useEffect(() => { load(active); api.tags().then(setTags); }, [active]);
+  const load = (tag) => api.cards(tag ? { tag } : {}).then(setCards).catch(() => {});
+  useEffect(() => { load(active); api.tags().then(setTags).catch(() => {}); }, [active]);
 
   const remove = async (id) => {
     await api.deleteCard(id);
@@ -203,7 +201,7 @@ function Cards({ flash, onChange }) {
     <div className="screen">
       <Heatmap />
       <div className="eyebrow">Your cards</div>
-      <h1 className="title">{cards ? `${cards.length} saved` : "Loading…"}</h1>
+      <h1 className="title">{cards ? `${cards.length} saved` : "Your cards"}</h1>
       {tags.length > 0 && (
         <div className="tags" style={{ margin: "4px 0 16px" }}>
           <button className="tag" style={active ? {} : { background: "var(--ink)", color: "#fff" }}
@@ -214,6 +212,13 @@ function Cards({ flash, onChange }) {
               onClick={() => setActive(t.tag)}>#{t.tag} · {t.count}</button>
           ))}
         </div>
+      )}
+      {!cards && (
+        <>
+          {[1, 2, 3].map(i => (
+            <div key={i} className="skeleton" style={{ height: 90, marginBottom: 12, borderRadius: "var(--r)" }} />
+          ))}
+        </>
       )}
       {cards && cards.length === 0 && (
         <div className="empty">No cards yet.<br />Head to Capture and save your first thought.</div>
@@ -227,6 +232,7 @@ function Cards({ flash, onChange }) {
 /* ---------- Connect the dots ---------- */
 function Connect() {
   const [q, setQ] = useState("");
+  const [mode, setMode] = useState("ask");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
@@ -234,7 +240,7 @@ function Connect() {
   const run = async () => {
     if (!q.trim()) return;
     setBusy(true); setErr(""); setResult(null);
-    try { setResult(await api.connect(q.trim())); }
+    try { setResult(await api.connect(q.trim(), mode)); }
     catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   };
@@ -242,12 +248,28 @@ function Connect() {
   return (
     <div className="screen">
       <div className="eyebrow">Connect the dots</div>
-      <h1 className="title">Ask your notes</h1>
-      <p className="sub">“What do I know about digital marketing?” Spark pulls every related card and drafts a connected briefing.</p>
+      <h1 className="title">Your memory, on demand</h1>
+      <p className="sub">Ask anything you've captured — "what do I know about digital marketing?" — and Spark writes you a briefing pulled straight from your own notes.</p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMode("ask")}
+          style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+            border: `1px solid ${mode === "ask" ? "var(--marigold)" : "var(--line)"}`,
+            background: mode === "ask" ? "var(--marigold-light)" : "var(--surface-2)",
+            color: mode === "ask" ? "var(--marigold-dark)" : "var(--ink-soft)" }}>
+          Ask
+        </button>
+        <button onClick={() => setMode("draft")}
+          style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+            border: `1px solid ${mode === "draft" ? "var(--marigold)" : "var(--line)"}`,
+            background: mode === "draft" ? "var(--marigold-light)" : "var(--surface-2)",
+            color: mode === "draft" ? "var(--marigold-dark)" : "var(--ink-soft)" }}>
+          Draft
+        </button>
+      </div>
       <div className="searchbar">
         <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
-          placeholder="A topic or question…" />
-        <button className="btn" onClick={run} disabled={busy}>{busy ? <span className="spin" /> : "Ask"}</button>
+          placeholder={mode === "draft" ? "e.g. Draft a LinkedIn post about my progress this month…" : "A topic or question…"} />
+        <button className="btn" onClick={run} disabled={busy}>{busy ? <span className="spin" /> : mode === "draft" ? "Draft" : "Ask"}</button>
       </div>
       {err && <div className="err">{err}</div>}
       {result && (

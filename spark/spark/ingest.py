@@ -75,6 +75,8 @@ def fetch_github(url: str) -> tuple[str, str]:
 def extract_pdf(data: bytes) -> tuple[str, str]:
     """Return (title, text) from a PDF's text layer. Scanned PDFs (no text
     layer) need OCR, which is a later add — they return a clear marker."""
+    if data[:5] != b"%PDF-":
+        return "PDF document", "[not a valid PDF file]"
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(data))

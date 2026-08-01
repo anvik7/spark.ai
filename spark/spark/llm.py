@@ -136,6 +136,36 @@ def synthesize(query: str, notes: list[str]) -> str:
     return f"{head}\n{bullets}" if bullets else f"No saved notes match \"{query}\" yet."
 
 
+# --- draft (write a piece of content FROM saved cards) -----------------------
+
+_DRAFT_PROMPT = (
+    "You are a writing assistant. The user wants you to: \"{instruction}\". "
+    "Using ONLY the source notes below as raw material, write the requested piece "
+    "directly — no preamble, no explanation, just the finished text, ready to use. "
+    "Keep it under 200 words unless the instruction asks for more. Notes:\n\n{notes}"
+)
+
+
+def draft(instruction: str, notes: list[str]) -> str:
+    """Generate a piece of writing (post, paragraph, summary) FROM saved cards,
+    rather than just answering a question about them. Offline-safe."""
+    joined = "\n".join(f"- {n}" for n in notes[:25])[:6000]
+    p = settings.llm_provider
+    prompt = _DRAFT_PROMPT.format(instruction=instruction, notes=joined)
+    try:
+        if p == "gemini" and settings.gemini_api_key:
+            return _gemini_text(prompt)
+        if p == "groq" and settings.groq_api_key:
+            return _groq_text(prompt)
+        if p == "anthropic" and settings.anthropic_api_key:
+            return _anthropic_text(prompt)
+    except Exception as e:
+        print(f"[llm] draft provider '{p}' failed, using mock: {e}")
+    if not notes:
+        return f"I don't have any saved notes to draft \"{instruction}\" from yet — capture a few first."
+    return f"[Draft based on {len(notes)} note(s)]\n" + " ".join(n[:200] for n in notes[:3])
+
+
 def _gemini_text(prompt: str) -> str:
     model = settings.llm_model or "gemini-2.0-flash"
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"

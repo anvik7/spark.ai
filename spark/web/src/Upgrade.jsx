@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { api } from "./api.js";
 
 const FREE = [
   "Capture notes, links, PDFs, voice",
@@ -62,13 +63,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
           image: "",
           handler: async (response) => {
             try {
-              const vres = await fetch("/api/subscribe/activate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify(response),
-              });
-              const vdata = await vres.json();
-              if (!vres.ok) throw new Error(vdata.detail || "Activation failed");
+              await api.verify(order.order_id);
               setDone(true);
               onUpgraded?.();
               resolve();

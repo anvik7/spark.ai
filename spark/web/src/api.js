@@ -23,6 +23,10 @@ async function req(path, { method = "GET", body, form } = {}) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
+    if (res.status === 401) {
+      setToken("");
+      window.dispatchEvent(new Event("spark:unauthorized"));
+    }
     const err = new Error(data.detail || res.statusText);
     err.status = res.status;
     throw err;
@@ -54,7 +58,7 @@ export const api = {
   tags: () => req("/tags"),
   due: (limit = 3) => req(`/review/due?limit=${limit}`),
   grade: (id, grade) => req(`/review/${id}/grade`, { method: "POST", body: { grade } }),
-  connect: (q) => req("/connect", { method: "POST", body: { q } }),
+  connect: (q, mode = "ask") => req("/connect", { method: "POST", body: { q, mode } }),
   checkout: () => req("/billing/checkout", { method: "POST" }),
   verify: (order_id) => req("/billing/verify", { method: "POST", body: { order_id } }),
 };
