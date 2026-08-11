@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     bhashini_api_key: str = ""
 
     # --- Billing ------------------------------------------------------------
-    razorpay_key_id: str = ""
-    razorpay_key_secret: str = ""
+    razorpay_key_id: str = "rzp_test_TEBukEgSDIHGN9"
+    razorpay_key_secret: str = "TBoVVUv4WroLUKDindEqkoSE"
     razorpay_webhook_secret: str = ""
 
     # --- Career (Adzuna live demand) ----------------------------------------
@@ -42,9 +42,10 @@ class Settings(BaseSettings):
     adzuna_app_key: str = ""
 
     # --- Plan limits --------------------------------------------------------
-    free_card_limit: int = 100          # lifetime cards on free tier
+    free_card_limit: int = 30           # lifetime cards on free tier
     free_ai_calls_per_day: int = 20     # rate-limit AI endpoints on free tier
-    pro_price_inr: int = 199            # monthly, in rupees
+    pro_price_inr: int = 299            # monthly, in rupees
+    ultra_price_inr: int = 599          # monthly, in rupees
 
 
 @lru_cache

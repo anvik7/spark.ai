@@ -101,7 +101,7 @@ export default function App() {
           {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
           {tab === "review" && <Review />}
           {tab === "connect" && <Connect />}
-          {tab === "career" && <Career onNavigate={handleNav} />}
+          {tab === "career" && <Career onNavigate={handleNav} user={user} />}
           {tab === "coach" && <Interview />}
         </>
       )}
@@ -186,6 +186,8 @@ function Cards({ flash, onChange }) {
   const [cards, setCards] = useState(null);
   const [tags, setTags] = useState([]);
   const [active, setActive] = useState(null);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState("newest");
 
   const load = (tag) => api.cards(tag ? { tag } : {}).then(setCards).catch(() => {});
   useEffect(() => { load(active); api.tags().then(setTags).catch(() => {}); }, [active]);
@@ -197,11 +199,43 @@ function Cards({ flash, onChange }) {
     flash("Card deleted");
   };
 
+  const displayedCards = (cards || [])
+    .filter((c) => {
+      if (!q.trim()) return true;
+      const query = q.toLowerCase();
+      return (
+        (c.raw && c.raw.toLowerCase().includes(query)) ||
+        (c.title && c.title.toLowerCase().includes(query)) ||
+        (c.summary && c.summary.toLowerCase().includes(query)) ||
+        (c.tags && c.tags.some((t) => t.toLowerCase().includes(query)))
+      );
+    })
+    .sort((a, b) => {
+      if (sort === "oldest") return new Date(a.created_at) - new Date(b.created_at);
+      if (sort === "importance") return (b.importance || 0) - (a.importance || 0);
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
   return (
     <div className="screen">
       <Heatmap />
       <div className="eyebrow">Your cards</div>
       <h1 className="title">{cards ? `${cards.length} saved` : "Your cards"}</h1>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search your cards…"
+          style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5 }}
+        />
+        <select value={sort} onChange={e => setSort(e.target.value)}
+          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface)" }}>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="importance">Most important</option>
+        </select>
+      </div>
+
       {tags.length > 0 && (
         <div className="tags" style={{ margin: "4px 0 16px" }}>
           <button className="tag" style={active ? {} : { background: "var(--ink)", color: "#fff" }}
@@ -220,10 +254,10 @@ function Cards({ flash, onChange }) {
           ))}
         </>
       )}
-      {cards && cards.length === 0 && (
-        <div className="empty">No cards yet.<br />Head to Capture and save your first thought.</div>
+      {cards && displayedCards.length === 0 && (
+        <div className="empty">No cards found.<br />{q ? "Try a different search term." : "Head to Capture and save your first thought."}</div>
       )}
-      {cards && cards.map((c) => <CardView key={c.id} c={c} onDelete={remove} />)}
+      {cards && displayedCards.map((c) => <CardView key={c.id} c={c} onDelete={remove} />)}
     </div>
   );
 }

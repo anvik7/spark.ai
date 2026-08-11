@@ -61,6 +61,12 @@ class CardIn(BaseModel):
     lang_hint: str = "auto"
 
 
+class CardUpdateIn(BaseModel):
+    raw: Optional[str] = None
+    title: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
 class GradeIn(BaseModel):
     grade: int
 
@@ -246,6 +252,26 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         return {"deleted": card_id}
 
 
+@app.patch("/api/cards/{card_id}")
+def update_card(card_id: int, body: CardUpdateIn, user: User = Depends(current_user)):
+    with get_session() as session:
+        card = session.get(Card, card_id)
+        if not card or card.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Card not found")
+        if body.raw is not None:
+            card.raw = body.raw[:8000]
+        if body.title is not None:
+            card.title = body.title[:80]
+        if body.tags is not None:
+            card.tags = body.tags[:5]
+        session.add(card)
+        session.commit()
+        session.refresh(card)
+        _index_card(session, card)  # re-embed since content changed
+        return _card_out(card)
+
+
+
 @app.get("/api/tags")
 def list_tags(user: User = Depends(current_user)):
     with get_session() as session:
@@ -416,6 +442,38 @@ def career_audit(body: CareerIn, user: User = Depends(current_user)):
             }
 
 
+class CoverLetterIn(BaseModel):
+    role: str = ""              # target job title / company
+    strengths: list[str] = []   # skill names already found by /audit
+    resume_text: str = ""       # pasted resume (optional, improves output)
+
+
+@app.post("/api/career/cover-letter")
+def generate_cover_letter(body: CoverLetterIn, user: User = Depends(current_user)):
+    """Draft a personalised cover letter from the user's skills. Pro only."""
+    with get_session() as session:
+        db_user: User | None = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        if not subscription.is_pro(db_user):
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED,
+                                "Cover letter drafting is a Pro feature. Upgrade to unlock.")
+        ok, msg = subscription.check_ai_quota(session, db_user)
+        if not ok:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
+    try:
+        letter = career.cover_letter(
+            strengths=body.strengths,
+            resume_text=body.resume_text,
+            role=body.role,
+        )
+        return {"letter": letter}
+    except Exception as e:
+        print(f"[career] cover_letter crashed: {e}")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            f"Could not generate cover letter: {e}")
+
+
 @app.post("/api/interview")
 def interview_turn(body: InterviewIn, user: User = Depends(current_user)):
     with get_session() as session:
@@ -448,6 +506,24 @@ def daily_digest(user: User = Depends(current_user)):
             items.append((_card_out(c), vec))
         due = due_cards(list(cards), limit=5)
         return memory.build_morning(items, due_count=len(due))
+
+
+@app.get("/api/digest/weekly")
+def weekly_digest(user: User = Depends(current_user)):
+    with get_session() as session:
+        cards = session.exec(select(Card).where(Card.user_id == user.id)).all()
+        items = []
+        for c in cards:
+            row = session.get(CardEmbedding, c.id)
+            if row is None:
+                _index_card(session, c); row = session.get(CardEmbedding, c.id)
+            try:
+                vec = json.loads(row.vector) if row and row.vector else []
+            except Exception:
+                vec = []
+            items.append((_card_out(c), vec))
+        return memory.build_weekly(items)
+
 
 
 @app.get("/api/stats")

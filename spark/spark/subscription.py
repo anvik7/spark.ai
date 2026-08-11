@@ -7,18 +7,25 @@ Razorpay calls are guarded so the app runs without keys; a /billing/checkout
 returns a real order when keys are present, otherwise a mock order for dev."""
 import hmac
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta, timezone
 from sqlmodel import select
 import httpx
 from .config import get_settings
 from .models import User, Card, UsageDay
-from datetime import date
 
 settings = get_settings()
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def is_pro(user: User) -> bool:
-    return user.plan == "pro" and (user.plan_until is None or user.plan_until > datetime.utcnow())
+    return user.plan in ("pro", "ultra") and (user.plan_until is None or user.plan_until > _now())
+
+
+def is_ultra(user: User) -> bool:
+    return user.plan == "ultra" and (user.plan_until is None or user.plan_until > _now())
 
 
 def can_add_card(session, user: User) -> tuple[bool, str]:
@@ -34,6 +41,8 @@ def check_ai_quota(session, user: User) -> tuple[bool, str]:
     """Per-user daily AI rate limit (the brief's production-hardening item)."""
     if is_pro(user):
         return True, ""
+    if user.id is None:
+        return False, "User ID missing"
     today = date.today()
     row = session.exec(select(UsageDay).where(
         UsageDay.user_id == user.id, UsageDay.day == today)).first()
@@ -75,7 +84,8 @@ def verify_webhook_signature(body: bytes, signature: str) -> bool:
 
 
 def activate_pro(session, user: User, months: int = 1) -> None:
-    base = user.plan_until if (user.plan_until and user.plan_until > datetime.utcnow()) else datetime.utcnow()
+    now = _now()
+    base = user.plan_until if (user.plan_until and user.plan_until > now) else now
     user.plan = "pro"
     user.plan_until = base + timedelta(days=30 * months)
     session.add(user)

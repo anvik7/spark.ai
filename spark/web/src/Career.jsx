@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 
 // Self-contained: reads the auth token directly and calls /api/career/audit.
 // Styled with the app's CSS variables so it matches without editing index.css.
@@ -12,6 +12,18 @@ async function runAudit(body) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "Audit failed");
   return data;
+}
+
+async function runCoverLetter(body) {
+  const token = localStorage.getItem("spark_token") || "";
+  const res = await fetch("/api/career/cover-letter", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Could not draft cover letter");
+  return data.letter;
 }
 
 async function addToCapture(text) {
@@ -98,19 +110,49 @@ function GapRow({ g }) {
   );
 }
 
-export default function Career({ onNavigate }) {
+export default function Career({ onNavigate, user }) {
   const [gh, setGh] = useState("");
   const [resume, setResume] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [data, setData] = useState(null);
 
+  // --- cover letter state ---
+  const [clRole,   setClRole]   = useState("");
+  const [clBusy,   setClBusy]   = useState(false);
+  const [clErr,    setClErr]    = useState("");
+  const [clLetter, setClLetter] = useState("");
+  const [copied,   setCopied]   = useState(false);
+
+  const isPro = user?.plan === "pro" || user?.plan === "ultra";
+
   const analyze = async () => {
     setErr(""); setBusy(true); setData(null);
+    setClLetter(""); setClErr("");
     try {
       setData(await runAudit({ github_username: gh.trim(), resume_text: resume.trim() }));
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
+  };
+
+  const draftCoverLetter = async () => {
+    setClErr(""); setClBusy(true); setClLetter("");
+    try {
+      const strengths = (data?.strengths || []).map((s) => s.skill);
+      setClLetter(await runCoverLetter({
+        role: clRole.trim(),
+        strengths,
+        resume_text: resume.trim(),
+      }));
+    } catch (e) { setClErr(e.message); }
+    finally { setClBusy(false); }
+  };
+
+  const copyLetter = () => {
+    navigator.clipboard.writeText(clLetter).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   return (
@@ -284,6 +326,85 @@ export default function Career({ onNavigate }) {
                 style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>Adzuna</a>
             </p>
           )}
+
+          {/* ── Cover letter ──────────────────────────────────────────────── */}
+          <div style={{
+            marginTop: 26, borderTop: "1px solid var(--line)", paddingTop: 20,
+          }}>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Cover letter</div>
+            <p className="sub" style={{ margin: "0 0 14px" }}>
+              Draft a tailored cover letter using your detected skills.
+            </p>
+
+            {isPro ? (
+              <>
+                <div className="field" style={{ marginBottom: 10 }}>
+                  <label>Target role / company (optional)</label>
+                  <input
+                    value={clRole}
+                    onChange={(e) => setClRole(e.target.value)}
+                    placeholder="e.g. Backend Engineer at Razorpay"
+                    onKeyDown={(e) => e.key === "Enter" && draftCoverLetter()}
+                  />
+                </div>
+
+                {clErr && <div className="err">{clErr}</div>}
+
+                <button
+                  className="btn full"
+                  onClick={draftCoverLetter}
+                  disabled={clBusy}
+                  style={{ marginBottom: clLetter ? 16 : 0 }}
+                >
+                  {clBusy ? <span className="spin" /> : "✍ Draft cover letter using my skills"}
+                </button>
+
+                {clLetter && (
+                  <div style={{
+                    position: "relative",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "var(--r)",
+                    padding: "16px 18px",
+                  }}>
+                    <button
+                      onClick={copyLetter}
+                      style={{
+                        position: "absolute", top: 10, right: 12,
+                        fontSize: 11, padding: "4px 10px", borderRadius: 8,
+                        border: `1px solid ${copied ? "var(--ok)" : "var(--line)"}`,
+                        background: copied ? "rgba(92,127,98,.1)" : "var(--surface)",
+                        color: copied ? "var(--ok)" : "var(--ink-soft)",
+                        cursor: "pointer", transition: "all .15s",
+                      }}
+                    >
+                      {copied ? "✓ Copied" : "Copy"}
+                    </button>
+                    <pre style={{
+                      fontFamily: "var(--mono, monospace)", fontSize: 13,
+                      lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      margin: 0, paddingRight: 48, color: "var(--ink)",
+                    }}>{clLetter}</pre>
+                  </div>
+                )}
+              </>
+            ) : (
+              <article className="card" style={{ position: "relative", overflow: "hidden" }}>
+                <div style={{ filter: "blur(4px)", userSelect: "none", pointerEvents: "none" }}>
+                  <p className="summary">Dear Hiring Manager,</p>
+                  <p className="raw">I am excited to apply for the role… [personalised with your skills]</p>
+                </div>
+                <div style={{
+                  position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 10,
+                  background: "rgba(250,248,243,0.45)",
+                }}>
+                  <p className="raw" style={{ fontWeight: 600, margin: 0 }}>AI cover letter drafting</p>
+                  <button className="primary" onClick={() => onNavigate?.("upgrade")}>Unlock with Pro</button>
+                </div>
+              </article>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -203,6 +203,41 @@ def _learning_plan(gaps: list[dict]) -> list[dict]:
              "project": f"Add {g['skill']} to a small project."} for g in gaps]
 
 
+def cover_letter(strengths: list[str], resume_text: str, role: str = "") -> str:
+    """Generate a tailored cover letter from the candidate's detected strengths.
+    Falls back to a template when no LLM is configured."""
+    skills_line = ", ".join(strengths) if strengths else "various technical skills"
+    role_line   = role.strip() or "the role"
+    prompt = (
+        f"Write a professional, enthusiastic cover letter for a candidate applying for "
+        f"{role_line}. Their strongest skills (detected from GitHub / resume) are: "
+        f"{skills_line}. "
+        + (f"Here is additional context from their resume:\n\n{resume_text[:3000]}\n\n" if resume_text.strip() else "")
+        + "The letter should be 3 short paragraphs (≤220 words total): "
+          "(1) hook — why them and why this role, "
+          "(2) evidence — two or three specific skills with brief examples, "
+          "(3) call-to-action. "
+          "No generic filler. Address it to 'Hiring Manager'. Output only the letter itself."
+    )
+    try:
+        return _llm(prompt, max_tokens=500)
+    except Exception as e:
+        print(f"[cover_letter] LLM failed, using template: {e}")
+    # --- offline template ---
+    return (
+        f"Dear Hiring Manager,\n\n"
+        f"I am excited to apply for {role_line}. "
+        f"With hands-on experience in {skills_line}, I am confident I can "
+        f"contribute meaningfully from day one.\n\n"
+        f"My background has equipped me with a strong foundation across these "
+        f"areas, and I thrive in environments that value continuous learning "
+        f"and technical excellence.\n\n"
+        f"I would welcome the opportunity to discuss how my skills align with "
+        f"your team's goals. Thank you for your consideration.\n\n"
+        f"Sincerely,\n[Your Name]"
+    )
+
+
 # --- main entry -------------------------------------------------------------
 
 def audit(github_username: str = "", resume_text: str = "", pro: bool = False) -> dict:

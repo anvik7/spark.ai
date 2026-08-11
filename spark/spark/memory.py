@@ -175,3 +175,32 @@ def build_morning(items: list[tuple[dict, list[float]]], due_count: int = 0) -> 
         "due_count": due_count,
         "prompt": random.choice(_PROMPTS),
     }
+
+
+def build_weekly(items: list[tuple[dict, list[float]]]) -> dict:
+    """A 7-day rollup: what got captured, what's most important, and one
+    AI-written throughline connecting the week. Reuses build_morning's scoring
+    so both stay consistent."""
+    week_cards = [c for c, _ in items if _age_days(c.get("created_at")) <= 7]
+    if not week_cards:
+        return {"headline": "Nothing captured this week yet.", "count": 0,
+                "top_cards": [], "throughline": ""}
+
+    top = sorted(week_cards, key=lambda c: -(c.get("importance") or 0))[:5]
+    labels = "; ".join(_label(c) for c in top)
+    prompt = (f"A user captured {len(week_cards)} notes this week, including: {labels}. "
+              f"In ONE encouraging sentence (<=25 words), name the throughline connecting "
+              f"what they focused on this week.")
+    try:
+        throughline = _llm(prompt)
+    except Exception as e:
+        print(f"[memory] weekly throughline fell back to template: {e}")
+        throughline = f"You captured {len(week_cards)} notes this week — steady progress."
+
+    return {
+        "headline": f"{len(week_cards)} notes captured this week",
+        "count": len(week_cards),
+        "top_cards": top[:5],
+        "throughline": throughline,
+    }
+

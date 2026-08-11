@@ -26,7 +26,7 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True)
     hashed_password: Optional[str] = None
     name: str = ""
-    plan: str = "free"            # "free" | "pro"
+    plan: str = "free"            # "free" | "pro" | "ultra"
     plan_until: Optional[datetime] = None
     digest_hour: int = 8          # local hour for the morning digest
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

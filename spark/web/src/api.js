@@ -55,10 +55,13 @@ export const api = {
     return req("/cards/file", { method: "POST", form: f });
   },
   deleteCard: (id) => req(`/cards/${id}`, { method: "DELETE" }),
+  updateCard: (id, body) => req(`/cards/${id}`, { method: "PATCH", body }),
   tags: () => req("/tags"),
   due: (limit = 3) => req(`/review/due?limit=${limit}`),
   grade: (id, grade) => req(`/review/${id}/grade`, { method: "POST", body: { grade } }),
   connect: (q, mode = "ask") => req("/connect", { method: "POST", body: { q, mode } }),
-  checkout: () => req("/billing/checkout", { method: "POST" }),
+  digest: () => req("/digest"),
+  weeklyDigest: () => req("/digest/weekly"),
+  checkout: (tier) => req(`/subscribe/order${tier ? `?plan=${tier}` : ""}`, { method: "POST" }),
   verify: (order_id) => req("/billing/verify", { method: "POST", body: { order_id } }),
 };
