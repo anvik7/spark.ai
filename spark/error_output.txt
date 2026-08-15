@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from spark.models import StudySession, UserGoal; print('ok')
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kunal\OneDrive\Desktop\spark-ai-clean\spark\spark\models.py", line 21, in <module>
+    class User(SQLModel, table=True):
+    ...<10 lines>...
+        created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+  File "C:\Users\kunal\AppData\Roaming\Python\Python314\site-packages\sqlmodel\main.py", line 536, in __new__
+    new_cls = super().__new__(cls, name, bases, dict_used, **config_kwargs)
+  File "C:\Users\kunal\AppData\Roaming\Python\Python314\site-packages\pydantic\_internal\_model_construction.py", line 132, in __new__
+    private_attributes = inspect_namespace(
+        namespace, raw_annotations, config_wrapper.ignored_types, class_vars, base_field_names
+    )
+  File "C:\Users\kunal\AppData\Roaming\Python\Python314\site-packages\pydantic\_internal\_model_construction.py", line 477, in inspect_namespace
+    raise PydanticUserError(
+        f'Field {var_name!r} requires a type annotation', code='model-field-missing-annotation'
+    )
+pydantic.errors.PydanticUserError: Field 'id' requires a type annotation
+
+For further information visit https://errors.pydantic.dev/2.12/u/model-field-missing-annotation

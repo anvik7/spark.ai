@@ -68,7 +68,25 @@ class CardEmbedding(SQLModel, table=True):
     card_id: int = Field(primary_key=True, foreign_key="card.id")
     vector: str = ""             # JSON-encoded list[float], L2-normalised
     dim: int = 0
+class StudySession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    card_id: Optional[int] = Field(default=None, foreign_key="card.id")
+    subject: str = ""
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ended_at: Optional[datetime] = None
+    duration_seconds: int = 0
+    was_focused: bool = False
+    ambient_sound: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
+class UserGoal(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    goal_type: str = "daily"
+    target_hours: float
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
