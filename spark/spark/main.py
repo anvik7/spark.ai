@@ -2,7 +2,6 @@
 spaced-repetition review loop, tag/search + connect-the-dots, and Razorpay
 billing. Serves the built React PWA from ./web/dist in production."""
 import json
-import razorpay
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -17,6 +16,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlmodel import col, select
 
+try:
+    import razorpay
+except ImportError:
+    razorpay = None
+
 from . import career, embeddings, interview, llm, memory, stats, subscription
 from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
@@ -24,6 +28,8 @@ from .config import get_settings
 from .ingest import build_card_fields
 from .models import Card, CardEmbedding, User, get_session, init_db
 from .srs import due_cards, schedule
+from .routes.goals import router as goals_router
+from .leaderboard import router as leaderboard_router
 
 settings = get_settings()
 
@@ -34,9 +40,14 @@ async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
 app = FastAPI(title=settings.app_name, lifespan=_lifespan)
+app.include_router(goals_router)
+app.include_router(leaderboard_router)
 
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -224,6 +235,7 @@ async def create_file_card(file: UploadFile = File(...),
                                 "Only PDF files are supported here — use the image capture for photos.")
         return _card_out(_save_card(session, user, fields))
 
+
 @app.get("/api/cards")
 def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
                user: User = Depends(current_user)):
@@ -271,7 +283,6 @@ def update_card(card_id: int, body: CardUpdateIn, user: User = Depends(current_u
         return _card_out(card)
 
 
-
 @app.get("/api/tags")
 def list_tags(user: User = Depends(current_user)):
     with get_session() as session:
@@ -304,6 +315,7 @@ def grade_card(card_id: int, body: GradeIn, user: User = Depends(current_user)):
         session.commit()
         session.refresh(card)
         return _card_out(card)
+
 
 # --- connect the dots -------------------------------------------------------
 
@@ -525,7 +537,6 @@ def weekly_digest(user: User = Depends(current_user)):
         return memory.build_weekly(items)
 
 
-
 @app.get("/api/stats")
 def activity_stats(user: User = Depends(current_user)):
     with get_session() as session:
@@ -533,13 +544,14 @@ def activity_stats(user: User = Depends(current_user)):
         return stats.build_stats([_card_out(c) for c in cards])
 
 
-# --- subscribe (new Razorpay flow) ------------------------------------------
+# --- subscribe (Razorpay flow) ------------------------------------------
 
 @app.post("/api/subscribe/order")
 def create_order(user: User = Depends(current_user)):
-    import razorpay as rz
+    if razorpay is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Razorpay package is not installed.")
     s = get_settings()
-    client = rz.Client(auth=(s.razorpay_key_id, s.razorpay_key_secret))
+    client = razorpay.Client(auth=(s.razorpay_key_id, s.razorpay_key_secret))
     order = client.order.create({"amount": 19900, "currency": "INR", "receipt": f"spark_{user.id}"})  # type: ignore
     return {"order_id": order["id"], "amount": order["amount"], "key_id": s.razorpay_key_id}
 

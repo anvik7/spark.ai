@@ -7,36 +7,53 @@ export function setToken(t) {
   if (t) localStorage.setItem("spark_token", t);
   else localStorage.removeItem("spark_token");
 }
-export function hasToken() { return !!token; }
+
+export function hasToken() {
+  return !!token;
+}
 
 async function req(path, { method = "GET", body, form } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+
   let payload;
   if (form) {
-    payload = form; // FormData; let the browser set the boundary
+    payload = form;
   } else if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
+
   const res = await fetch(BASE + path, { method, headers, body: payload });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { detail: text };
+    }
+  }
+
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 403) {
       setToken("");
       window.dispatchEvent(new Event("spark:unauthorized"));
     }
-    const err = new Error(data.detail || res.statusText);
+    const err = new Error(data.detail || res.statusText || `Request failed with status ${res.status}`);
     err.status = res.status;
     throw err;
   }
+
   return data;
 }
 
 export const api = {
-  signup: (email, password, name) => req("/auth/signup", { method: "POST", body: { email, password, name } }),
-  login: (email, password) => req("/auth/login", { method: "POST", body: { email, password } }),
+  signup: (email, password, name) =>
+    req("/auth/signup", { method: "POST", body: { email, password, name } }),
+  login: (email, password) =>
+    req("/auth/login", { method: "POST", body: { email, password } }),
   me: () => req("/me"),
   cards: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
@@ -58,10 +75,16 @@ export const api = {
   updateCard: (id, body) => req(`/cards/${id}`, { method: "PATCH", body }),
   tags: () => req("/tags"),
   due: (limit = 3) => req(`/review/due?limit=${limit}`),
-  grade: (id, grade) => req(`/review/${id}/grade`, { method: "POST", body: { grade } }),
-  connect: (q, mode = "ask") => req("/connect", { method: "POST", body: { q, mode } }),
+  grade: (id, grade) =>
+    req(`/review/${id}/grade`, { method: "POST", body: { grade } }),
+  connect: (q, mode = "ask") =>
+    req("/connect", { method: "POST", body: { q, mode } }),
   digest: () => req("/digest"),
   weeklyDigest: () => req("/digest/weekly"),
-  checkout: (tier) => req(`/subscribe/order${tier ? `?plan=${tier}` : ""}`, { method: "POST" }),
-  verify: (order_id) => req("/billing/verify", { method: "POST", body: { order_id } }),
+  checkout: (tier) =>
+    req(`/subscribe/order${tier ? `?plan=${tier}` : ""}`, { method: "POST" }),
+  verify: (order_id) =>
+    req("/billing/verify", { method: "POST", body: { order_id } }),
+  getGoal: () => req("/goals"),
+  setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
 };

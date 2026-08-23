@@ -6,25 +6,40 @@ const SPEECH_OK = typeof window !== "undefined" &&
 
 function useVoiceCapture({ onTranscript, onError }) {
   const recRef = useRef(null);
+  const lastIndexRef = useRef(0);
+  const lastFinalRef = useRef("");
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
 
   const start = useCallback(() => {
     if (!SPEECH_OK) return false;
+    if (recRef.current) return false;
     const R = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new R();
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = "en-IN";
+    lastIndexRef.current = 0;
+    lastFinalRef.current = "";
+
     rec.onresult = (e) => {
-      let final = "", inter = "";
-      for (const r of e.results) {
-        if (r.isFinal) final += r[0].transcript;
-        else inter += r[0].transcript;
+      let inter = "";
+      for (let i = lastIndexRef.current; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) {
+          const clean = r[0].transcript.trim();
+          if (clean && clean !== lastFinalRef.current) {
+            onTranscript(clean);
+            lastFinalRef.current = clean;
+          }
+          lastIndexRef.current = i + 1;
+        } else {
+          inter += r[0].transcript;
+        }
       }
-      if (final) onTranscript(final);
       setInterim(inter);
     };
+
     rec.onend = () => { setListening(false); setInterim(""); };
     rec.onerror = (e) => {
       console.error("SpeechRecognition error:", e.error);
@@ -38,6 +53,7 @@ function useVoiceCapture({ onTranscript, onError }) {
       };
       onError?.(messages[e.error] || `Voice error: ${e.error || "unknown"}`);
     };
+
     rec.start();
     recRef.current = rec;
     setListening(true);
@@ -79,16 +95,16 @@ async function addFile(file) {
 }
 
 const QUICK = [
-  ["💡","Idea"],["🔗","Link"],["📚","Study note"],["🧠","Insight"],["🎯","Goal"],
+  ["💡", "Idea"], ["🔗", "Link"], ["📚", "Study note"], ["🧠", "Insight"], ["🎯", "Goal"],
 ];
 
 export default function Capture({ onSaved }) {
-  const [text,      setText]  = useState("");
-  const [busy,      setBusy]  = useState(false);
-  const [err,       setErr]   = useState("");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const [justSaved, setSaved] = useState(false);
   const fileRef = useRef();
-  const taRef   = useRef();
+  const taRef = useRef();
 
   const onTranscript = useCallback((t) => {
     setText(prev => prev ? prev.trim() + " " + t.trim() : t.trim());

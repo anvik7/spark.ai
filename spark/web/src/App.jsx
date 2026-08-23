@@ -11,11 +11,14 @@ import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import Account from "./Account.jsx";
+import { ShareButton } from "./ShareCard.jsx";
+import StudyTracker from "./components/StudyTracker";
 
 /* ---------- tiny inline icons ---------- */
 const Ico = {
   pen: <path d="M4 20h4L18 10l-4-4L4 16v4Z M14 6l4 4" />,
   cards: <path d="M4 7h16v13H4z M4 7l2-3h12l2 3 M8 12h8 M8 16h5" />,
+  study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
   review: <path d="M12 4a8 8 0 1 0 8 8 M12 4v4 M20 12h-4 M12 9v3l2 2" />,
   connect: <path d="M7 8a3 3 0 1 0 0-1 M17 8a3 3 0 1 0 0-1 M9.5 7h5 M12 10v4 M9 18a3 3 0 1 0 6 0" />,
   mic: <path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z M6 11a6 6 0 0 0 12 0 M12 17v3" />,
@@ -24,6 +27,7 @@ const Ico = {
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
   account: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />,
 };
+
 const Svg = ({ d, cls = "ico" }) => (
   <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
@@ -58,7 +62,7 @@ export default function App() {
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2600); };
   const reload = () => setRefreshCards((r) => r + 1);
-  const refreshUser = () => api.me().then(setUser).catch(() => {});
+  const refreshUser = () => api.me().then(setUser).catch(() => { });
 
   const handleNav = (targetTab) => {
     setShowUpgrade(false);
@@ -99,6 +103,7 @@ export default function App() {
         <>
           {tab === "capture" && <Capture onSaved={() => setRefreshCards(r => r + 1)} />}
           {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
+          {tab === "study" && <StudyTracker />}
           {tab === "review" && <Review />}
           {tab === "connect" && <Connect />}
           {tab === "career" && <Career onNavigate={handleNav} user={user} />}
@@ -111,6 +116,7 @@ export default function App() {
       <nav className="nav">
         <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.pen} label="Capture" />
         <NavBtn id="cards" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.cards} label="Cards" />
+        <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
         <NavBtn id="review" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.review} label="Review" />
         <NavBtn id="connect" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.connect} label="Connect" />
         <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
@@ -131,7 +137,7 @@ function NavBtn({ id, tab, set, icon, label }) {
 /* ---------- Auth ---------- */
 function Auth({ onAuthed }) {
   const [mode, setMode] = useState("signup");
-  
+
   const handleAuth = (user) => {
     setToken(localStorage.getItem("spark_token"));
     onAuthed(user);
@@ -143,7 +149,6 @@ function Auth({ onAuthed }) {
   return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} />;
 }
 
-
 /* ---------- Card list ---------- */
 const KIND_LABEL = { text: "Note", link: "Link", image: "Image", voice: "Voice", pdf: "PDF", github: "GitHub" };
 const DIFF_LABEL = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
@@ -151,6 +156,7 @@ const DIFF_LABEL = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
 function CardView({ c, onDelete }) {
   const heading = c.title || c.summary || c.raw;
   const showSummary = c.title && c.summary && c.summary !== c.title;
+
   return (
     <article className={`card kind-${c.kind}`}>
       <span className="eyebrow" style={{ margin: 0 }}>
@@ -174,9 +180,12 @@ function CardView({ c, onDelete }) {
           {c.source_url.slice(0, 48)}{c.source_url.length > 48 ? "…" : ""}
         </a>
       )}
-      <div className="meta">
+      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span className="date">{fmtDate(c.created_at)}</span>
-        <button className="del" onClick={() => onDelete(c.id)} aria-label="Delete">✕</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ShareButton card={c} />
+          <button className="del" onClick={() => onDelete(c.id)} aria-label="Delete">✕</button>
+        </div>
       </div>
     </article>
   );
@@ -189,8 +198,8 @@ function Cards({ flash, onChange }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("newest");
 
-  const load = (tag) => api.cards(tag ? { tag } : {}).then(setCards).catch(() => {});
-  useEffect(() => { load(active); api.tags().then(setTags).catch(() => {}); }, [active]);
+  const load = (tag) => api.cards(tag ? { tag } : {}).then(setCards).catch(() => { });
+  useEffect(() => { load(active); api.tags().then(setTags).catch(() => { }); }, [active]);
 
   const remove = async (id) => {
     await api.deleteCard(id);
@@ -262,7 +271,6 @@ function Cards({ flash, onChange }) {
   );
 }
 
-
 /* ---------- Connect the dots ---------- */
 function Connect() {
   const [q, setQ] = useState("");
@@ -286,17 +294,21 @@ function Connect() {
       <p className="sub">Ask anything you've captured — "what do I know about digital marketing?" — and Spark writes you a briefing pulled straight from your own notes.</p>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <button onClick={() => setMode("ask")}
-          style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+          style={{
+            fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
             border: `1px solid ${mode === "ask" ? "var(--marigold)" : "var(--line)"}`,
             background: mode === "ask" ? "var(--marigold-light)" : "var(--surface-2)",
-            color: mode === "ask" ? "var(--marigold-dark)" : "var(--ink-soft)" }}>
+            color: mode === "ask" ? "var(--marigold-dark)" : "var(--ink-soft)"
+          }}>
           Ask
         </button>
         <button onClick={() => setMode("draft")}
-          style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+          style={{
+            fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
             border: `1px solid ${mode === "draft" ? "var(--marigold)" : "var(--line)"}`,
             background: mode === "draft" ? "var(--marigold-light)" : "var(--surface-2)",
-            color: mode === "draft" ? "var(--marigold-dark)" : "var(--ink-soft)" }}>
+            color: mode === "draft" ? "var(--marigold-dark)" : "var(--ink-soft)"
+          }}>
           Draft
         </button>
       </div>
@@ -312,7 +324,7 @@ function Connect() {
           {result.cards.length > 0 && (
             <>
               <div className="eyebrow">Sources · {result.cards.length}</div>
-              {result.cards.map((c) => <CardView key={c.id} c={c} onDelete={() => {}} />)}
+              {result.cards.map((c) => <CardView key={c.id} c={c} onDelete={() => { }} />)}
             </>
           )}
         </>
@@ -320,4 +332,5 @@ function Connect() {
     </div>
   );
 }
+
 

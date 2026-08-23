@@ -1,32 +1,36 @@
-"""flomo-style activity stats: a contribution heatmap + streaks.
-
-flomo's most-loved feature is the heatmap that rewards capturing every day.
-This computes per-day counts over a window plus current/longest streaks, to
-power the same daily-habit loop. Pure computation over the user's cards.
-"""
+"""flomo-style activity stats: a contribution heatmap + streaks."""
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+IST_OFFSET = timedelta(hours=5, minutes=30)  # change if you ever serve non-IST users
 
 
-def _to_date(created):
+def _to_local_date(created, offset=IST_OFFSET):
     if isinstance(created, str):
         try:
-            return datetime.fromisoformat(created.replace("Z", "+00:00")).date()
+            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
         except Exception:
             return None
-    if isinstance(created, datetime):
-        return created.date()
-    return created if isinstance(created, date) else None
+    elif isinstance(created, datetime):
+        dt = created
+    elif isinstance(created, date):
+        return created
+    else:
+        return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (dt + offset).date()
 
 
 def build_stats(cards: list[dict], window_days: int = 118) -> dict:
     counts: Counter = Counter()
     for c in cards:
-        d = _to_date(c.get("created_at"))
+        d = _to_local_date(c.get("created_at"))
         if d:
             counts[d] += 1
 
-    today = date.today()
+    today = (datetime.now(timezone.utc) + IST_OFFSET).date()
     start = today - timedelta(days=window_days)
     days = []
     d = start
@@ -34,8 +38,6 @@ def build_stats(cards: list[dict], window_days: int = 118) -> dict:
         days.append({"date": d.isoformat(), "count": counts.get(d, 0)})
         d += timedelta(days=1)
 
-    # current streak: consecutive days with >=1 capture, anchored at today
-    # (or yesterday, so the streak doesn't read 0 until you capture today)
     current = 0
     anchor = today if counts.get(today, 0) > 0 else today - timedelta(days=1)
     dd = anchor
@@ -43,7 +45,6 @@ def build_stats(cards: list[dict], window_days: int = 118) -> dict:
         current += 1
         dd -= timedelta(days=1)
 
-    # longest streak across all history
     active = sorted(counts.keys())
     longest, run, prev = 0, 0, None
     for d0 in active:
@@ -52,10 +53,14 @@ def build_stats(cards: list[dict], window_days: int = 118) -> dict:
         prev = d0
 
     return {
+        # names Heatmap.jsx actually consumes
+        "streak": current,
         "total": sum(counts.values()),
-        "active_days": len(active),
+        "longest": longest,
+        "days": days,
+        # kept for backward compatibility with any other caller
         "current_streak": current,
         "longest_streak": longest,
+        "active_days": len(active),
         "captured_today": counts.get(today, 0),
-        "days": days,
     }

@@ -1,15 +1,5 @@
 import React, { useState } from "react";
-
-async function req(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Something went wrong");
-  return data;
-}
+import { api, setToken } from "./api.js";
 
 export default function Login({ onAuthed, goToSignup }) {
   const [email, setEmail] = useState("");
@@ -20,13 +10,16 @@ export default function Login({ onAuthed, goToSignup }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    setBusy(true); setErr("");
+    setBusy(true);
+    setErr("");
     try {
-      const data = await req("POST", "/api/auth/login", { email, password });
-      localStorage.setItem("spark_token", data.token);
+      const data = await api.login(email, password);
+      // Synchronize token state and localStorage
+      const token = data.token || data.access_token;
+      setToken(token);
       onAuthed?.(data.user);
     } catch (e) {
-      setErr(e.message);
+      setErr(e.message || "Failed to log in");
     } finally {
       setBusy(false);
     }
@@ -47,7 +40,7 @@ export default function Login({ onAuthed, goToSignup }) {
           type="email"
           placeholder="you@email.com"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           required
           autoFocus
         />
@@ -57,7 +50,7 @@ export default function Login({ onAuthed, goToSignup }) {
           type="password"
           placeholder="Password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
         />
         <button className="primary" type="submit" disabled={busy}>

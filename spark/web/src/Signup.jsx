@@ -1,15 +1,5 @@
 import React, { useState } from "react";
-
-async function req(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Something went wrong");
-  return data;
-}
+import { api, setToken } from "./api.js";
 
 export default function Signup({ onAuthed, goToLogin }) {
   const [name, setName] = useState("");
@@ -21,17 +11,15 @@ export default function Signup({ onAuthed, goToLogin }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (password.length < 8) {
-      setErr("Use at least 8 characters");
-      return;
-    }
-    setBusy(true); setErr("");
+    setBusy(true);
+    setErr("");
     try {
-      const data = await req("POST", "/api/auth/signup", { email, password, name });
-      localStorage.setItem("spark_token", data.token);
+      const data = await api.signup(email, password, name);
+      const token = data.token || data.access_token;
+      setToken(token);
       onAuthed?.(data.user);
     } catch (e) {
-      setErr(e.message);
+      setErr(e.message || "Signup failed");
     } finally {
       setBusy(false);
     }
@@ -39,7 +27,7 @@ export default function Signup({ onAuthed, goToLogin }) {
 
   return (
     <div className="screen">
-      <div className="eyebrow">Get started</div>
+      <div className="eyebrow">GET STARTED</div>
       <h1 className="title">Create your Spark</h1>
       <p className="sub">Free plan included — upgrade any time.</p>
 
@@ -52,8 +40,7 @@ export default function Signup({ onAuthed, goToLogin }) {
           type="text"
           placeholder="Your name (optional)"
           value={name}
-          onChange={e => setName(e.target.value)}
-          autoFocus
+          onChange={(e) => setName(e.target.value)}
         />
         <input
           className="field"
@@ -61,16 +48,16 @@ export default function Signup({ onAuthed, goToLogin }) {
           type="email"
           placeholder="you@email.com"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           required
         />
         <input
           className="field"
           style={{ marginBottom: 18 }}
           type="password"
-          placeholder="Password (min 8 characters)"
+          placeholder="Password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
         />
         <button className="primary" type="submit" disabled={busy}>

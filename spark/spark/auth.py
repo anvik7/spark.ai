@@ -74,12 +74,31 @@ def current_user(
 
 def get_or_create_user(session: Session, email: str, password: str,
                        name: str = "") -> User:
+    """Signup: fails loudly with a 409 if the email is already registered,
+    instead of letting a DB constraint violation surface as a raw 500."""
     email = email.strip().lower()
+
+    existing = find_by_email(session, email)
+    if existing:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "An account with this email already exists. Try logging in instead.",
+        )
+
     user = User(channel="web", external_id=email, email=email,
                 name=name or email.split("@")[0],
                 hashed_password=hash_password(password))
     session.add(user)
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        # belt-and-suspenders: catches a race condition where two signups
+        # for the same email land between the check above and this commit
+        session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "An account with this email already exists. Try logging in instead.",
+        )
     session.refresh(user)
     return user
 

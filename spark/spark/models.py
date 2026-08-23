@@ -86,6 +86,7 @@ class UserGoal(SQLModel, table=True):
     user_id: int = Field(index=True, foreign_key="user.id")
     goal_type: str = "daily"
     target_hours: float
+    active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 def init_db() -> None:
@@ -113,6 +114,14 @@ def _migrate() -> None:
             for name, ddl in cols.items():
                 if name not in existing:
                     conn.execute(_sql(f"ALTER TABLE card ADD COLUMN {name} {ddl}"))
+
+            try:
+                g_existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(usergoal)"))}
+                if g_existing and "active" not in g_existing:
+                    conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT 1"))
+            except Exception:
+                pass
+
             conn.commit()
     except Exception as e:
         print(f"[migrate] skipped: {e}")

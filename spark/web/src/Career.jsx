@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import GoalSetting from "./GoalSetting";
 
 // Self-contained: reads the auth token directly and calls /api/career/audit.
 // Styled with the app's CSS variables so it matches without editing index.css.
@@ -124,6 +125,35 @@ export default function Career({ onNavigate, user }) {
   const [clLetter, setClLetter] = useState("");
   const [copied,   setCopied]   = useState(false);
 
+  // --- goal state ---
+  const [existingGoal, setExistingGoal] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("spark_token") || "";
+    fetch("/api/goals", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setExistingGoal)
+      .catch(() => setExistingGoal(null));
+  }, []);
+
+  const handleSaveGoal = async (goalData) => {
+    const token = localStorage.getItem("spark_token") || "";
+    const res = await fetch("/api/goals", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(goalData),
+    });
+    if (!res.ok) throw new Error("Failed to save goal");
+    const saved = await res.json();
+    setExistingGoal(saved);
+    return saved;
+  };
+
   const isPro = user?.plan === "pro" || user?.plan === "ultra";
 
   const analyze = async () => {
@@ -157,6 +187,10 @@ export default function Career({ onNavigate, user }) {
 
   return (
     <div className="screen">
+      <div style={{ marginBottom: 20 }}>
+        <GoalSetting currentGoal={existingGoal} onSave={handleSaveGoal} />
+      </div>
+
       <div className="eyebrow">Career OS</div>
       <h1 className="title">Where do you stand?</h1>
       <p className="sub">Drop your GitHub or paste your resume. Spark scores you against
