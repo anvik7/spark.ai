@@ -112,7 +112,7 @@ const fromApiSubject = (s: ApiSubjectBreakdown): SubjectBreakdown => ({
 // ─── Fetch helper ────────────────────────────────────────────────────────
 
 function authHeaders(): HeadersInit {
-  const token = localStorage.getItem("token"); // confirm this matches your login flow's storage key
+  const token = localStorage.getItem("spark_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

@@ -30,7 +30,7 @@ from .models import Card, CardEmbedding, User, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
-
+from .routes.study_logs import router as study_logs_router
 settings = get_settings()
 
 
@@ -42,7 +42,7 @@ async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(title=settings.app_name, lifespan=_lifespan)
 app.include_router(goals_router)
 app.include_router(leaderboard_router)
-
+app.include_router(study_logs_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
