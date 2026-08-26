@@ -116,21 +116,40 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-      ...(options?.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "Unknown error");
-    throw new Error(`HTTP ${res.status}: ${text}`);
+async function apiFetch<T>(url: string, options?: RequestInit, fallback?: T): Promise<T> {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+        ...(options?.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      if (fallback !== undefined) return fallback;
+      const text = await res.text().catch(() => "Unknown error");
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    if (res.status === 204) return (fallback ?? (undefined as unknown)) as T;
+
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("text/html")) {
+      if (fallback !== undefined) return fallback;
+      throw new Error("Received HTML response instead of JSON");
+    }
+
+    const text = await res.text();
+    if (!text || text.trim().startsWith("<")) {
+      if (fallback !== undefined) return fallback;
+      throw new Error("Received non-JSON content");
+    }
+
+    return JSON.parse(text) as T;
+  } catch (err) {
+    if (fallback !== undefined) return fallback;
+    throw err;
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return res.json() as Promise<T>;
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────

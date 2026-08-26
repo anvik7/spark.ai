@@ -119,3 +119,95 @@ def weekly_stats(user: User = Depends(current_user)):
             if d in by_day:
                 by_day[d] += round((l.duration_seconds or 0) / 60)
         return [{"date": d, "minutes": by_day[d]} for d in days]
+
+
+@router.get("/analytics/subjects")
+def analytics_subjects(user: User = Depends(current_user)):
+    with get_session() as session:
+        logs = session.exec(
+            select(StudySession).where(StudySession.user_id == user.id)
+        ).all()
+        by_subject: dict[str, int] = {}
+        for l in logs:
+            subj = l.subject.strip() or "General"
+            by_subject[subj] = by_subject.get(subj, 0) + round((l.duration_seconds or 0) / 60)
+        total = sum(by_subject.values()) or 1
+        return [
+            {
+                "subject": subj,
+                "minutes": mins,
+                "pages": 0,
+                "pct": round((mins / total) * 100),
+            }
+            for subj, mins in by_subject.items()
+        ]
+
+
+@router.get("/analytics/weakspots")
+def analytics_weakspots(user: User = Depends(current_user)):
+    with get_session() as session:
+        logs = session.exec(
+            select(StudySession).where(StudySession.user_id == user.id)
+        ).all()
+        by_subject: dict[str, datetime] = {}
+        for l in logs:
+            subj = l.subject.strip() or "General"
+            dt = _as_utc(l.started_at)
+            if subj not in by_subject or dt > by_subject[subj]:
+                by_subject[subj] = dt
+        now = datetime.now(timezone.utc)
+        weakspots = []
+        for subj, last_dt in by_subject.items():
+            days_ago = (now - last_dt).days
+            if days_ago >= 2:
+                weakspots.append({
+                    "subject": subj,
+                    "daysAgo": days_ago,
+                    "lastDate": last_dt.date().isoformat()
+                })
+        return weakspots
+
+
+@router.get("/goals")
+def list_study_goals(user: User = Depends(current_user)):
+    with get_session() as session:
+        goals = session.exec(
+            select(UserGoal).where(UserGoal.user_id == user.id, UserGoal.active == True)
+        ).all()
+        return [
+            {
+                "id": g.id,
+                "title": f"{g.goal_type.capitalize()} Goal",
+                "emoji": "🎯",
+                "targetDate": date_type.today().isoformat(),
+                "daysLeft": 7,
+                "progress": 0,
+                "color": "#F59E0B",
+            }
+            for g in goals
+        ]
+
+
+@router.post("/goals")
+def create_study_goal(user: User = Depends(current_user)):
+    return {"status": "ok"}
+
+
+@router.patch("/goals/{goal_id}")
+def update_study_goal(goal_id: int, user: User = Depends(current_user)):
+    return {"status": "ok"}
+
+
+@router.get("/feed")
+def get_study_feed(user: User = Depends(current_user)):
+    return []
+
+
+@router.post("/feed")
+def create_study_feed_post(user: User = Depends(current_user)):
+    return {"status": "ok"}
+
+
+@router.post("/feed/{post_id}/like")
+def like_study_feed_post(post_id: int, user: User = Depends(current_user)):
+    return {"status": "ok"}

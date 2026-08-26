@@ -1,5 +1,5 @@
 # spark/routes/study.py
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -17,9 +17,9 @@ class StudyLog(SQLModel, table=True):
     subject: str
     duration_minutes: int = 0
     pages_read: int = 0
-    logged_at: datetime = Field(default_factory=datetime.utcnow)
+    logged_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class TargetGoal(SQLModel, table=True):
+class TargetGoal(SQLModel, table=True): 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     title: str                      # e.g., "JLPT N2 Exam" or "TGPSC Paper II"
