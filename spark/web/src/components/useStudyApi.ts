@@ -300,3 +300,5 @@ export function useStudyData() {
     createLog, createGoal, updateGoalProgress, createPost, likePost,
   };
 }
+
+export const useStudyApi = useStudyData;
