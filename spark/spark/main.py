@@ -26,7 +26,7 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, User, get_session, init_db
+from .models import Card, CardEmbedding, StudySession, User, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
@@ -256,9 +256,29 @@ def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
 @app.delete("/api/cards/{card_id}")
 def delete_card(card_id: int, user: User = Depends(current_user)):
     with get_session() as session:
+        db_user = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        if not subscription.is_pro(db_user):
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                "Deleting cards is a Pro feature. Upgrade to unlock unlimited card management."
+            )
         card = session.get(Card, card_id)
         if not card or card.user_id != user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Card not found")
+
+        # Delete related CardEmbedding row if present
+        emb = session.get(CardEmbedding, card_id)
+        if emb:
+            session.delete(emb)
+
+        # Unlink any StudySession referencing this card
+        study_sessions = session.exec(select(StudySession).where(StudySession.card_id == card_id)).all()
+        for s in study_sessions:
+            s.card_id = None
+            session.add(s)
+
         session.delete(card)
         session.commit()
         return {"deleted": card_id}
