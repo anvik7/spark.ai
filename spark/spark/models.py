@@ -86,6 +86,27 @@ class UserGoal(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class QuestionPaper(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = ""
+    exam_tag: str = ""
+    subject: str = ""
+    year: Optional[int] = None
+    uploader_id: int = Field(index=True, foreign_key="user.id")
+    file_path: str = ""          # R2 object key
+    file_name: str = ""
+    file_size: int = 0           # bytes
+    download_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PaperDownloadLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    paper_id: int = Field(index=True, foreign_key="questionpaper.id")
+    downloaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate()

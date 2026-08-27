@@ -10,3 +10,4 @@ email-validator
 pypdf>=4.0
 psycopg[binary]>=3.1
 razorpay>=1.4
+boto3>=1.34

@@ -31,6 +31,7 @@ from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
 from .routes.study_logs import router as study_logs_router
+from .routes.papers import router as papers_router
 settings = get_settings()
 
 
@@ -43,6 +44,7 @@ app = FastAPI(title=settings.app_name, lifespan=_lifespan)
 app.include_router(goals_router)
 app.include_router(leaderboard_router)
 app.include_router(study_logs_router)
+app.include_router(papers_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
