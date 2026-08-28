@@ -1,7 +1,11 @@
 """Central configuration. Everything is env-driven so the app runs with zero
 external keys in 'mock' mode, and switches to real providers when keys exist."""
 from functools import lru_cache
+from pathlib import Path
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")  # populate os.environ from .env
 
 
 class Settings(BaseSettings):
