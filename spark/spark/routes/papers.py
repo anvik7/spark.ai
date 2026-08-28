@@ -13,35 +13,33 @@ from ..models import PaperDownloadLog, QuestionPaper, User, get_session
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
 
-# --- R2 client -------------------------------------------------------------
-# Reads directly from env vars, not config.py's settings object — I haven't
-# seen config.py's full structure and don't want to blind-edit it. If you'd
-# rather these live in settings, move them there yourself later; this works
-# either way.
-R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
-R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
-R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
-R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "spark-papers")
+# --- Backblaze B2 client (S3-compatible API) --------------------------------
+# B2's endpoint is region-specific — copy it exactly from your bucket's
+# "Endpoint" field in the B2 dashboard (e.g. s3.us-west-004.backblazeb2.com).
+# Don't guess this one; a wrong region silently fails auth.
+B2_KEY_ID = os.environ.get("B2_KEY_ID", "")
+B2_APPLICATION_KEY = os.environ.get("B2_APPLICATION_KEY", "")
+B2_BUCKET_NAME = os.environ.get("B2_BUCKET_NAME", "spark-papers")
+B2_ENDPOINT = os.environ.get("B2_ENDPOINT", "")  # full https:// URL
 
-_r2_client = None
+_storage_client = None
 
-def _get_r2():
-    global _r2_client
-    if _r2_client is None:
-        if not R2_ACCOUNT_ID or not R2_ACCESS_KEY_ID:
+def _get_storage():
+    global _storage_client
+    if _storage_client is None:
+        if not B2_ENDPOINT or not B2_KEY_ID:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Storage service is not configured. Contact support.",
             )
-        _r2_client = boto3.client(
+        _storage_client = boto3.client(
             "s3",
-            endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
-            aws_access_key_id=R2_ACCESS_KEY_ID,
-            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            endpoint_url=B2_ENDPOINT,
+            aws_access_key_id=B2_KEY_ID,
+            aws_secret_access_key=B2_APPLICATION_KEY,
             config=BotoConfig(signature_version="s3v4"),
-            region_name="auto",
         )
-    return _r2_client
+    return _storage_client
 
 TIER_LIMITS = {
     "free":  {"storage_bytes": 100 * 1024 * 1024,        "max_uploads": 3,  "uploads_lifetime": True,  "max_downloads_per_month": 10},
@@ -122,7 +120,7 @@ async def upload_paper(
         object_key = f"papers/{uuid.uuid4().hex}{ext}"
 
         try:
-            _get_r2().put_object(Bucket=R2_BUCKET_NAME, Key=object_key, Body=data)
+            _get_storage().put_object(Bucket=B2_BUCKET_NAME, Key=object_key, Body=data)
         except HTTPException:
             raise
         except Exception as e:
@@ -130,7 +128,7 @@ async def upload_paper(
 
         paper = QuestionPaper(
             title=title, exam_tag=exam_tag, subject=subject, year=year,
-            uploader_id=user.id, file_path=object_key,   # now stores the R2 object key, not a local path
+            uploader_id=user.id, file_path=object_key,
             file_name=file.filename or object_key, file_size=size,
         )
         session.add(paper)
@@ -178,14 +176,14 @@ def download_paper(paper_id: int, user: User = Depends(current_user)):
                 )
 
         try:
-            presigned_url = _get_r2().generate_presigned_url(
+            presigned_url = _get_storage().generate_presigned_url(
                 "get_object",
                 Params={
-                    "Bucket": R2_BUCKET_NAME,
+                    "Bucket": B2_BUCKET_NAME,
                     "Key": paper.file_path,
                     "ResponseContentDisposition": f'attachment; filename="{paper.file_name}"',
                 },
-                ExpiresIn=300,  # link valid 5 minutes — plenty for a redirect-triggered download
+                ExpiresIn=300,
             )
         except HTTPException:
             raise
@@ -210,9 +208,9 @@ def delete_paper(paper_id: int, user: User = Depends(current_user)):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader can delete this")
 
         try:
-            _get_r2().delete_object(Bucket=R2_BUCKET_NAME, Key=paper.file_path)
+            _get_storage().delete_object(Bucket=B2_BUCKET_NAME, Key=paper.file_path)
         except Exception:
-            pass  # best-effort — don't block DB cleanup if R2 delete fails
+            pass
 
         logs = session.exec(select(PaperDownloadLog).where(PaperDownloadLog.paper_id == paper_id)).all()
         for log in logs:
