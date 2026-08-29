@@ -31,10 +31,12 @@ class Settings(BaseSettings):
     whatsapp_phone_id: str = ""
     whatsapp_verify_token: str = "spark-verify"
 
-    # --- Transcription (regional voice notes) ------------------------------
+    # --- Transcription & TTS (Voice) ---------------------------------------
     # "mock" | "bhashini" | "whisper"
     transcriber: str = "mock"
     bhashini_api_key: str = ""
+    minimax_api_key: str = ""
+    minimax_tts_model: str = "speech-2.8-turbo"
 
     # --- Billing ------------------------------------------------------------
     razorpay_key_id: str = "rzp_test_TEBukEgSDIHGN9"

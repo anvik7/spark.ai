@@ -7,18 +7,66 @@ const PER_ROUND = 3;
 const SPEECH_OK = typeof window !== "undefined" &&
   ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-function speak(text, onEnd) {
+// Browser TTS fallback (used when server TTS is unavailable)
+function speakBrowser(text, onEnd) {
   if (!window.speechSynthesis) { onEnd?.(); return; }
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 0.95; u.pitch = 1; u.lang = "en-IN";
-  // prefer a natural English voice
   const voices = window.speechSynthesis.getVoices();
   const pick = voices.find(v => v.lang.startsWith("en") && v.localService) || voices[0];
   if (pick) u.voice = pick;
   u.onend = () => onEnd?.();
   window.speechSynthesis.speak(u);
 }
+
+// Server TTS via MiniMax Speech 2.8 with browser fallback
+let _currentAudio = null;
+function speak(text, onEnd) {
+  // Cancel any in-progress audio
+  if (_currentAudio) {
+    _currentAudio.pause();
+    _currentAudio = null;
+  }
+  window.speechSynthesis?.cancel();
+
+  const token = localStorage.getItem("spark_token") || "";
+  fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text }),
+  })
+    .then(res => {
+      if (!res.ok) throw new Error(`TTS ${res.status}`);
+      return res.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      _currentAudio = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        _currentAudio = null;
+        onEnd?.();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        _currentAudio = null;
+        console.warn("[TTS] Audio playback failed, falling back to browser voice");
+        speakBrowser(text, onEnd);
+      };
+      audio.play().catch(() => {
+        URL.revokeObjectURL(url);
+        _currentAudio = null;
+        speakBrowser(text, onEnd);
+      });
+    })
+    .catch(() => {
+      console.warn("[TTS] Server TTS unavailable, using browser voice");
+      speakBrowser(text, onEnd);
+    });
+}
+
 
 function useSpeechRec({ onResult, onEnd }) {
   const recRef = useRef(null);
@@ -187,6 +235,7 @@ export default function Interview() {
     const ans = (answer || interimText).trim();
     if (!ans) return;
     if (listening) stopListening();
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
     window.speechSynthesis?.cancel();
     setCountdown(null);
     clearTimeout(silenceTimer.current);
@@ -259,6 +308,7 @@ export default function Interview() {
   }, [interimText, listening]);
 
   const reset = () => {
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
     window.speechSynthesis?.cancel();
     stopRec();
     setStage("setup"); setScore(null); setAnswer("");

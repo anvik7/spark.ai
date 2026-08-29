@@ -8,10 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile, status)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlmodel import col, select
@@ -522,6 +524,68 @@ def interview_turn(body: InterviewIn, user: User = Depends(current_user)):
     if body.action == "score":
         return interview.scorecard(body.role, body.company, body.transcript)
     return interview.next_turn(body.role, body.company, body.context, body.round, body.history)
+
+
+# --- text-to-speech (MiniMax Speech 2.8) ------------------------------------
+
+class TTSIn(BaseModel):
+    text: str
+
+
+@app.post("/api/tts")
+def tts_generate(body: TTSIn, user: User = Depends(current_user)):
+    """Generate speech audio from text via MiniMax Speech 2.8 Turbo.
+    Returns audio/mpeg on success, 503 on failure so client falls back."""
+    s = get_settings()
+    if not s.minimax_api_key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "TTS not configured — missing MINIMAX_API_KEY",
+        )
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Text is required")
+    # Cap text length to prevent abuse (interview questions are short)
+    text = text[:2000]
+    try:
+        r = httpx.post(
+            "https://api.minimax.io/v1/t2a_v2",
+            headers={"Authorization": f"Bearer {s.minimax_api_key}",
+                     "Content-Type": "application/json"},
+            json={
+                "model": s.minimax_tts_model or "speech-2.8-turbo",
+                "text": text,
+                "voice_setting": {"voice_id": "Friendly_Person"},
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        # MiniMax returns hex-encoded audio in data.audio_file
+        hex_audio = data.get("data", {}).get("audio", {}).get("audio_file")
+        # Fallback: try top-level audio_file key
+        if not hex_audio:
+            hex_audio = data.get("audio_file")
+        if not hex_audio:
+            print(f"[tts] Unexpected MiniMax response structure: {list(data.keys())}")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "TTS returned unexpected format",
+            )
+        audio_bytes = bytes.fromhex(hex_audio)
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    except httpx.HTTPStatusError as e:
+        print(f"[tts] MiniMax API error: {e.response.status_code} {e.response.text[:200]}")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"TTS provider error: {e.response.status_code}",
+        )
+    except Exception as e:
+        print(f"[tts] MiniMax call failed: {e}")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"TTS unavailable: {e}",
+        )
 
 
 # --- daily digest -----------------------------------------------------------
