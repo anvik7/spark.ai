@@ -87,4 +87,22 @@ export const api = {
     req("/billing/verify", { method: "POST", body: { order_id } }),
   getGoal: () => req("/goals"),
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
+
+  // Papers
+  listPapers: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return req("/papers" + (qs ? `?${qs}` : ""));
+  },
+  uploadPaper: (file, title, examTag = "", subject = "", year = null) => {
+    const f = new FormData();
+    f.append("file", file);
+    f.append("title", title);
+    if (examTag) f.append("exam_tag", examTag);
+    if (subject) f.append("subject", subject);
+    if (year) f.append("year", String(year));
+    return req("/papers", { method: "POST", form: f });
+  },
+  getPaper: (id) => req(`/papers/${id}`),
+  downloadPaperUrl: (id) => `${BASE}/papers/${id}/download`,
+  deletePaper: (id) => req(`/papers/${id}`, { method: "DELETE" }),
 };

@@ -11,6 +11,7 @@ import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import Account from "./Account.jsx";
+import Papers from "./Papers.jsx";
 import { ShareButton } from "./ShareCard.jsx";
 import StudyTracker from "./components/StudyTracker";
 
@@ -106,6 +107,7 @@ export default function App() {
           {tab === "study" && <StudyTracker />}
           {tab === "review" && <Review />}
           {tab === "connect" && <Connect />}
+          {tab === "papers" && <Papers />}
           {tab === "career" && <Career onNavigate={handleNav} user={user} />}
           {tab === "coach" && <Interview />}
         </>
@@ -119,6 +121,7 @@ export default function App() {
         <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
         <NavBtn id="review" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.review} label="Review" />
         <NavBtn id="connect" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.connect} label="Connect" />
+        <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.paper} label="Papers" />
         <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
         <NavBtn id="coach" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.coach} label="Coach" />
       </nav>

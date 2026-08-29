@@ -95,6 +95,7 @@ async def upload_paper(
     file: UploadFile = File(...),
     user: User = Depends(current_user),
 ):
+    assert user.id is not None
     limits = _limits_for(user)
 
     with get_session() as session:
@@ -161,6 +162,7 @@ def get_paper(paper_id: int, user: User = Depends(current_user)):
 
 @router.get("/{paper_id}/download")
 def download_paper(paper_id: int, user: User = Depends(current_user)):
+    assert user.id is not None
     limits = _limits_for(user)
     with get_session() as session:
         paper = session.get(QuestionPaper, paper_id)

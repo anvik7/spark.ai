@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -20,12 +20,9 @@ if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 # ----------------------------------------------------
 
-# --- REPLACE THIS LINE: import your actual SQLModel classes ---
-# Example, if your models live in spark/models.py and use SQLModel:
-# from models import SQLModel
-# target_metadata = SQLModel.metadata
-target_metadata = None  # <-- MUST fix this or autogenerate detects nothing
-# ------------------------------------------------------------------
+# Import all models so Alembic autogenerate can detect them
+from spark.models import SQLModel  # noqa: E402 — registers all table classes
+target_metadata = SQLModel.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
