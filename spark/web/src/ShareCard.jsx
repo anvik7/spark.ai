@@ -17,7 +17,7 @@ export function ShareCardPreview({ card }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 18 }}>
         <span style={{ fontSize: 18 }}>✺</span>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#7C2D12" }}>Spark.AI</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#7C2D12" }}>Spark</span>
       </div>
 
       {type && (
@@ -38,7 +38,7 @@ export function ShareCardPreview({ card }) {
         <span>{card.created_at
           ? new Date(card.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
           : ""}</span>
-        <span>spark.ai</span>
+        <span>spark</span>
       </div>
     </div>
   );
@@ -58,7 +58,7 @@ export function ShareButton({ card }) {
         const file = new File([blob], `spark-${card.id || Date.now()}.png`, { type: "image/png" });
 
         if (navigator.share && navigator.canShare?.({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: "Spark.AI" }); }
+          try { await navigator.share({ files: [file], title: "Spark" }); }
           catch { /* user cancelled — not an error */ }
         } else {
           const url = URL.createObjectURL(blob);

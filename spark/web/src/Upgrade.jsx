@@ -84,7 +84,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
           key: order.key_id,
           amount: order.amount,
           currency: "INR",
-          name: "Spark.AI",
+          name: "Spark",
           description: `${planLabel} Plan — ${priceLabel}`,
           order_id: order.order_id,
           image: "",

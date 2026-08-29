@@ -69,10 +69,10 @@ function addCover(pptx) {
   const s = pptx.addSlide();
   bg(s, INK);
   s.addShape("ellipse", { x: 6.5, y: -1, w: 5, h: 5, fill: { color: MARIGOLD, transparency: 82 }, line: { type: "none" } });
-  s.addText("SPARK.AI", { x: 0.6, y: 1.4, w: 6, h: 0.55, fontFace: "Georgia", fontSize: 11, bold: true, color: MARIGOLD, charSpacing: 4, margin: 0 });
+  s.addText("SPARK", { x: 0.6, y: 1.4, w: 6, h: 0.55, fontFace: "Georgia", fontSize: 11, bold: true, color: MARIGOLD, charSpacing: 4, margin: 0 });
   s.addText("Your Second Brain,\nBuilt for Career Growth.", { x: 0.6, y: 1.9, w: 7.5, h: 1.8, fontFace: "Georgia", fontSize: 40, bold: true, color: WHITE, margin: 0 });
   s.addText("Capture . Learn . Review . Get Hired", { x: 0.6, y: 3.65, w: 7, h: 0.4, fontFace: "Arial", fontSize: 13, color: "9CA3AF", margin: 0 });
-  s.addText("spark.ai", { x: 0.6, y: H - 0.55, w: 3, h: 0.35, fontFace: "Arial", fontSize: 10, color: "4B5563", margin: 0 });
+  s.addText("spark.app", { x: 0.6, y: H - 0.55, w: 3, h: 0.35, fontFace: "Arial", fontSize: 10, color: "4B5563", margin: 0 });
 }
 
 /* ===================================================================
@@ -224,10 +224,10 @@ function addCTA(pptx) {
 export async function generateDeck() {
   const pptx = new PptxGenJS();
   pptx.layout  = "LAYOUT_WIDE";
-  pptx.author  = "Spark.AI";
-  pptx.company = "Spark.AI";
-  pptx.subject = "Spark.AI Pitch Deck";
-  pptx.title   = "Spark.AI - Your Second Brain";
+  pptx.author  = "Spark";
+  pptx.company = "Spark";
+  pptx.subject = "Spark Pitch Deck";
+  pptx.title   = "Spark - Your Second Brain";
 
   addCover(pptx);
   addProblem(pptx);

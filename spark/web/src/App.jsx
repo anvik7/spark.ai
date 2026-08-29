@@ -58,6 +58,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState("signup");
   const [tab, setTab] = useState("capture");
   const [toast, setToast] = useState("");
   const [refreshCards, setRefreshCards] = useState(0);
@@ -86,13 +87,26 @@ export default function App() {
   };
 
   if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
-  if (!user) return showAuth ? <Auth onAuthed={(u) => setUser(u)} /> : <Landing onGetStarted={() => setShowAuth(true)} />;
+  if (!user) {
+    return showAuth ? (
+      <Auth
+        onAuthed={(u) => setUser(u)}
+        onBackToHome={() => setShowAuth(false)}
+        initialMode={authMode}
+      />
+    ) : (
+      <Landing
+        onGetStarted={() => { setAuthMode("signup"); setShowAuth(true); }}
+        onLogin={() => { setAuthMode("login"); setShowAuth(true); }}
+      />
+    );
+  }
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="wordmark" onClick={() => { setShowUpgrade(false); setShowAccount(true); }} style={{ cursor: "pointer" }}>
-          <Chakra size={22} /><span className="logo-mark">Spark.AI</span>
+        <div className="wordmark" onClick={() => { setShowUpgrade(false); setShowAccount(false); setTab("capture"); }} style={{ cursor: "pointer" }}>
+          <Chakra size={22} /><span className="logo-mark">Spark</span>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button className={`plan-chip ${user.plan === "pro" ? "pro" : ""}`}
@@ -154,8 +168,12 @@ function NavBtn({ id, tab, set, icon, label }) {
 }
 
 /* ---------- Auth ---------- */
-function Auth({ onAuthed }) {
-  const [mode, setMode] = useState("signup");
+function Auth({ onAuthed, onBackToHome, initialMode = "signup" }) {
+  const [mode, setMode] = useState(initialMode);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   const handleAuth = (user) => {
     setToken(localStorage.getItem("spark_token"));
@@ -163,9 +181,9 @@ function Auth({ onAuthed }) {
   };
 
   if (mode === "login") {
-    return <Login onAuthed={handleAuth} goToSignup={() => setMode("signup")} />;
+    return <Login onAuthed={handleAuth} goToSignup={() => setMode("signup")} onBackToHome={onBackToHome} />;
   }
-  return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} />;
+  return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} onBackToHome={onBackToHome} />;
 }
 
 /* ---------- Card list & Reusable Card Component ---------- */
