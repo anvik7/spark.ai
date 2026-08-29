@@ -196,6 +196,18 @@ export function CardView({ c, onDelete, onUpdate }) {
   const [editText, setEditText] = useState(c.raw || c.title || c.summary || "");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   const rawText = c.raw || c.title || c.summary || "";
   const isLong = rawText.length > 220;
@@ -219,8 +231,8 @@ export function CardView({ c, onDelete, onUpdate }) {
 
   return (
     <article className={`card kind-${kind}`} style={{ position: "relative" }}>
-      {/* Card Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      {/* Card Header with ⋯ Action Menu */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {c.user_name && (
             <Avatar src={c.user_avatar} name={c.user_name} size={22} />
@@ -228,10 +240,77 @@ export function CardView({ c, onDelete, onUpdate }) {
           <span className="eyebrow" style={{ margin: 0 }}>
             {kindLabel}{c.topic && c.topic.toLowerCase() !== kind ? ` · ${c.topic}` : ""}
           </span>
+          <span className="date" style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+            · {relativeTime(c.created_at)}
+          </span>
         </div>
-        <span className="date" style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-          {relativeTime(c.created_at)}
-        </span>
+
+        {/* ⋯ Action Menu Button & Dropdown */}
+        <div ref={menuRef} style={{ position: "relative" }}>
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Card options"
+            aria-label="Card options"
+            style={{
+              background: menuOpen ? "var(--surface-3)" : "none",
+              border: "none",
+              borderRadius: "50%",
+              width: 28,
+              height: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--ink-soft)",
+              fontSize: 16,
+              lineHeight: 1,
+              transition: "background .15s",
+            }}
+          >
+            ⋯
+          </button>
+
+          {menuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                right: 0,
+                top: 32,
+                zIndex: 40,
+                background: "var(--surface, #FFFFFF)",
+                border: "1px solid var(--line, #E5E7EB)",
+                borderRadius: "var(--r-s, 10px)",
+                padding: 4,
+                width: 140,
+                boxShadow: "var(--sh-md, 0 4px 16px rgba(0,0,0,.12))",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              <button
+                onClick={() => { setMenuOpen(false); setEditing(true); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+                  borderRadius: 6, border: "none", background: "none",
+                  fontSize: 13, color: "var(--ink)", cursor: "pointer", textAlign: "left",
+                }}
+              >
+                ✏️ Edit note
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+                  borderRadius: 6, border: "none", background: "none",
+                  fontSize: 13, color: "#DC2626", fontWeight: 600, cursor: "pointer", textAlign: "left",
+                }}
+              >
+                🗑️ Delete card
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {editing ? (
@@ -310,28 +389,14 @@ export function CardView({ c, onDelete, onUpdate }) {
       </div>
 
       <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, marginTop: 10 }}>
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-soft)", fontSize: 12, fontWeight: 500 }}
-          >
-            Edit
-          </button>
-        )}
         <ShareButton card={c} />
-        <button
-          className="del"
-          onClick={() => setConfirmDelete(true)}
-          aria-label="Delete"
-        >
-          ✕
-        </button>
       </div>
 
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.4)",
+          backdropFilter: "blur(4px)",
           display: "flex", alignItems: "center", justifyContent: "center", padding: 20
         }}>
           <div style={{
@@ -340,7 +405,7 @@ export function CardView({ c, onDelete, onUpdate }) {
           }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>Delete this card?</h3>
             <p style={{ margin: "8px 0 20px", fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>
-              This action can't be undone.
+              This card and its media will be permanently removed from your second brain. This action cannot be undone.
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
