@@ -73,9 +73,10 @@ function useVoiceCapture({ onTranscript, onError }) {
 }
 
 const MODES = [
-  { label: "Idea", icon: "💡", kind: "idea" },
-  { label: "Link", icon: "🔗", kind: "link" },
-  { label: "Study note", icon: "📚", kind: "note" },
+  { label: "Short note", icon: "📝", kind: "note" },
+  { label: "Thought", icon: "💡", kind: "idea" },
+  { label: "Web Link", icon: "🔗", kind: "link" },
+  { label: "Image", icon: "🖼️", kind: "image" },
   { label: "Insight", icon: "🧠", kind: "insight" },
   { label: "Goal", icon: "🎯", kind: "goal" },
 ];
@@ -83,12 +84,15 @@ const MODES = [
 export default function Capture({ onSaved }) {
   const [text, setText] = useState("");
   const [activeMode, setActiveMode] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [justSaved, setSaved] = useState(false);
   const [streamCards, setStreamCards] = useState(null);
 
   const fileRef = useRef();
+  const imageInputRef = useRef();
   const taRef = useRef();
 
   // Fetch recent cards stream on mount
@@ -119,6 +123,46 @@ export default function Capture({ onSaved }) {
     if (!ok) setErr("Microphone access denied — allow it in browser settings.");
   };
 
+  // Handle Image Selection
+  const handleSelectedImage = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setErr("Please select a valid image file (PNG, JPG, WebP, GIF, HEIC).");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setErr("Image file size must be under 10MB.");
+      return;
+    }
+    setImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+    setActiveMode(MODES.find(m => m.kind === "image"));
+    setErr("");
+  };
+
+  const clearImage = () => {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    if (activeMode?.kind === "image") setActiveMode(null);
+  };
+
+  // Clipboard Paste Detection for Images & Links
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            handleSelectedImage(file);
+            break;
+          }
+        }
+      }
+    }
+  };
+
   // URL auto-detection
   const handleTextChange = (val) => {
     setText(val);
@@ -136,33 +180,47 @@ export default function Capture({ onSaved }) {
 
   const save = async () => {
     const val = text.trim();
-    if (!val || busy) return;
+    if ((!val && !imageFile) || busy) return;
     if (listening) stop();
 
     setBusy(true);
     setErr("");
 
-    const kind = activeMode ? activeMode.kind : (val.startsWith("http") ? "link" : "text");
     const optimisticId = "temp-" + Date.now();
+    const isImg = Boolean(imageFile);
+    const kind = isImg ? "image" : activeMode ? activeMode.kind : (val.startsWith("http") ? "link" : "text");
+    
     const optimisticCard = {
       id: optimisticId,
-      raw: val,
+      raw: val || (isImg ? `Image: ${imageFile.name}` : ""),
       kind: kind,
-      topic: activeMode ? activeMode.label : "",
+      topic: activeMode ? activeMode.label : (isImg ? "Image" : ""),
       tags: extractTags(val),
       created_at: new Date().toISOString(),
+      source_url: imagePreviewUrl || "",
       isOptimistic: true,
     };
 
     // 1. Optimistic UI insertion
     setStreamCards((prev) => [optimisticCard, ...(prev || [])]);
-    setText("");
+    const savedText = text;
+    const savedFile = imageFile;
     const savedMode = activeMode;
+
+    setText("");
+    setImageFile(null);
+    setImagePreviewUrl(null);
     setActiveMode(null);
 
     try {
       // 2. Persist to backend
-      const res = await api.addCard(kind, val);
+      let res;
+      if (savedFile) {
+        res = await api.addFile(savedFile);
+      } else {
+        res = await api.addCard(kind, savedText);
+      }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
 
@@ -173,9 +231,11 @@ export default function Capture({ onSaved }) {
       onSaved?.();
       taRef.current?.focus();
     } catch (e) {
-      // 4. Revert optimistic card and restore user input text on failure
+      // 4. Revert optimistic card and restore user input on failure
       setStreamCards((prev) => (prev || []).filter((c) => c.id !== optimisticId));
-      setText(val);
+      setText(savedText);
+      setImageFile(savedFile);
+      if (savedFile) setImagePreviewUrl(URL.createObjectURL(savedFile));
       setActiveMode(savedMode);
       setErr(e.message || "Failed to save card. Your input has been restored.");
     } finally {
@@ -190,9 +250,14 @@ export default function Capture({ onSaved }) {
     }
   };
 
-  const onFile = async (e) => {
+  const onDocFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.type.startsWith("image/")) {
+      handleSelectedImage(file);
+      e.target.value = "";
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -227,14 +292,14 @@ export default function Capture({ onSaved }) {
     );
   };
 
-  const hasText = text.trim().length > 0;
+  const hasContent = text.trim().length > 0 || Boolean(imageFile);
   const displayText = listening && interim ? text + (text ? " " : "") + interim : text;
 
   return (
     <div className="screen">
       <div className="eyebrow">Capture</div>
       <h1 className="title">What's worth keeping?</h1>
-      <p className="sub">A thought, a link, an insight — drop it here. It instantly joins your stream.</p>
+      <p className="sub">A note, thought, link, or image — drop it here. It instantly joins your second brain stream.</p>
 
       {err && <div className="err">{err}</div>}
 
@@ -245,7 +310,13 @@ export default function Capture({ onSaved }) {
           return (
             <button
               key={m.kind}
-              onClick={() => setActiveMode(isSelected ? null : m)}
+              onClick={() => {
+                if (m.kind === "image") {
+                  imageInputRef.current?.click();
+                } else {
+                  setActiveMode(isSelected ? null : m);
+                }
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -269,15 +340,31 @@ export default function Capture({ onSaved }) {
         })}
       </div>
 
+      {/* Hidden File Inputs */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/heic"
+        style={{ display: "none" }}
+        onChange={(e) => handleSelectedImage(e.target.files?.[0])}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,image/png,image/jpeg,image/heic,image/webp"
+        style={{ display: "none" }}
+        onChange={onDocFile}
+      />
+
       {/* Capture Composer Box */}
       <div
         style={{
           background: "var(--surface)",
-          border: `1.5px solid ${listening ? "#8B5CF6" : hasText ? "var(--marigold)" : "var(--line)"}`,
+          border: `1.5px solid ${listening ? "#8B5CF6" : hasContent ? "var(--marigold)" : "var(--line)"}`,
           borderRadius: "var(--r)",
           boxShadow: listening
             ? "0 0 0 3px rgba(139,92,246,.15), var(--sh)"
-            : hasText
+            : hasContent
             ? "0 0 0 3px var(--marigold-glow), var(--sh)"
             : "var(--sh-sm)",
           overflow: "hidden",
@@ -310,19 +397,84 @@ export default function Capture({ onSaved }) {
           </div>
         )}
 
+        {/* Image Preview Box */}
+        {imagePreviewUrl && (
+          <div
+            style={{
+              position: "relative",
+              padding: "12px 16px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: 72,
+                height: 72,
+                borderRadius: 8,
+                overflow: "hidden",
+                border: "1px solid var(--line)",
+                background: "#000",
+              }}
+            >
+              <img
+                src={imagePreviewUrl}
+                alt="Upload preview"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+              <button
+                onClick={clearImage}
+                title="Remove image"
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: "rgba(0,0,0,0.7)",
+                  color: "#fff",
+                  border: "none",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
+                {imageFile?.name || "Image ready to capture"}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>
+                {imageFile?.size ? `${Math.round(imageFile.size / 1024)} KB` : "Image upload"}
+              </div>
+            </div>
+          </div>
+        )}
+
         <textarea
           ref={taRef}
           value={displayText}
           onChange={(e) => !listening && handleTextChange(e.target.value)}
           onKeyDown={onKey}
+          onPaste={handlePaste}
           placeholder={
             listening
               ? "Your words appear here as you speak…"
+              : imageFile
+              ? "Add a caption or note for this image (optional)…"
               : activeMode
               ? `Capture a ${activeMode.label.toLowerCase()}…`
-              : "Jot a thought, paste a link, drop an insight…"
+              : "Jot a note, thought, paste a link, or drop an image…"
           }
-          rows={4}
+          rows={imagePreviewUrl ? 2 : 4}
           readOnly={listening}
           disabled={busy}
           style={{
@@ -375,6 +527,28 @@ export default function Capture({ onSaved }) {
           </button>
 
           <button
+            onClick={() => imageInputRef.current?.click()}
+            disabled={busy || listening}
+            title="Upload photo or image"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "none",
+              cursor: busy || listening ? "not-allowed" : "pointer",
+              flexShrink: 0,
+              background: imageFile ? "var(--marigold-light)" : "var(--surface-3)",
+              color: imageFile ? "var(--marigold-dark)" : "var(--ink-soft)",
+              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            🖼️
+          </button>
+
+          <button
             onClick={() => fileRef.current?.click()}
             disabled={busy || listening}
             title="Upload PDF or document"
@@ -395,33 +569,26 @@ export default function Capture({ onSaved }) {
           >
             📄
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,image/png,image/jpeg,image/heic,image/webp"
-            style={{ display: "none" }}
-            onChange={onFile}
-          />
 
           <span style={{ flex: 1, fontSize: 12, color: "var(--ink-faint)", overflow: "hidden", whiteSpace: "nowrap" }}>
-            {busy ? "Saving…" : listening ? "Tap ⏹ to stop" : ""}
+            {busy ? "Saving…" : listening ? "Tap ⏹ to stop" : imageFile ? "Image attached" : ""}
           </span>
 
           <button
             onClick={save}
-            disabled={busy || !hasText || listening}
+            disabled={busy || !hasContent || listening}
             style={{
-              background: hasText && !busy && !listening ? "var(--marigold)" : "var(--surface-3)",
-              color: hasText && !busy && !listening ? "#fff" : "var(--ink-faint)",
+              background: hasContent && !busy && !listening ? "var(--marigold)" : "var(--surface-3)",
+              color: hasContent && !busy && !listening ? "#fff" : "var(--ink-faint)",
               border: "none",
               borderRadius: 8,
               padding: "8px 22px",
               fontSize: 14,
               fontWeight: 600,
               flexShrink: 0,
-              cursor: hasText && !busy && !listening ? "pointer" : "not-allowed",
+              cursor: hasContent && !busy && !listening ? "pointer" : "not-allowed",
               transition: "all .18s",
-              boxShadow: hasText && !listening ? "0 3px 12px rgba(245,158,11,.35)" : "none",
+              boxShadow: hasContent && !listening ? "0 3px 12px rgba(245,158,11,.35)" : "none",
             }}
           >
             {justSaved ? "✓ Saved" : busy ? "…" : "Save"}
@@ -431,7 +598,7 @@ export default function Capture({ onSaved }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, marginBottom: 28 }}>
         <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-          {activeMode ? `Mode: ${activeMode.label}` : "Auto-detecting note type"}
+          {activeMode ? `Mode: ${activeMode.label}` : "Paste images, URLs, or notes directly"}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>⌘ Enter to save</span>
       </div>
@@ -456,7 +623,7 @@ export default function Capture({ onSaved }) {
           <div className="empty" style={{ padding: "40px 20px" }}>
             <span className="empty-icon">✺</span>
             <h3 className="empty-title">Your knowledge stream starts here</h3>
-            <p className="empty-sub">Capture a thought, link, idea, or insight above.</p>
+            <p className="empty-sub">Capture a note, thought, link, or image above.</p>
           </div>
         )}
 

@@ -214,6 +214,17 @@ def serve_avatar(filename: str):
     return FileResponse(file_path)
 
 
+_UPLOAD_FILES_DIR = Path(__file__).resolve().parent.parent / "uploads" / "files"
+_UPLOAD_FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/api/uploads/{filename}")
+def serve_upload(filename: str):
+    file_path = _UPLOAD_FILES_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload file not found")
+    return FileResponse(file_path)
+
 
 # --- cards ------------------------------------------------------------------
 
@@ -281,7 +292,10 @@ async def create_voice_card(file: UploadFile = File(...),
 async def create_file_card(file: UploadFile = File(...),
                            user: User = Depends(current_user)):
     data = await file.read()
-    is_pdf = data[:5] == b"%PDF-"  # real PDFs always start with this magic number
+    is_pdf = data[:5] == b"%PDF-"
+    is_image = (file.content_type and file.content_type.startswith("image/")) or \
+               (file.filename and Path(file.filename).suffix.lower() in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"])
+
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
@@ -293,11 +307,23 @@ async def create_file_card(file: UploadFile = File(...),
         ok, msg = subscription.check_ai_quota(session, user)
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
+
         if is_pdf:
             fields = build_card_fields("pdf", pdf_bytes=data)
+        elif is_image:
+            ext = Path(file.filename or "image.jpg").suffix or ".jpg"
+            filename = f"card_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+            file_path = _UPLOAD_FILES_DIR / filename
+            with open(file_path, "wb") as f:
+                f.write(data)
+
+            fields = build_card_fields("image", raw=f"Image capture: {file.filename or 'photo'}")
+            fields["source_url"] = f"/api/uploads/{filename}"
+            fields["kind"] = "image"
         else:
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                "Only PDF files are supported here — use the image capture for photos.")
+                                "Unsupported file format. Please upload a PDF or image (PNG, JPG, WebP, GIF).")
+
         return _card_out(_save_card(session, user, fields))
 
 
@@ -340,6 +366,16 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         for s in study_sessions:
             s.card_id = None
             session.add(s)
+
+        # Delete media file from disk if present
+        if card.source_url and card.source_url.startswith("/api/uploads/"):
+            fn = card.source_url.replace("/api/uploads/", "")
+            fp = _UPLOAD_FILES_DIR / fn
+            if fp.exists():
+                try:
+                    fp.unlink()
+                except Exception as e:
+                    print(f"[delete_card] Error removing file {fp}: {e}")
 
         session.delete(card)
         session.commit()

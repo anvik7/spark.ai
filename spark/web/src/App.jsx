@@ -280,7 +280,16 @@ export function CardView({ c, onDelete, onUpdate }) {
         </>
       )}
 
-      {c.source_url && (
+      {c.source_url && c.source_url.startsWith("/api/uploads/") ? (
+        <div style={{ marginTop: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
+          <img
+            src={c.source_url}
+            alt={c.title || "Uploaded capture"}
+            style={{ width: "100%", maxHeight: 380, objectFit: "cover", display: "block" }}
+            loading="lazy"
+          />
+        </div>
+      ) : c.source_url ? (
         <div style={{
           marginTop: 10, padding: "8px 12px", background: "var(--surface-2)",
           borderRadius: 8, border: "1px solid var(--line)", fontSize: 12
@@ -290,7 +299,7 @@ export function CardView({ c, onDelete, onUpdate }) {
             {c.source_url}
           </a>
         </div>
-      )}
+      ) : null}
 
       <div className="tags" style={{ marginTop: 8, alignItems: "center" }}>
         {c.difficulty > 0 && <span className="tag">{DIFF_LABEL[c.difficulty]}</span>}
