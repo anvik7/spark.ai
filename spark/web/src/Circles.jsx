@@ -323,17 +323,41 @@ function CircleDetail({ circle, onBack, onError }) {
   const [info, setInfo] = useState(circle);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "members"
+  const [joining, setJoining] = useState(false);
 
-  useEffect(() => {
+  const isMember = Boolean(info.myRole);
+
+  const reloadCircle = () => {
     api.circleMembers(circle.id).then(setMembers).catch((e) => onError(e.message));
     api.getCircle(circle.id).then(setInfo).catch(() => {});
+  };
+
+  useEffect(() => {
+    reloadCircle();
   }, [circle.id]);
 
   const copyCode = () => {
+    if (!info.inviteCode) return;
     navigator.clipboard.writeText(info.inviteCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleJoinDirect = async () => {
+    setJoining(true);
+    try {
+      if (info.inviteCode) {
+        await api.joinCircle(info.inviteCode);
+      } else {
+        await api.joinCircleById(info.id);
+      }
+      reloadCircle();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setJoining(false);
+    }
   };
 
   const handleLeave = async () => {
@@ -369,48 +393,62 @@ function CircleDetail({ circle, onBack, onError }) {
       </button>
 
       <article className="card" style={{ marginBottom: 16 }}>
-        <span className="eyebrow" style={{ margin: 0 }}>
-          {info.examTag || "Circle"} · {info.memberCount} {info.memberCount === 1 ? "member" : "members"}
-        </span>
-        <p className="summary" style={{ marginTop: 4, fontSize: 18, fontWeight: 700 }}>{info.name}</p>
-        {info.description && <p className="raw">{info.description}</p>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <span className="eyebrow" style={{ margin: 0 }}>
+              {info.examTag || "Circle"} · {info.memberCount} {info.memberCount === 1 ? "member" : "members"}
+            </span>
+            <p className="summary" style={{ marginTop: 4, fontSize: 18, fontWeight: 700 }}>{info.name}</p>
+          </div>
+          {!isMember && (
+            <button className="btn" onClick={handleJoinDirect} disabled={joining} style={{ fontSize: 13, padding: "6px 14px" }}>
+              {joining ? <span className="spin" /> : "Join Circle"}
+            </button>
+          )}
+        </div>
+
+        {info.description && <p className="raw" style={{ marginTop: 6 }}>{info.description}</p>}
 
         {/* Invite code */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, marginTop: 12,
-          background: "var(--surface-2)", borderRadius: 8, padding: "8px 12px",
-          border: "1px solid var(--line)",
-        }}>
-          <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Invite code:</span>
-          <code style={{ fontWeight: 600, letterSpacing: 1, fontSize: 14, flex: 1 }}>{info.inviteCode}</code>
-          <button
-            className="btn"
-            onClick={copyCode}
-            style={{ fontSize: 12, padding: "4px 10px" }}
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
-        </div>
+        {info.inviteCode && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, marginTop: 12,
+            background: "var(--surface-2)", borderRadius: 8, padding: "8px 12px",
+            border: "1px solid var(--line)",
+          }}>
+            <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Invite code:</span>
+            <code style={{ fontWeight: 600, letterSpacing: 1, fontSize: 14, flex: 1 }}>{info.inviteCode}</code>
+            <button
+              className="btn"
+              onClick={copyCode}
+              style={{ fontSize: 12, padding: "4px 10px" }}
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        )}
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          {info.myRole === "owner" ? (
-            <button className="del" onClick={handleDelete} style={{ fontSize: 12, padding: "4px 12px" }}>
-              Delete circle
-            </button>
-          ) : info.myRole ? (
-            <button
-              onClick={handleLeave}
-              style={{
-                fontSize: 12, padding: "4px 12px", borderRadius: 8,
-                background: "none", border: "1px solid var(--line)", cursor: "pointer",
-                color: "var(--ink-soft)",
-              }}
-            >
-              Leave circle
-            </button>
-          ) : null}
-        </div>
+        {isMember && (
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            {info.myRole === "owner" ? (
+              <button className="del" onClick={handleDelete} style={{ fontSize: 12, padding: "4px 12px" }}>
+                Delete circle
+              </button>
+            ) : (
+              <button
+                onClick={handleLeave}
+                style={{
+                  fontSize: 12, padding: "4px 12px", borderRadius: 8,
+                  background: "none", border: "1px solid var(--line)", cursor: "pointer",
+                  color: "var(--ink-soft)",
+                }}
+              >
+                Leave circle
+              </button>
+            )}
+          </div>
+        )}
       </article>
 
       {/* Sub tabs */}
@@ -437,7 +475,7 @@ function CircleDetail({ circle, onBack, onError }) {
             padding: "5px 14px", fontSize: 13,
           }}
         >
-          👥 Members ({info.memberCount})
+          👥 Members ({info.memberCount || 0})
         </button>
       </div>
 
@@ -469,7 +507,22 @@ function CircleDetail({ circle, onBack, onError }) {
       )}
 
       {activeTab === "chat" && (
-        <CircleChat circleId={info.id} isOwner={info.myRole === "owner"} onError={onError} />
+        isMember ? (
+          <CircleChat circleId={info.id} isOwner={info.myRole === "owner"} onError={onError} />
+        ) : (
+          <div style={{
+            textAlign: "center", padding: "36px 20px", background: "var(--surface-2)",
+            borderRadius: "var(--r)", border: "1px solid var(--line)", margin: "8px 0"
+          }}>
+            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Join this circle to view and send messages</p>
+            <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 16 }}>
+              Chat history and discussion in <strong>{info.name}</strong> are exclusive to circle members.
+            </p>
+            <button className="btn" onClick={handleJoinDirect} disabled={joining} style={{ padding: "8px 20px" }}>
+              {joining ? <span className="spin" /> : "Join Circle Now"}
+            </button>
+          </div>
+        )
       )}
     </>
   );
@@ -486,26 +539,31 @@ function CircleChat({ circleId, isOwner, onError }) {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (isInitial = false) => {
     try {
       const res = await api.getCircleMessages(circleId, 100, 0);
       setMessages(res.messages || []);
     } catch (e) {
-      onError(e.message);
+      if (isInitial) {
+        onError(e.message);
+      }
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMessages();
-    const timer = setInterval(fetchMessages, 3000);
+    setLoading(true);
+    fetchMessages(true);
+    const timer = setInterval(() => fetchMessages(false), 3000);
     return () => clearInterval(timer);
   }, [circleId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    if (!loading && messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length, loading]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -521,7 +579,7 @@ function CircleChat({ circleId, isOwner, onError }) {
         setReplyTo(null);
       }
       setText("");
-      fetchMessages();
+      await fetchMessages(false);
     } catch (e) {
       onError(e.message);
     } finally {
@@ -539,23 +597,27 @@ function CircleChat({ circleId, isOwner, onError }) {
     if (!confirm("Delete this message?")) return;
     try {
       await api.deleteMessage(circleId, msgId);
-      fetchMessages();
+      await fetchMessages(false);
     } catch (e) {
       onError(e.message);
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: 420, border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)" }}>
+    <div style={{
+      display: "flex", flexDirection: "column", height: 420,
+      border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)",
+      overflow: "hidden"
+    }}>
       {/* Messages area */}
       <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-        {loading && <div className="empty" style={{ margin: "auto" }}>Loading messages…</div>}
+        {loading && <div className="empty" style={{ margin: "auto" }}>Loading chat history…</div>}
         {!loading && messages.length === 0 && (
           <div className="empty" style={{ margin: "auto" }}>
-            No messages yet.<br />Start the conversation!
+            No messages yet.<br />Be the first to say hello! 👋
           </div>
         )}
-        {messages.map((m) => (
+        {!loading && messages.map((m) => (
           <div
             key={m.id}
             style={{
@@ -579,23 +641,23 @@ function CircleChat({ circleId, isOwner, onError }) {
             {m.replyTo && (
               <div style={{
                 fontSize: 11, color: "var(--ink-soft)", background: "var(--surface)",
-                padding: "2px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
+                padding: "4px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
               }}>
                 Replying to <strong>{m.replyTo.senderName}</strong>: "{m.replyTo.content.slice(0, 30)}{m.replyTo.content.length > 30 ? "…" : ""}"
               </div>
             )}
 
             {/* Content */}
-            <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)" }}>
+            <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)", wordBreak: "break-word" }}>
               {m.content}
             </div>
 
             {/* Message Actions */}
             {!m.isDeleted && (
-              <div style={{ display: "flex", gap: 8, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
+              <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
                 <button
                   onClick={() => { setReplyTo(m); setEditingMsg(null); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 500 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 600 }}
                 >
                   Reply
                 </button>
@@ -638,7 +700,7 @@ function CircleChat({ circleId, isOwner, onError }) {
       )}
 
       {/* Composer form */}
-      <form onSubmit={handleSend} style={{ display: "flex", gap: 8, padding: 8, borderTop: "1px solid var(--line)", background: "var(--surface-2)", borderRadius: "0 0 var(--r) var(--r)" }}>
+      <form onSubmit={handleSend} style={{ display: "flex", gap: 8, padding: 8, borderTop: "1px solid var(--line)", background: "var(--surface-2)" }}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -652,3 +714,4 @@ function CircleChat({ circleId, isOwner, onError }) {
     </div>
   );
 }
+
