@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
+import Avatar from "./components/Avatar.jsx";
 
 const EXAMS = ["JEE", "NEET", "GATE", "UPSC", "CAT", "CLAT", "Other"];
 
 function fmtDate(iso) {
+  if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 function fmtTime(iso) {
+  if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -98,72 +101,62 @@ export default function Circles() {
   );
 }
 
-
 /* ---------- My Circles Tab ---------- */
 function MyCirclesTab({ circles, onOpen, onReload, onError }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [joinCode, setJoinCode] = useState("");
-  const [joining, setJoining] = useState(false);
-
-  const handleJoin = async () => {
-    if (!joinCode.trim()) return;
-    setJoining(true);
-    try {
-      const circle = await api.joinCircle(joinCode.trim());
-      onOpen(circle);
-      setJoinCode("");
-    } catch (e) {
-      onError(e.message);
-    } finally {
-      setJoining(false);
-    }
-  };
+  const [showJoinCode, setShowJoinCode] = useState(false);
 
   return (
     <>
-      {/* Join with code */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          placeholder="Paste invite code…"
-          onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-          style={{
-            flex: 1, padding: "8px 12px", borderRadius: 8,
-            border: "1px solid var(--line)", fontSize: 13.5,
-          }}
-        />
-        <button className="btn" onClick={handleJoin} disabled={joining || !joinCode.trim()}>
-          {joining ? <span className="spin" /> : "Join"}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          className="btn"
+          onClick={() => { setShowCreate(true); setShowJoinCode(false); }}
+          style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }}
+        >
+          + Create Circle
         </button>
-        <button className="btn" onClick={() => setShowCreate((s) => !s)}>
-          {showCreate ? "Cancel" : "+ Create"}
+        <button
+          className="btn"
+          onClick={() => { setShowJoinCode(true); setShowCreate(false); }}
+          style={{ background: "var(--surface-2)", border: "1px solid var(--line)" }}
+        >
+          🔑 Join with Code
         </button>
       </div>
 
       {showCreate && (
         <CreateCircleForm
           onCreated={(c) => { setShowCreate(false); onReload(); onOpen(c); }}
+          onCancel={() => setShowCreate(false)}
           onError={onError}
         />
       )}
 
-      {/* Circle list */}
+      {showJoinCode && (
+        <JoinCodeForm
+          onJoined={(c) => { setShowJoinCode(false); onReload(); onOpen(c); }}
+          onCancel={() => setShowJoinCode(false)}
+          onError={onError}
+        />
+      )}
+
       {!circles && (
         <>{[1, 2].map((i) => (
-          <div key={i} className="skeleton" style={{ height: 72, marginBottom: 12, borderRadius: "var(--r)" }} />
+          <div key={i} className="skeleton" style={{ height: 84, marginBottom: 12, borderRadius: "var(--r)" }} />
         ))}</>
       )}
 
-      {circles && circles.length === 0 && (
-        <div className="empty">
-          You haven't joined any circles yet.<br />
-          Create one or paste an invite code above.
+      {circles && circles.length === 0 && !showCreate && !showJoinCode && (
+        <div className="empty" style={{ padding: "40px 20px" }}>
+          <span className="empty-icon">👥</span>
+          <h3 className="empty-title">No circles joined yet</h3>
+          <p className="empty-sub">Create your own private group or join one with an invite code.</p>
         </div>
       )}
 
       {circles && circles.map((c) => (
-        <CircleCard key={c.id} circle={c} onClick={() => onOpen(c)} />
+        <CircleCard key={c.id} c={c} onClick={() => onOpen(c)} />
       ))}
     </>
   );
@@ -172,31 +165,22 @@ function MyCirclesTab({ circles, onOpen, onReload, onError }) {
 
 /* ---------- Discover Tab ---------- */
 function DiscoverTab({ circles, filterExam, setFilterExam, onOpen, onJoined, onError }) {
-  const handleJoin = async (circle) => {
-    try {
-      await api.joinCircle(circle.inviteCode);
-      onJoined();
-    } catch (e) {
-      onError(e.message);
-    }
-  };
-
   return (
     <>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
         <button
           className="tag"
           style={!filterExam ? { background: "var(--ink)", color: "#fff" } : {}}
           onClick={() => setFilterExam("")}
         >
-          All
+          All Exams
         </button>
         {EXAMS.map((e) => (
           <button
-            className="tag"
             key={e}
+            className="tag"
             style={filterExam === e ? { background: "var(--ink)", color: "#fff" } : {}}
-            onClick={() => setFilterExam(filterExam === e ? "" : e)}
+            onClick={() => setFilterExam(e)}
           >
             {e}
           </button>
@@ -204,28 +188,36 @@ function DiscoverTab({ circles, filterExam, setFilterExam, onOpen, onJoined, onE
       </div>
 
       {!circles && (
-        <>{[1, 2, 3].map((i) => (
-          <div key={i} className="skeleton" style={{ height: 72, marginBottom: 12, borderRadius: "var(--r)" }} />
+        <>{[1, 2].map((i) => (
+          <div key={i} className="skeleton" style={{ height: 84, marginBottom: 12, borderRadius: "var(--r)" }} />
         ))}</>
       )}
 
       {circles && circles.length === 0 && (
-        <div className="empty">No circles found. Be the first to create one!</div>
+        <div className="empty">No circles found for this filter. Be the first to create one!</div>
       )}
 
       {circles && circles.map((c) => (
-        <CircleCard key={c.id} circle={c} onClick={() => onOpen(c)} showJoin onJoin={() => handleJoin(c)} />
+        <CircleCard
+          key={c.id}
+          c={c}
+          onClick={() => onOpen(c)}
+          showJoin={!c.myRole}
+          onJoin={() => {
+            api.joinCircleById(c.id).then(() => onJoined()).catch((e) => onError(e.message));
+          }}
+        />
       ))}
     </>
   );
 }
 
 
-/* ---------- Create Circle Form ---------- */
-function CreateCircleForm({ onCreated, onError }) {
+/* ---------- Forms ---------- */
+function CreateCircleForm({ onCreated, onCancel, onError }) {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [examTag, setExamTag] = useState("");
+  const [exam, setExam] = useState("JEE");
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -233,8 +225,8 @@ function CreateCircleForm({ onCreated, onError }) {
     if (!name.trim()) return;
     setBusy(true);
     try {
-      const circle = await api.createCircle(name.trim(), desc.trim(), examTag);
-      onCreated(circle);
+      const res = await api.createCircle(name.trim(), desc.trim(), exam);
+      onCreated(res);
     } catch (err) {
       onError(err.message);
     } finally {
@@ -243,60 +235,95 @@ function CreateCircleForm({ onCreated, onError }) {
   };
 
   return (
-    <form onSubmit={submit} style={{
-      background: "var(--surface-2)", borderRadius: "var(--r)", padding: 16,
-      marginBottom: 16, border: "1px solid var(--line)",
-    }}>
-      <div className="eyebrow" style={{ marginBottom: 8 }}>Create a circle</div>
+    <form onSubmit={submit} className="card" style={{ marginBottom: 16 }}>
+      <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Create Study Circle</p>
       <input
-        value={name} onChange={(e) => setName(e.target.value)}
-        placeholder="Circle name (e.g. JEE Advanced 2027)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Circle Name (e.g., JEE Advanced 2027)"
         required
-        style={{
-          width: "100%", padding: "8px 12px", borderRadius: 8,
-          border: "1px solid var(--line)", fontSize: 13.5, marginBottom: 8,
-        }}
+        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 8, fontSize: 14 }}
       />
-      <input
-        value={desc} onChange={(e) => setDesc(e.target.value)}
-        placeholder="Description (optional)"
-        style={{
-          width: "100%", padding: "8px 12px", borderRadius: 8,
-          border: "1px solid var(--line)", fontSize: 13.5, marginBottom: 8,
-        }}
+      <textarea
+        value={desc}
+        onChange={(e) => setDesc(e.target.value)}
+        placeholder="Short description or goal…"
+        rows={2}
+        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 8, fontSize: 14 }}
       />
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Exam Tag:</span>
         <select
-          value={examTag} onChange={(e) => setExamTag(e.target.value)}
-          style={{
-            flex: 1, padding: "8px 10px", borderRadius: 8,
-            border: "1px solid var(--line)", fontSize: 13, background: "var(--surface)",
-          }}
+          value={exam}
+          onChange={(e) => setExam(e.target.value)}
+          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface)" }}
         >
-          <option value="">Exam tag (optional)</option>
-          {EXAMS.map((e) => <option key={e} value={e}>{e}</option>)}
+          {EXAMS.map((e) => (
+            <option key={e} value={e}>{e}</option>
+          ))}
         </select>
-        <button className="btn" type="submit" disabled={busy || !name.trim()}>
-          {busy ? <span className="spin" /> : "Create"}
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" className="btn sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn sm" style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }} disabled={busy || !name.trim()}>
+          {busy ? "Creating…" : "Create Circle"}
         </button>
       </div>
     </form>
   );
 }
 
+function JoinCodeForm({ onJoined, onCancel, onError }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
 
-/* ---------- Circle Card ---------- */
-function CircleCard({ circle, onClick, showJoin, onJoin }) {
-  const c = circle;
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!code.trim()) return;
+    setBusy(true);
+    try {
+      const res = await api.joinCircle(code.trim());
+      onJoined(res);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <article className="card" style={{ marginBottom: 12, cursor: "pointer" }} onClick={onClick}>
+    <form onSubmit={submit} className="card" style={{ marginBottom: 16 }}>
+      <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Join Circle with Code</p>
+      <input
+        value={code}
+        onChange={(e) => setCode(e.target.value.toUpperCase())}
+        placeholder="Enter 6-character code (e.g. AB12CD)"
+        required
+        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 12, fontSize: 14, letterSpacing: 1 }}
+      />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" className="btn sm" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn sm" style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }} disabled={busy || !code.trim()}>
+          {busy ? "Joining…" : "Join Circle"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CircleCard({ c, onClick, showJoin, onJoin }) {
+  return (
+    <article
+      className="card"
+      onClick={onClick}
+      style={{ cursor: "pointer", transition: "all .15s ease", marginBottom: 12 }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
           <span className="eyebrow" style={{ margin: 0 }}>
-            {c.examTag || "Circle"} · {c.memberCount} {c.memberCount === 1 ? "member" : "members"}
+            {c.examTag || "General"} · {c.memberCount} {c.memberCount === 1 ? "member" : "members"}
           </span>
-          <p className="summary" style={{ marginTop: 4 }}>{c.name}</p>
-          {c.description && <p className="raw" style={{ fontSize: 13 }}>{c.description}</p>}
+          <p className="summary" style={{ marginTop: 4, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>{c.name}</p>
         </div>
         {showJoin && (
           <button
@@ -308,9 +335,10 @@ function CircleCard({ circle, onClick, showJoin, onJoin }) {
           </button>
         )}
       </div>
-      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
-        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Created {fmtDate(c.createdAt)}</span>
-        {c.myRole && <span className="tag" style={{ fontSize: 11 }}>{c.myRole}</span>}
+      {c.description && <p className="raw" style={{ marginTop: 4, fontSize: 13.5, color: "var(--ink-soft)" }}>{c.description}</p>}
+      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>Created {fmtDate(c.createdAt)}</span>
+        {c.myRole && <span className="tag" style={{ fontSize: 11, textTransform: "capitalize" }}>{c.myRole}</span>}
       </div>
     </article>
   );
@@ -387,6 +415,7 @@ function CircleDetail({ circle, onBack, onError }) {
         style={{
           background: "none", border: "none", cursor: "pointer",
           color: "var(--ink-soft)", fontSize: 13, marginBottom: 12, padding: 0,
+          display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 500
         }}
       >
         ← Back to circles
@@ -484,7 +513,7 @@ function CircleDetail({ circle, onBack, onError }) {
           <div className="eyebrow" style={{ marginBottom: 8 }}>Members</div>
           {!members && (
             <>{[1, 2].map((i) => (
-              <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8, borderRadius: 8 }} />
+              <div key={i} className="skeleton" style={{ height: 44, marginBottom: 8, borderRadius: 8 }} />
             ))}</>
           )}
           {members && members.map((m) => (
@@ -492,13 +521,16 @@ function CircleDetail({ circle, onBack, onError }) {
               key={m.userId}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8,
-                marginBottom: 6, border: "1px solid var(--line)",
+                padding: "10px 14px", background: "var(--surface-2)", borderRadius: 10,
+                marginBottom: 8, border: "1px solid var(--line)",
               }}
             >
-              <span style={{ fontWeight: 500, fontSize: 14 }}>{m.name || "Anonymous"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar src={m.avatarUrl} name={m.name || "Anonymous"} size={34} />
+                <span style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{m.name || "Anonymous"}</span>
+              </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span className="tag" style={{ fontSize: 11 }}>{m.role}</span>
+                <span className="tag" style={{ fontSize: 11, textTransform: "capitalize" }}>{m.role}</span>
                 <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Joined {fmtDate(m.joinedAt)}</span>
               </div>
             </div>
@@ -605,12 +637,12 @@ function CircleChat({ circleId, isOwner, onError }) {
 
   return (
     <div style={{
-      display: "flex", flexDirection: "column", height: 420,
+      display: "flex", flexDirection: "column", height: 440,
       border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)",
       overflow: "hidden"
     }}>
       {/* Messages area */}
-      <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
         {loading && <div className="empty" style={{ margin: "auto" }}>Loading chat history…</div>}
         {!loading && messages.length === 0 && (
           <div className="empty" style={{ margin: "auto" }}>
@@ -618,63 +650,65 @@ function CircleChat({ circleId, isOwner, onError }) {
           </div>
         )}
         {!loading && messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 12,
-              background: m.isDeleted ? "var(--surface-3)" : "var(--surface-2)",
-              border: "1px solid var(--line)",
-              fontSize: 13.5,
-              position: "relative",
-            }}
-          >
-            {/* Sender and time header */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11, color: "var(--ink-soft)" }}>
-              <span style={{ fontWeight: 600, color: "var(--ink)" }}>{m.senderName}</span>
-              <span>
-                {fmtTime(m.createdAt)} {m.editedAt && !m.isDeleted ? "(edited)" : ""}
-              </span>
-            </div>
-
-            {/* Reply thread header */}
-            {m.replyTo && (
-              <div style={{
-                fontSize: 11, color: "var(--ink-soft)", background: "var(--surface)",
-                padding: "4px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
-              }}>
-                Replying to <strong>{m.replyTo.senderName}</strong>: "{m.replyTo.content.slice(0, 30)}{m.replyTo.content.length > 30 ? "…" : ""}"
+          <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <Avatar src={m.senderAvatar} name={m.senderName || "Unknown"} size={32} />
+            <div
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: 12,
+                background: m.isDeleted ? "var(--surface-3)" : "var(--surface-2)",
+                border: "1px solid var(--line)",
+                fontSize: 13.5,
+              }}
+            >
+              {/* Sender and time header */}
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11, color: "var(--ink-soft)" }}>
+                <span style={{ fontWeight: 600, color: "var(--ink)" }}>{m.senderName}</span>
+                <span>
+                  {fmtTime(m.createdAt)} {m.editedAt && !m.isDeleted ? "(edited)" : ""}
+                </span>
               </div>
-            )}
 
-            {/* Content */}
-            <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)", wordBreak: "break-word" }}>
-              {m.content}
-            </div>
+              {/* Reply thread header */}
+              {m.replyTo && (
+                <div style={{
+                  fontSize: 11, color: "var(--ink-soft)", background: "var(--surface)",
+                  padding: "4px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
+                }}>
+                  Replying to <strong>{m.replyTo.senderName}</strong>: "{m.replyTo.content.slice(0, 30)}{m.replyTo.content.length > 30 ? "…" : ""}"
+                </div>
+              )}
 
-            {/* Message Actions */}
-            {!m.isDeleted && (
-              <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
-                <button
-                  onClick={() => { setReplyTo(m); setEditingMsg(null); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 600 }}
-                >
-                  Reply
-                </button>
-                <button
-                  onClick={() => handleEdit(m)}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--ink-soft)" }}
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(m.id)}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#ef4444" }}
-                >
-                  Delete
-                </button>
+              {/* Content */}
+              <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)", wordBreak: "break-word" }}>
+                {m.content}
               </div>
-            )}
+
+              {/* Message Actions */}
+              {!m.isDeleted && (
+                <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
+                  <button
+                    onClick={() => { setReplyTo(m); setEditingMsg(null); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 600 }}
+                  >
+                    Reply
+                  </button>
+                  <button
+                    onClick={() => handleEdit(m)}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--ink-soft)" }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#ef4444" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         <div ref={bottomRef} />
@@ -714,4 +748,3 @@ function CircleChat({ circleId, isOwner, onError }) {
     </div>
   );
 }
-

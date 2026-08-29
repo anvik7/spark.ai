@@ -55,6 +55,12 @@ export const api = {
   login: (email, password) =>
     req("/auth/login", { method: "POST", body: { email, password } }),
   me: () => req("/me"),
+  uploadAvatar: (file) => {
+    const f = new FormData();
+    f.append("file", file);
+    return req("/me/avatar", { method: "POST", form: f });
+  },
+  deleteAvatar: () => req("/me/avatar", { method: "DELETE" }),
   cards: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return req("/cards" + (qs ? `?${qs}` : ""));

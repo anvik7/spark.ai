@@ -14,6 +14,7 @@ import Papers from "./Papers.jsx";
 import Circles from "./Circles.jsx";
 import { ShareButton } from "./ShareCard.jsx";
 import StudyTracker from "./components/StudyTracker";
+import Avatar from "./components/Avatar.jsx";
 
 /* ---------- tiny inline icons ---------- */
 const Ico = {
@@ -100,17 +101,21 @@ export default function App() {
           </button>
           <button
             className={`nav-btn ${showAccount ? "active" : ""}`}
-            style={{ padding: 6, borderRadius: "50%", background: "none", border: "none", cursor: "pointer", color: "var(--ink)" }}
+            style={{ padding: 2, borderRadius: "50%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={() => { setShowUpgrade(false); setShowAccount(a => !a); }}
             title="Account"
           >
-            <Svg d={Ico.account} cls="ico" />
+            <Avatar src={user?.avatar_url} name={user?.name || "User"} size={28} />
           </button>
         </div>
       </header>
 
       {showAccount ? (
-        <Account user={user} onLogout={() => { setShowAccount(false); setUser(null); }} />
+        <Account
+          user={user}
+          onLogout={() => { setShowAccount(false); setUser(null); }}
+          onUpdateUser={(updated) => setUser(prev => ({ ...prev, ...updated }))}
+        />
       ) : showUpgrade ? (
         <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
       ) : (
@@ -172,6 +177,7 @@ export function CardView({ c, onDelete, onUpdate }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(c.raw || c.title || c.summary || "");
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const rawText = c.raw || c.title || c.summary || "";
   const isLong = rawText.length > 220;
@@ -194,11 +200,17 @@ export function CardView({ c, onDelete, onUpdate }) {
   };
 
   return (
-    <article className={`card kind-${kind}`}>
+    <article className={`card kind-${kind}`} style={{ position: "relative" }}>
+      {/* Card Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <span className="eyebrow" style={{ margin: 0 }}>
-          {kindLabel}{c.topic && c.topic.toLowerCase() !== kind ? ` · ${c.topic}` : ""}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {c.user_name && (
+            <Avatar src={c.user_avatar} name={c.user_name} size={22} />
+          )}
+          <span className="eyebrow" style={{ margin: 0 }}>
+            {kindLabel}{c.topic && c.topic.toLowerCase() !== kind ? ` · ${c.topic}` : ""}
+          </span>
+        </div>
         <span className="date" style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
           {relativeTime(c.created_at)}
         </span>
@@ -280,8 +292,57 @@ export function CardView({ c, onDelete, onUpdate }) {
           </button>
         )}
         <ShareButton card={c} />
-        <button className="del" onClick={() => onDelete(c.id)} aria-label="Delete">✕</button>
+        <button
+          className="del"
+          onClick={() => setConfirmDelete(true)}
+          aria-label="Delete"
+        >
+          ✕
+        </button>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+        }}>
+          <div style={{
+            background: "var(--surface)", borderRadius: 16, padding: 24,
+            maxWidth: 360, width: "100%", boxShadow: "var(--sh-lg)", border: "1px solid var(--line)"
+          }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>Delete this card?</h3>
+            <p style={{ margin: "8px 0 20px", fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              This action can't be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line)",
+                  background: "var(--surface-2)", color: "var(--ink-soft)", fontSize: 14,
+                  fontWeight: 600, cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmDelete(false);
+                  onDelete(c.id);
+                }}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, border: "none",
+                  background: "#DC2626", color: "#fff", fontSize: 14,
+                  fontWeight: 600, cursor: "pointer"
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -297,10 +358,14 @@ function Cards({ flash, onChange }) {
   useEffect(() => { load(active); api.tags().then(setTags).catch(() => { }); }, [active]);
 
   const remove = async (id) => {
-    await api.deleteCard(id);
-    setCards((cs) => cs.filter((c) => c.id !== id));
-    api.tags().then(setTags); onChange?.();
-    flash("Card deleted");
+    try {
+      await api.deleteCard(id);
+      setCards((cs) => cs.filter((c) => c.id !== id));
+      api.tags().then(setTags); onChange?.();
+      flash("Card deleted");
+    } catch (err) {
+      alert(err.message || "Failed to delete card");
+    }
   };
 
   const handleUpdate = (updatedCard) => {

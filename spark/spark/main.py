@@ -107,6 +107,7 @@ def _public_user(session, user: User) -> dict:
     cards = session.exec(select(Card).where(Card.user_id == user.id)).all()
     return {
         "id": user.id, "email": user.email, "name": user.name,
+        "avatar_url": getattr(user, "avatar_url", "") or "",
         "plan": "pro" if subscription.is_pro(user) else "free",
         "plan_until": user.plan_until,
         "card_count": len(cards),
@@ -150,10 +151,68 @@ def login(body: LoginIn):
         return {"token": make_token(user), "user": _public_user(session, user)}
 
 
+import uuid
+
 @app.get("/api/me")
 def me(user: User = Depends(current_user)):
     with get_session() as session:
         return _public_user(session, user)
+
+
+# --- user profile / avatar --------------------------------------------------
+
+_AVATAR_DIR = Path(__file__).resolve().parent.parent / "uploads" / "avatars"
+_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/me/avatar")
+async def upload_avatar(file: UploadFile = File(...), user: User = Depends(current_user)):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file type. Only images are allowed.")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image size exceeds 5MB limit.")
+
+    ext = Path(file.filename or "avatar.jpg").suffix or ".jpg"
+    filename = f"user_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = _AVATAR_DIR / filename
+    with open(file_path, "wb") as f:
+        f.write(data)
+
+    avatar_url = f"/api/avatars/{filename}"
+
+    with get_session() as session:
+        db_user = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        db_user.avatar_url = avatar_url
+        session.add(db_user)
+        session.commit()
+        session.refresh(db_user)
+        return _public_user(session, db_user)
+
+
+@app.delete("/api/me/avatar")
+def delete_avatar(user: User = Depends(current_user)):
+    with get_session() as session:
+        db_user = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        db_user.avatar_url = ""
+        session.add(db_user)
+        session.commit()
+        session.refresh(db_user)
+        return _public_user(session, db_user)
+
+
+@app.get("/api/avatars/{filename}")
+def serve_avatar(filename: str):
+    file_path = _AVATAR_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Avatar not found")
+    return FileResponse(file_path)
+
 
 
 # --- cards ------------------------------------------------------------------
@@ -265,14 +324,11 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         db_user = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        if not subscription.is_pro(db_user):
-            raise HTTPException(
-                status.HTTP_402_PAYMENT_REQUIRED,
-                "Deleting cards is a Pro feature. Upgrade to unlock unlimited card management."
-            )
         card = session.get(Card, card_id)
-        if not card or card.user_id != user.id:
+        if not card:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Card not found")
+        if card.user_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this card")
 
         # Delete related CardEmbedding row if present
         emb = session.get(CardEmbedding, card_id)

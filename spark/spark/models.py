@@ -25,6 +25,7 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True)
     hashed_password: Optional[str] = None
     name: str = ""
+    avatar_url: Optional[str] = None
     plan: str = "free"
     plan_until: Optional[datetime] = None
     digest_hour: int = 8
@@ -158,6 +159,12 @@ def _migrate() -> None:
             for name, ddl in cols.items():
                 if name not in existing:
                     conn.execute(_sql(f"ALTER TABLE card ADD COLUMN {name} {ddl}"))
+            try:
+                u_existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(user)"))}
+                if u_existing and "avatar_url" not in u_existing:
+                    conn.execute(_sql("ALTER TABLE user ADD COLUMN avatar_url VARCHAR DEFAULT ''"))
+            except Exception:
+                pass
             try:
                 g_existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(usergoal)"))}
                 if g_existing and "active" not in g_existing:

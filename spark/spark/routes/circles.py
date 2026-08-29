@@ -59,6 +59,7 @@ def _message_out(session, msg: CircleMessage) -> dict:
         "circleId": msg.circle_id,
         "userId": msg.user_id,
         "senderName": sender.name if sender else "Unknown",
+        "senderAvatar": getattr(sender, "avatar_url", "") or "" if sender else "",
         "content": "[Message deleted]" if msg.is_deleted else msg.content,
         "replyToId": msg.reply_to_id,
         "replyTo": reply_to,
@@ -178,6 +179,7 @@ def list_members(circle_id: int, user: User = Depends(current_user)):
             results.append({
                 "userId": m.user_id,
                 "name": u.name if u else "Unknown",
+                "avatarUrl": getattr(u, "avatar_url", "") or "" if u else "",
                 "role": m.role,
                 "joinedAt": m.joined_at.isoformat(),
             })
