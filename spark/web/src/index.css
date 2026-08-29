@@ -358,12 +358,13 @@ nav button.active, .nav-btn.active,
 nav button[data-active="true"] {
   color: currentColor;
 }
-.nav-bar button:nth-child(1).active, .nav-bar button:nth-child(1)[data-active="true"] { color: var(--c-capture); }
-.nav-bar button:nth-child(2).active, .nav-bar button:nth-child(2)[data-active="true"] { color: var(--c-cards); }
-.nav-bar button:nth-child(3).active, .nav-bar button:nth-child(3)[data-active="true"] { color: var(--c-review); }
-.nav-bar button:nth-child(4).active, .nav-bar button:nth-child(4)[data-active="true"] { color: var(--c-connect); }
-.nav-bar button:nth-child(5).active, .nav-bar button:nth-child(5)[data-active="true"] { color: var(--c-career); }
-.nav-bar button:nth-child(6).active, .nav-bar button:nth-child(6)[data-active="true"] { color: var(--c-coach); }
+.nav button:nth-child(1).active, .nav-btn:nth-child(1).active { color: var(--c-capture); }
+.nav button:nth-child(2).active, .nav-btn:nth-child(2).active { color: var(--c-cards); }
+.nav button:nth-child(3).active, .nav-btn:nth-child(3).active { color: #10B981; }
+.nav button:nth-child(4).active, .nav-btn:nth-child(4).active { color: #8B5CF6; }
+.nav button:nth-child(5).active, .nav-btn:nth-child(5).active { color: #F43F5E; }
+.nav button:nth-child(6).active, .nav-btn:nth-child(6).active { color: var(--c-career); }
+.nav button:nth-child(7).active, .nav-btn:nth-child(7).active { color: var(--c-coach); }
 
 nav button.active::before, .nav-btn.active::before,
 nav button[data-active="true"]::before {
@@ -371,10 +372,11 @@ nav button[data-active="true"]::before {
   position: absolute;
   top: 0; left: 50%;
   transform: translateX(-50%);
-  width: 24px; height: 2.5px;
+  width: 20px; height: 2.5px;
   background: currentColor;
   border-radius: 0 0 3px 3px;
 }
+
 
 nav button svg, .nav-btn svg {
   width: 21px; height: 21px;

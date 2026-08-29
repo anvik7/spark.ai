@@ -5,7 +5,6 @@ import Career from "./Career.jsx";
 import Interview from "./Interview.jsx";
 import Heatmap from "./Heatmap.jsx";
 import Landing from "./Landing.jsx";
-import Review from "./Review.jsx";
 import Capture from "./Capture.jsx";
 import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
@@ -21,8 +20,6 @@ const Ico = {
   pen: <path d="M4 20h4L18 10l-4-4L4 16v4Z M14 6l4 4" />,
   cards: <path d="M4 7h16v13H4z M4 7l2-3h12l2 3 M8 12h8 M8 16h5" />,
   study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
-  review: <path d="M12 4a8 8 0 1 0 8 8 M12 4v4 M20 12h-4 M12 9v3l2 2" />,
-  connect: <path d="M7 8a3 3 0 1 0 0-1 M17 8a3 3 0 1 0 0-1 M9.5 7h5 M12 10v4 M9 18a3 3 0 1 0 6 0" />,
   mic: <path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z M6 11a6 6 0 0 0 12 0 M12 17v3" />,
   paper: <path d="M14 3v5h5 M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" />,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
@@ -36,10 +33,24 @@ const Svg = ({ d, cls = "ico" }) => (
     strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 );
 
-const fmtDate = (s) => {
+export function relativeTime(isoOrDate) {
+  if (!isoOrDate) return "Just now";
+  const d = new Date(isoOrDate);
+  if (isNaN(d.getTime())) return "Just now";
+  const now = new Date();
+  const diffSec = Math.floor((now - d) / 1000);
+  if (diffSec < 45) return "Just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} min ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} hours ago`;
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)} days ago`;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+export function fmtDate(s) {
+  if (!s) return "";
   const d = new Date(s);
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-};
+}
 
 /* ===================================================================== */
 export default function App() {
@@ -104,11 +115,9 @@ export default function App() {
         <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
       ) : (
         <>
-          {tab === "capture" && <Capture onSaved={() => setRefreshCards(r => r + 1)} />}
+          {tab === "capture" && <Capture onSaved={() => { setRefreshCards(r => r + 1); refreshUser(); }} />}
           {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
           {tab === "study" && <StudyTracker />}
-          {tab === "review" && <Review />}
-          {tab === "connect" && <Connect />}
           {tab === "papers" && <Papers />}
           {tab === "circles" && <Circles />}
           {tab === "career" && <Career onNavigate={handleNav} user={user} />}
@@ -122,8 +131,6 @@ export default function App() {
         <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.pen} label="Capture" />
         <NavBtn id="cards" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.cards} label="Cards" />
         <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
-        <NavBtn id="review" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.review} label="Review" />
-        <NavBtn id="connect" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.connect} label="Connect" />
         <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.paper} label="Papers" />
         <NavBtn id="circles" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.circles} label="Circles" />
         <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
@@ -156,43 +163,124 @@ function Auth({ onAuthed }) {
   return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} />;
 }
 
-/* ---------- Card list ---------- */
-const KIND_LABEL = { text: "Note", link: "Link", image: "Image", voice: "Voice", pdf: "PDF", github: "GitHub" };
+/* ---------- Card list & Reusable Card Component ---------- */
+const KIND_LABEL = { text: "Note", link: "Link", image: "Image", voice: "Voice", pdf: "PDF", github: "GitHub", idea: "Idea", insight: "Insight", goal: "Goal" };
 const DIFF_LABEL = ["", "Intro", "Easy", "Medium", "Hard", "Expert"];
 
-function CardView({ c, onDelete }) {
-  const heading = c.title || c.summary || c.raw;
-  const showSummary = c.title && c.summary && c.summary !== c.title;
+export function CardView({ c, onDelete, onUpdate }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(c.raw || c.title || c.summary || "");
+  const [saving, setSaving] = useState(false);
+
+  const rawText = c.raw || c.title || c.summary || "";
+  const isLong = rawText.length > 220;
+  const displayContent = expanded || !isLong ? rawText : rawText.slice(0, 220) + "…";
+  const kind = c.kind || (c.topic ? c.topic.toLowerCase() : "text");
+  const kindLabel = KIND_LABEL[kind] || (c.topic ? c.topic : "Note");
+
+  const handleSaveEdit = async () => {
+    if (!editText.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateCard(c.id, { raw: editText.trim() });
+      onUpdate?.(updated || { ...c, raw: editText.trim() });
+      setEditing(false);
+    } catch (err) {
+      alert(err.message || "Failed to update card");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <article className={`card kind-${c.kind}`}>
-      <span className="eyebrow" style={{ margin: 0 }}>
-        {KIND_LABEL[c.kind] || c.kind}{c.topic ? ` · ${c.topic}` : ""}
-      </span>
-      <p className="summary" style={{ marginTop: 4 }}>{heading}</p>
-      {showSummary && <p className="raw">{c.summary}</p>}
-      {!c.title && c.summary !== c.raw && (
-        <p className="raw">{c.raw.slice(0, 220)}{c.raw.length > 220 ? "…" : ""}</p>
+    <article className={`card kind-${kind}`}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <span className="eyebrow" style={{ margin: 0 }}>
+          {kindLabel}{c.topic && c.topic.toLowerCase() !== kind ? ` · ${c.topic}` : ""}
+        </span>
+        <span className="date" style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+          {relativeTime(c.created_at)}
+        </span>
+      </div>
+
+      {editing ? (
+        <div style={{ marginTop: 8 }}>
+          <textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={4}
+            style={{
+              width: "100%", padding: "10px 12px", borderRadius: 8,
+              border: "1.5px solid var(--marigold)", fontSize: 14,
+              fontFamily: "var(--sans)", resize: "vertical", outline: "none"
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+            <button className="btn sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
+            <button
+              className="btn sm"
+              style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }}
+              onClick={handleSaveEdit}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {c.title && c.title !== rawText && (
+            <p className="summary" style={{ marginTop: 4, fontWeight: 600 }}>{c.title}</p>
+          )}
+          <p className="raw" style={{ marginTop: 4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {displayContent}
+          </p>
+          {isLong && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{
+                background: "none", border: "none", color: "var(--marigold-dark)",
+                fontSize: 12.5, fontWeight: 600, cursor: "pointer", marginTop: 6, padding: 0
+              }}
+            >
+              {expanded ? "Show less" : "Read more →"}
+            </button>
+          )}
+        </>
       )}
+
+      {c.source_url && (
+        <div style={{
+          marginTop: 10, padding: "8px 12px", background: "var(--surface-2)",
+          borderRadius: 8, border: "1px solid var(--line)", fontSize: 12
+        }}>
+          <span style={{ color: "var(--ink-faint)", display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Link Source</span>
+          <a href={c.source_url} target="_blank" rel="noopener noreferrer" style={{ color: "#2563EB", wordBreak: "break-all", fontWeight: 500, textDecoration: "underline" }}>
+            {c.source_url}
+          </a>
+        </div>
+      )}
+
       <div className="tags" style={{ marginTop: 8, alignItems: "center" }}>
         {c.difficulty > 0 && <span className="tag">{DIFF_LABEL[c.difficulty]}</span>}
         {c.importance > 0 && (
           <span className="tag" style={{ background: "rgba(224,146,47,.14)", color: "var(--marigold)" }}>★ {c.importance}/10</span>
         )}
-        {c.tags.map((t) => <span className="tag" key={t}>#{t}</span>)}
+        {c.tags && c.tags.map((t) => <span className="tag" key={t}>#{t}</span>)}
       </div>
-      {c.source_url && (
-        <a className="raw" href={c.source_url} target="_blank" rel="noopener noreferrer"
-          style={{ display: "inline-block", marginTop: 8, color: "var(--ink-soft)", textDecoration: "underline", fontSize: 12 }}>
-          {c.source_url.slice(0, 48)}{c.source_url.length > 48 ? "…" : ""}
-        </a>
-      )}
-      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span className="date">{fmtDate(c.created_at)}</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ShareButton card={c} />
-          <button className="del" onClick={() => onDelete(c.id)} aria-label="Delete">✕</button>
-        </div>
+
+      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, marginTop: 10 }}>
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-soft)", fontSize: 12, fontWeight: 500 }}
+          >
+            Edit
+          </button>
+        )}
+        <ShareButton card={c} />
+        <button className="del" onClick={() => onDelete(c.id)} aria-label="Delete">✕</button>
       </div>
     </article>
   );
@@ -213,6 +301,10 @@ function Cards({ flash, onChange }) {
     setCards((cs) => cs.filter((c) => c.id !== id));
     api.tags().then(setTags); onChange?.();
     flash("Card deleted");
+  };
+
+  const handleUpdate = (updatedCard) => {
+    setCards((cs) => cs.map((c) => c.id === updatedCard.id ? { ...c, ...updatedCard } : c));
   };
 
   const displayedCards = (cards || [])
@@ -273,71 +365,7 @@ function Cards({ flash, onChange }) {
       {cards && displayedCards.length === 0 && (
         <div className="empty">No cards found.<br />{q ? "Try a different search term." : "Head to Capture and save your first thought."}</div>
       )}
-      {cards && displayedCards.map((c) => <CardView key={c.id} c={c} onDelete={remove} />)}
+      {cards && displayedCards.map((c) => <CardView key={c.id} c={c} onDelete={remove} onUpdate={handleUpdate} />)}
     </div>
   );
 }
-
-/* ---------- Connect the dots ---------- */
-function Connect() {
-  const [q, setQ] = useState("");
-  const [mode, setMode] = useState("ask");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [err, setErr] = useState("");
-
-  const run = async () => {
-    if (!q.trim()) return;
-    setBusy(true); setErr(""); setResult(null);
-    try { setResult(await api.connect(q.trim(), mode)); }
-    catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="screen">
-      <div className="eyebrow">Connect the dots</div>
-      <h1 className="title">Your memory, on demand</h1>
-      <p className="sub">Ask anything you've captured — "what do I know about digital marketing?" — and Spark writes you a briefing pulled straight from your own notes.</p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <button onClick={() => setMode("ask")}
-          style={{
-            fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-            border: `1px solid ${mode === "ask" ? "var(--marigold)" : "var(--line)"}`,
-            background: mode === "ask" ? "var(--marigold-light)" : "var(--surface-2)",
-            color: mode === "ask" ? "var(--marigold-dark)" : "var(--ink-soft)"
-          }}>
-          Ask
-        </button>
-        <button onClick={() => setMode("draft")}
-          style={{
-            fontSize: 12.5, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-            border: `1px solid ${mode === "draft" ? "var(--marigold)" : "var(--line)"}`,
-            background: mode === "draft" ? "var(--marigold-light)" : "var(--surface-2)",
-            color: mode === "draft" ? "var(--marigold-dark)" : "var(--ink-soft)"
-          }}>
-          Draft
-        </button>
-      </div>
-      <div className="searchbar">
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()}
-          placeholder={mode === "draft" ? "e.g. Draft a LinkedIn post about my progress this month…" : "A topic or question…"} />
-        <button className="btn" onClick={run} disabled={busy}>{busy ? <span className="spin" /> : mode === "draft" ? "Draft" : "Ask"}</button>
-      </div>
-      {err && <div className="err">{err}</div>}
-      {result && (
-        <>
-          <div className="briefing">{result.briefing}</div>
-          {result.cards.length > 0 && (
-            <>
-              <div className="eyebrow">Sources · {result.cards.length}</div>
-              {result.cards.map((c) => <CardView key={c.id} c={c} onDelete={() => { }} />)}
-            </>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-
