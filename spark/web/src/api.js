@@ -118,6 +118,18 @@ export const api = {
   circleMembers: (id) => req(`/circles/${id}/members`),
   joinCircle: (inviteCode) =>
     req("/circles/join", { method: "POST", body: { invite_code: inviteCode } }),
-  leaveCircle: (id) => req(`/circles/${id}/leave`, { method: "DELETE" }),
+  joinCircleById: (id) =>
+    req(`/circles/${id}/join`, { method: "POST" }),
+  leaveCircle: (id) => req(`/circles/${id}/leave`, { method: "POST" }),
   deleteCircle: (id) => req(`/circles/${id}`, { method: "DELETE" }),
-};
+
+  // Circle Chat / Messages
+  getCircleMessages: (circleId, limit = 50, offset = 0) =>
+    req(`/circles/${circleId}/messages?limit=${limit}&offset=${offset}`),
+  sendMessage: (circleId, content, replyToId = null) =>
+    req(`/circles/${circleId}/messages`, { method: "POST", body: { content, reply_to_id: replyToId } }),
+  editMessage: (circleId, msgId, content) =>
+    req(`/circles/${circleId}/messages/${msgId}`, { method: "PUT", body: { content } }),
+  deleteMessage: (circleId, msgId) =>
+    req(`/circles/${circleId}/messages/${msgId}`, { method: "DELETE" }),
+};

@@ -125,6 +125,17 @@ class CircleMember(SQLModel, table=True):
     joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class CircleMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    circle_id: int = Field(index=True, foreign_key="studycircle.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    content: str = ""
+    reply_to_id: Optional[int] = Field(default=None, foreign_key="circlemessage.id")
+    is_deleted: bool = False
+    edited_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate()

@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 
 const EXAMS = ["JEE", "NEET", "GATE", "UPSC", "CAT", "CLAT", "Other"];
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function Circles() {
@@ -318,6 +322,7 @@ function CircleDetail({ circle, onBack, onError }) {
   const [members, setMembers] = useState(null);
   const [info, setInfo] = useState(circle);
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "members"
 
   useEffect(() => {
     api.circleMembers(circle.id).then(setMembers).catch((e) => onError(e.message));
@@ -408,29 +413,242 @@ function CircleDetail({ circle, onBack, onError }) {
         </div>
       </article>
 
-      {/* Members list */}
-      <div className="eyebrow" style={{ marginBottom: 8 }}>Members</div>
-      {!members && (
-        <>{[1, 2].map((i) => (
-          <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8, borderRadius: 8 }} />
-        ))}</>
-      )}
-      {members && members.map((m) => (
-        <div
-          key={m.userId}
+      {/* Sub tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          className="btn"
+          onClick={() => setActiveTab("chat")}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8,
-            marginBottom: 6, border: "1px solid var(--line)",
+            background: activeTab === "chat" ? "var(--ink)" : "var(--surface-2)",
+            color: activeTab === "chat" ? "#fff" : "var(--ink-soft)",
+            border: "1px solid var(--line)",
+            padding: "5px 14px", fontSize: 13,
           }}
         >
-          <span style={{ fontWeight: 500, fontSize: 14 }}>{m.name || "Anonymous"}</span>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="tag" style={{ fontSize: 11 }}>{m.role}</span>
-            <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Joined {fmtDate(m.joinedAt)}</span>
-          </div>
-        </div>
-      ))}
+          💬 Circle Chat
+        </button>
+        <button
+          className="btn"
+          onClick={() => setActiveTab("members")}
+          style={{
+            background: activeTab === "members" ? "var(--ink)" : "var(--surface-2)",
+            color: activeTab === "members" ? "#fff" : "var(--ink-soft)",
+            border: "1px solid var(--line)",
+            padding: "5px 14px", fontSize: 13,
+          }}
+        >
+          👥 Members ({info.memberCount})
+        </button>
+      </div>
+
+      {activeTab === "members" && (
+        <>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Members</div>
+          {!members && (
+            <>{[1, 2].map((i) => (
+              <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8, borderRadius: 8 }} />
+            ))}</>
+          )}
+          {members && members.map((m) => (
+            <div
+              key={m.userId}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8,
+                marginBottom: 6, border: "1px solid var(--line)",
+              }}
+            >
+              <span style={{ fontWeight: 500, fontSize: 14 }}>{m.name || "Anonymous"}</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="tag" style={{ fontSize: 11 }}>{m.role}</span>
+                <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Joined {fmtDate(m.joinedAt)}</span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {activeTab === "chat" && (
+        <CircleChat circleId={info.id} isOwner={info.myRole === "owner"} onError={onError} />
+      )}
     </>
+  );
+}
+
+
+/* ---------- Circle Chat Component ---------- */
+function CircleChat({ circleId, isOwner, onError }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+
+  const fetchMessages = async () => {
+    try {
+      const res = await api.getCircleMessages(circleId, 100, 0);
+      setMessages(res.messages || []);
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMessages();
+    const timer = setInterval(fetchMessages, 3000);
+    return () => clearInterval(timer);
+  }, [circleId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setSending(true);
+
+    try {
+      if (editingMsg) {
+        await api.editMessage(circleId, editingMsg.id, text.trim());
+        setEditingMsg(null);
+      } else {
+        await api.sendMessage(circleId, text.trim(), replyTo ? replyTo.id : null);
+        setReplyTo(null);
+      }
+      setText("");
+      fetchMessages();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleEdit = (msg) => {
+    setEditingMsg(msg);
+    setText(msg.content);
+    setReplyTo(null);
+  };
+
+  const handleDelete = async (msgId) => {
+    if (!confirm("Delete this message?")) return;
+    try {
+      await api.deleteMessage(circleId, msgId);
+      fetchMessages();
+    } catch (e) {
+      onError(e.message);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: 420, border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)" }}>
+      {/* Messages area */}
+      <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+        {loading && <div className="empty" style={{ margin: "auto" }}>Loading messages…</div>}
+        {!loading && messages.length === 0 && (
+          <div className="empty" style={{ margin: "auto" }}>
+            No messages yet.<br />Start the conversation!
+          </div>
+        )}
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 12,
+              background: m.isDeleted ? "var(--surface-3)" : "var(--surface-2)",
+              border: "1px solid var(--line)",
+              fontSize: 13.5,
+              position: "relative",
+            }}
+          >
+            {/* Sender and time header */}
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11, color: "var(--ink-soft)" }}>
+              <span style={{ fontWeight: 600, color: "var(--ink)" }}>{m.senderName}</span>
+              <span>
+                {fmtTime(m.createdAt)} {m.editedAt && !m.isDeleted ? "(edited)" : ""}
+              </span>
+            </div>
+
+            {/* Reply thread header */}
+            {m.replyTo && (
+              <div style={{
+                fontSize: 11, color: "var(--ink-soft)", background: "var(--surface)",
+                padding: "2px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
+              }}>
+                Replying to <strong>{m.replyTo.senderName}</strong>: "{m.replyTo.content.slice(0, 30)}{m.replyTo.content.length > 30 ? "…" : ""}"
+              </div>
+            )}
+
+            {/* Content */}
+            <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)" }}>
+              {m.content}
+            </div>
+
+            {/* Message Actions */}
+            {!m.isDeleted && (
+              <div style={{ display: "flex", gap: 8, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
+                <button
+                  onClick={() => { setReplyTo(m); setEditingMsg(null); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 500 }}
+                >
+                  Reply
+                </button>
+                <button
+                  onClick={() => handleEdit(m)}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--ink-soft)" }}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(m.id)}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#ef4444" }}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Reply or edit active status banner */}
+      {(replyTo || editingMsg) && (
+        <div style={{
+          padding: "6px 12px", background: "var(--marigold-light)", borderTop: "1px solid var(--line)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12,
+        }}>
+          <span>
+            {replyTo && <>Replying to <strong>{replyTo.senderName}</strong></>}
+            {editingMsg && <>Editing message</>}
+          </span>
+          <button
+            onClick={() => { setReplyTo(null); setEditingMsg(null); setText(""); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 600, color: "var(--ink-soft)" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Composer form */}
+      <form onSubmit={handleSend} style={{ display: "flex", gap: 8, padding: 8, borderTop: "1px solid var(--line)", background: "var(--surface-2)", borderRadius: "0 0 var(--r) var(--r)" }}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={editingMsg ? "Edit message…" : replyTo ? `Reply to ${replyTo.senderName}…` : "Type a message…"}
+          style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5 }}
+        />
+        <button className="btn" type="submit" disabled={sending || !text.trim()}>
+          {sending ? <span className="spin" /> : editingMsg ? "Save" : "Send"}
+        </button>
+      </form>
+    </div>
   );
 }
