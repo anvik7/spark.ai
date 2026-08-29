@@ -143,37 +143,44 @@ def init_db() -> None:
 
 
 def _migrate() -> None:
-    from sqlalchemy import text as _sql
-    cols = {
-        "title": "VARCHAR DEFAULT ''",
-        "topic": "VARCHAR DEFAULT ''",
-        "difficulty": "INTEGER DEFAULT 0",
-        "importance": "INTEGER DEFAULT 0",
-        "source_type": "VARCHAR DEFAULT 'text'",
-    }
+    from sqlalchemy import inspect, text as _sql
     try:
-        if engine.dialect.name != "sqlite":
-            return
-        with engine.connect() as conn:
-            existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(card)"))}
-            for name, ddl in cols.items():
-                if name not in existing:
-                    conn.execute(_sql(f"ALTER TABLE card ADD COLUMN {name} {ddl}"))
-            try:
-                u_existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(user)"))}
-                if u_existing and "avatar_url" not in u_existing:
-                    conn.execute(_sql("ALTER TABLE user ADD COLUMN avatar_url VARCHAR DEFAULT ''"))
-            except Exception:
-                pass
-            try:
-                g_existing = {row[1] for row in conn.execute(_sql("PRAGMA table_info(usergoal)"))}
-                if g_existing and "active" not in g_existing:
-                    conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT 1"))
-            except Exception:
-                pass
-            conn.commit()
+        with engine.begin() as conn:
+            inspector = inspect(conn)
+
+            # 1. User table schema sync
+            if inspector.has_table("user"):
+                user_cols = {c["name"] for c in inspector.get_columns("user")}
+                if "avatar_url" not in user_cols:
+                    print("[migrate] Adding avatar_url column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN avatar_url VARCHAR DEFAULT \'\''))
+
+            # 2. Card table schema sync
+            if inspector.has_table("card"):
+                card_cols = {c["name"] for c in inspector.get_columns("card")}
+                card_additions = {
+                    "title": "VARCHAR DEFAULT ''",
+                    "topic": "VARCHAR DEFAULT ''",
+                    "difficulty": "INTEGER DEFAULT 0",
+                    "importance": "INTEGER DEFAULT 0",
+                    "source_type": "VARCHAR DEFAULT 'text'",
+                }
+                for col_name, col_ddl in card_additions.items():
+                    if col_name not in card_cols:
+                        print(f"[migrate] Adding {col_name} column to 'card' table...")
+                        conn.execute(_sql(f'ALTER TABLE card ADD COLUMN {col_name} {col_ddl}'))
+
+            # 3. UserGoal table schema sync
+            if inspector.has_table("usergoal"):
+                goal_cols = {c["name"] for c in inspector.get_columns("usergoal")}
+                if "active" not in goal_cols:
+                    print("[migrate] Adding active column to 'usergoal' table...")
+                    if engine.dialect.name == "postgresql":
+                        conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT TRUE"))
+                    else:
+                        conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT 1"))
     except Exception as e:
-        print(f"[migrate] skipped: {e}")
+        print(f"[migrate] Schema migration notice: {e}")
 
 
 def get_session() -> Session:
