@@ -12,6 +12,7 @@ import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import Account from "./Account.jsx";
 import Papers from "./Papers.jsx";
+import Circles from "./Circles.jsx";
 import { ShareButton } from "./ShareCard.jsx";
 import StudyTracker from "./components/StudyTracker";
 
@@ -26,6 +27,7 @@ const Ico = {
   paper: <path d="M14 3v5h5 M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" />,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
+  circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   account: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />,
 };
 
@@ -108,6 +110,7 @@ export default function App() {
           {tab === "review" && <Review />}
           {tab === "connect" && <Connect />}
           {tab === "papers" && <Papers />}
+          {tab === "circles" && <Circles />}
           {tab === "career" && <Career onNavigate={handleNav} user={user} />}
           {tab === "coach" && <Interview />}
         </>
@@ -122,6 +125,7 @@ export default function App() {
         <NavBtn id="review" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.review} label="Review" />
         <NavBtn id="connect" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.connect} label="Connect" />
         <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.paper} label="Papers" />
+        <NavBtn id="circles" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.circles} label="Circles" />
         <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
         <NavBtn id="coach" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.coach} label="Coach" />
       </nav>

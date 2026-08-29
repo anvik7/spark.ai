@@ -105,4 +105,19 @@ export const api = {
   getPaper: (id) => req(`/papers/${id}`),
   downloadPaperUrl: (id) => `${BASE}/papers/${id}/download`,
   deletePaper: (id) => req(`/papers/${id}`, { method: "DELETE" }),
+
+  // Circles
+  myCircles: () => req("/circles"),
+  discoverCircles: (examTag) => {
+    const qs = examTag ? `?exam_tag=${encodeURIComponent(examTag)}` : "";
+    return req("/circles/discover" + qs);
+  },
+  createCircle: (name, description = "", examTag = "") =>
+    req("/circles", { method: "POST", body: { name, description, exam_tag: examTag } }),
+  getCircle: (id) => req(`/circles/${id}`),
+  circleMembers: (id) => req(`/circles/${id}/members`),
+  joinCircle: (inviteCode) =>
+    req("/circles/join", { method: "POST", body: { invite_code: inviteCode } }),
+  leaveCircle: (id) => req(`/circles/${id}/leave`, { method: "DELETE" }),
+  deleteCircle: (id) => req(`/circles/${id}`, { method: "DELETE" }),
 };

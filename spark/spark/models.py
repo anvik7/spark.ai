@@ -107,6 +107,24 @@ class PaperDownloadLog(SQLModel, table=True):
     downloaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class StudyCircle(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    description: str = ""
+    exam_tag: str = ""
+    invite_code: str = Field(index=True, unique=True)
+    owner_id: int = Field(index=True, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CircleMember(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    circle_id: int = Field(index=True, foreign_key="studycircle.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    role: str = "member"  # "owner" | "member"
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate()
