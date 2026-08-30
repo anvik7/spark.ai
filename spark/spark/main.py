@@ -510,6 +510,21 @@ def draft_content(body: DraftIn, user: User = Depends(current_user)):
         return {"draft": text, "source_count": len(notes)}
 
 
+class TaskSolveIn(BaseModel):
+    prompt: str = ""
+    subject_hint: str = ""
+
+
+@app.post("/api/tasks/solve")
+def solve_task(body: TaskSolveIn, user: User = Depends(current_user)):
+    """Solve an academic task or student question using LLM engine."""
+    prompt = body.prompt.strip()
+    if not prompt:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prompt is required.")
+    res = llm.solve_student_task(prompt, subject_hint=body.subject_hint)
+    return res
+
+
 # --- career intelligence ----------------------------------------------------
 
 class CareerIn(BaseModel):

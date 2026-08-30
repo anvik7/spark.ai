@@ -6,6 +6,7 @@ import Interview from "./Interview.jsx";
 import Heatmap from "./Heatmap.jsx";
 import Landing from "./Landing.jsx";
 import Capture from "./Capture.jsx";
+import Tasks from "./Tasks.jsx";
 import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
@@ -19,6 +20,7 @@ import Avatar from "./components/Avatar.jsx";
 /* ---------- tiny inline icons ---------- */
 const Ico = {
   pen: <path d="M4 20h4L18 10l-4-4L4 16v4Z M14 6l4 4" />,
+  task: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
   cards: <path d="M4 7h16v13H4z M4 7l2-3h12l2 3 M8 12h8 M8 16h5" />,
   study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
   mic: <path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z M6 11a6 6 0 0 0 12 0 M12 17v3" />,
@@ -142,7 +144,8 @@ export default function App() {
         <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
       ) : (
         <>
-          {(tab === "capture" || tab === "cards") && <Capture onSaved={refreshUser} />}
+          {tab === "capture" && <Capture onSaved={refreshUser} />}
+          {tab === "tasks" && <Tasks />}
           {tab === "study" && <StudyTracker />}
           {tab === "papers" && <Papers />}
           {tab === "circles" && <Circles />}
@@ -155,6 +158,7 @@ export default function App() {
 
       <nav className="nav">
         <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.pen} label="Capture" />
+        <NavBtn id="tasks" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.task} label="Tasks" />
         <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
         <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.paper} label="Papers" />
         <NavBtn id="circles" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.circles} label="Circles" />

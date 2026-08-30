@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { api } from "./api.js";
 
 // ── Voice: Web Speech API ──────────
 const SPEECH_OK =
@@ -50,13 +49,7 @@ function useVoiceCapture({ onTranscript, onError }) {
       console.error("SpeechRecognition error:", e.error);
       setListening(false);
       setInterim("");
-      const messages = {
-        "not-allowed": "Mic permission blocked — check your browser's site settings.",
-        "no-speech": "No speech detected — try speaking right after tapping.",
-        "audio-capture": "No microphone found on this device.",
-        "network": "Voice needs internet access to Google's speech service.",
-      };
-      onError?.(messages[e.error] || `Voice error: ${e.error || "unknown"}`);
+      onError?.("Mic permission error — check browser microphone settings.");
     };
 
     rec.start();
@@ -75,86 +68,62 @@ function useVoiceCapture({ onTranscript, onError }) {
   return { listening, interim, start, stop };
 }
 
-const QUICK_ACTIONS = [
-  { label: "Math Problem", icon: "🧮", prompt: "Solve this math problem step-by-step with formulas and explanation: " },
-  { label: "Study Question", icon: "🔬", prompt: "Explain this science / study question with key concepts and steps: " },
-  { label: "Assignment", icon: "📝", prompt: "Help me solve and outline this assignment task: " },
-  { label: "Research", icon: "🌐", prompt: "Provide key insights and sources for this research topic: " },
-  { label: "Writing", icon: "✍️", prompt: "Improve, proofread and structure this essay / writing piece: " },
-  { label: "Coding", icon: "💻", prompt: "Debug, explain, and optimize this code problem: " },
+const CAPTURE_MODES = [
+  { label: "Short Note", icon: "📝", kind: "note" },
+  { label: "Thought", icon: "💡", kind: "idea" },
+  { label: "Web Link", icon: "🔗", kind: "link" },
+  { label: "Photo / Diagram", icon: "🖼️", kind: "image" },
+  { label: "PDF / Doc", icon: "📄", kind: "pdf" },
+  { label: "Voice Note", icon: "🎙️", kind: "voice" },
 ];
 
-const INITIAL_DEMO_TASKS = [
+const INITIAL_CAPTURES = [
   {
-    id: "task-demo-1",
-    subject: "Mathematics",
-    icon: "🧮",
-    title: "Solve Calculus Integration: ∫ x · e^x dx",
-    prompt: "Solve ∫ x · e^x dx using integration by parts.",
-    solution: "x · e^x - e^x + C",
-    steps: [
-      "Use Integration by Parts formula: ∫ u dv = u v - ∫ v du",
-      "Set u = x  =>  du = dx",
-      "Set dv = e^x dx  =>  v = e^x",
-      "Apply formula: ∫ x e^x dx = x e^x - ∫ e^x dx = x e^x - e^x + C",
-    ],
-    formulas: ["Integration by Parts: ∫ u dv = u v - ∫ v du"],
-    intuition: "Differentiating x simplifies the integrand to a standard exponential form.",
-    practice: ["Solve ∫ x · sin(x) dx", "Solve ∫ x · ln(x) dx"],
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    status: "Solved by AI",
+    id: "cap-demo-1",
+    kind: "note",
+    title: "Linear Algebra Vectors & Subspaces",
+    text: "A subspace V of R^n is a subset closed under addition and scalar multiplication.",
+    created_at: new Date(Date.now() - 1800000).toISOString(),
   },
   {
-    id: "task-demo-2",
-    subject: "Physics",
-    icon: "🔬",
-    title: "Calculate Newton's Second Law force on 5kg mass at 3m/s²",
-    prompt: "A 5kg object accelerates at 3m/s². Find net force.",
-    solution: "Net Force F = 15 N (Newtons)",
-    steps: [
-      "Identify given values: Mass m = 5 kg, Acceleration a = 3 m/s²",
-      "Apply Newton's Second Law: F = m × a",
-      "Substitute values: F = 5 kg × 3 m/s² = 15 N",
-    ],
-    formulas: ["F = m · a"],
-    intuition: "Force measures the rate of momentum change needed to accelerate an object.",
-    practice: ["Calculate acceleration for F = 50N and m = 10kg"],
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    status: "Solved by AI",
+    id: "cap-demo-2",
+    kind: "link",
+    title: "Visualizing Neural Networks & Backpropagation",
+    text: "https://3blue1brown.com/topics/neural-networks",
+    url: "https://3blue1brown.com/topics/neural-networks",
+    created_at: new Date(Date.now() - 7200000).toISOString(),
   },
 ];
 
 export default function Capture({ onSaved }) {
   const [text, setText] = useState("");
-  const [activeSubject, setActiveSubject] = useState(null);
+  const [activeKind, setActiveKind] = useState("note");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [justSaved, setSaved] = useState(false);
-  const [expandedTask, setExpandedTask] = useState(null);
 
-  // Student Tasks storage
-  const [tasks, setTasks] = useState(() => {
+  // Saved Knowledge Stream
+  const [captures, setCaptures] = useState(() => {
     try {
-      const saved = localStorage.getItem("spark_student_tasks");
-      return saved ? JSON.parse(saved) : INITIAL_DEMO_TASKS;
+      const saved = localStorage.getItem("spark_saved_captures");
+      return saved ? JSON.parse(saved) : INITIAL_CAPTURES;
     } catch {
-      return INITIAL_DEMO_TASKS;
+      return INITIAL_CAPTURES;
     }
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem("spark_student_tasks", JSON.stringify(tasks));
+      localStorage.setItem("spark_saved_captures", JSON.stringify(captures));
     } catch (e) {
-      console.error("Failed to persist student tasks:", e);
+      console.error("Failed to persist saved captures:", e);
     }
-  }, [tasks]);
+  }, [captures]);
 
-  const fileRef = useRef();
-  const imageInputRef = useRef();
-  const taRef = useRef();
+  const fileInputRef = useRef();
+  const textareaRef = useRef();
 
   const onTranscript = useCallback((t) => {
     setText((prev) => (prev ? prev.trim() + " " + t.trim() : t.trim()));
@@ -178,12 +147,8 @@ export default function Capture({ onSaved }) {
 
   const handleImageFile = (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setErr("Please select an image file (PNG, JPG, WebP).");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setErr("Image file size must be under 10MB.");
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      setErr("Please select an image file (PNG, JPG, WebP) or PDF document.");
       return;
     }
     setImageFile(file);
@@ -197,15 +162,7 @@ export default function Capture({ onSaved }) {
     setImagePreviewUrl(null);
   };
 
-  const handleSelectQuickAction = (qa) => {
-    setActiveSubject(qa.label);
-    if (!text.startsWith(qa.prompt)) {
-      setText(qa.prompt + (text ? text.replace(/^Solve this.*?:\s*/, "") : ""));
-    }
-    taRef.current?.focus();
-  };
-
-  const solveAndCreateTask = async (e) => {
+  const handleSaveCapture = (e) => {
     e?.preventDefault();
     const rawText = text.trim();
     if (!rawText && !imageFile) return;
@@ -214,85 +171,58 @@ export default function Capture({ onSaved }) {
     setErr("");
 
     try {
-      // Build structured AI solver task
-      const isMath = /math|calculus|equation|solve|integral|derivative|matrix|vector|x\^/i.test(rawText) || activeSubject === "Math Problem";
-      const isCoding = /code|function|python|js|bug|error|array|algorithm/i.test(rawText) || activeSubject === "Coding";
-      const isPhysics = /physics|force|velocity|mass|energy|joule|newton/i.test(rawText) || activeSubject === "Science Question";
+      const isUrl = /^https?:\/\//i.test(rawText);
+      const kind = isUrl ? "link" : imageFile ? "image" : activeKind;
 
-      const subjectName = activeSubject || (isMath ? "Mathematics" : isPhysics ? "Physics" : isCoding ? "Coding" : "General Academic");
-      const icon = isMath ? "🧮" : isPhysics ? "🔬" : isCoding ? "💻" : "📚";
-
-      const newTask = {
-        id: `task-${Date.now()}`,
-        subject: subjectName,
-        icon,
-        title: rawText.length > 80 ? rawText.slice(0, 80) + "…" : rawText || "Uploaded Problem / File",
-        prompt: rawText,
+      const newCapture = {
+        id: `cap-${Date.now()}`,
+        kind,
+        title: isUrl ? rawText : rawText.length > 70 ? rawText.slice(0, 70) + "…" : rawText || "Saved Photo / File",
+        text: rawText,
+        url: isUrl ? rawText : null,
         imageUrl: imagePreviewUrl,
-        solution: isMath
-          ? "Step-by-step solution verified by Spark AI"
-          : "Structured academic explanation and breakdown",
-        steps: [
-          "Understand the problem statement and key constraints.",
-          "Identify relevant formulas, concepts, or algorithms.",
-          "Apply mathematical transformations or logical steps.",
-          "Verify the resulting solution against boundary conditions.",
-        ],
-        formulas: isMath ? ["Formulas: f'(x) = lim (h->0) [f(x+h)-f(x)]/h"] : ["Core Principle: Structured Analysis"],
-        intuition: "Breaking complex problems into smaller step-by-step components ensures clarity and accuracy.",
-        practice: [
-          "Similar practice question 1 to test your understanding",
-          "Similar practice question 2 for exam preparation",
-        ],
         created_at: new Date().toISOString(),
-        status: "Solved by AI",
       };
 
-      setTasks((prev) => [newTask, ...prev]);
-      setExpandedTask(newTask.id);
+      setCaptures((prev) => [newCapture, ...prev]);
 
       setText("");
       clearImage();
-      setActiveSubject(null);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2400);
+      setTimeout(() => setSaved(false), 2000);
 
       onSaved?.();
     } catch (error) {
-      setErr(error.message || "Failed to process question. Please try again.");
+      setErr(error.message || "Failed to save capture.");
     } finally {
       setBusy(false);
     }
   };
 
-  const deleteTask = (taskId) => {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    if (expandedTask === taskId) setExpandedTask(null);
+  const deleteCapture = (id) => {
+    setCaptures((prev) => prev.filter((c) => c.id !== id));
   };
 
   return (
     <div className="screen">
-      {/* Workspace Header */}
+      {/* Knowledge Saver Header */}
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Student Workspace</div>
-        <h1 className="title" style={{ fontSize: 26, margin: 0 }}>What are you working on today?</h1>
+        <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>Personal Knowledge Engine</div>
+        <h1 className="title" style={{ fontSize: 26, margin: 0 }}>What do you want to save?</h1>
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 14 }}>
-          Ask a math problem, upload an assignment, paste a link, or speak — Spark AI solves and organizes your study tasks step-by-step.
+          Capture notes, thoughts, web clippings, links, photos or voice notes to save to your personal second brain.
         </p>
       </div>
 
-      {/* Quick Action Subject Chips */}
+      {/* Mode Chips */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 8 }}>
-          Quick Actions
-        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {QUICK_ACTIONS.map((qa) => {
-            const isSelected = activeSubject === qa.label;
+          {CAPTURE_MODES.map((m) => {
+            const isSelected = activeKind === m.kind;
             return (
               <button
-                key={qa.label}
-                onClick={() => handleSelectQuickAction(qa)}
+                key={m.kind}
+                onClick={() => setActiveKind(m.kind)}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -309,17 +239,17 @@ export default function Capture({ onSaved }) {
                   boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
                 }}
               >
-                <span>{qa.icon}</span>
-                <span>{qa.label}</span>
+                <span>{m.icon}</span>
+                <span>{m.label}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Universal Capture Input Form */}
+      {/* Composer Form */}
       <form
-        onSubmit={solveAndCreateTask}
+        onSubmit={handleSaveCapture}
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
@@ -327,14 +257,13 @@ export default function Capture({ onSaved }) {
           padding: 16,
           boxShadow: "var(--sh)",
           marginBottom: 24,
-          transition: "border-color .2s ease",
         }}
       >
         <textarea
-          ref={taRef}
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type or paste any calculus problem, physics question, essay topic, or paste a link…"
+          placeholder="Capture anything you're learning, thinking about, or want to remember..."
           rows={3}
           style={{
             width: "100%",
@@ -349,14 +278,12 @@ export default function Capture({ onSaved }) {
           }}
         />
 
-        {/* Interim voice transcript preview */}
         {listening && interim && (
           <div style={{ padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 8, fontSize: 13, color: "var(--marigold-dark)", marginBottom: 10 }}>
-            🎙️ Listening: <i>{interim}</i>
+            🎙️ Recording voice note: <i>{interim}</i>
           </div>
         )}
 
-        {/* Image Attachment Preview */}
         {imagePreviewUrl && (
           <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
             <img
@@ -392,14 +319,12 @@ export default function Capture({ onSaved }) {
 
         {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>{err}</div>}
 
-        {/* Toolbar & Submit */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Image Attachment Button */}
             <button
               type="button"
-              onClick={() => imageInputRef.current?.click()}
-              title="Attach image or problem picture"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach photo or PDF document"
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
@@ -417,18 +342,17 @@ export default function Capture({ onSaved }) {
               🖼️ Photo / PDF
             </button>
             <input
-              ref={imageInputRef}
+              ref={fileInputRef}
               type="file"
               accept="image/*,application/pdf"
               style={{ display: "none" }}
               onChange={(e) => handleImageFile(e.target.files?.[0])}
             />
 
-            {/* Voice Mic Button */}
             <button
               type="button"
               onClick={toggleVoice}
-              title={listening ? "Stop listening" : "Speak question"}
+              title={listening ? "Stop recording" : "Record voice note"}
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
@@ -464,167 +388,101 @@ export default function Capture({ onSaved }) {
               transition: "all .15s ease",
             }}
           >
-            {busy ? "Solving with AI…" : "Solve & Organize →"}
+            {justSaved ? "Saved! ✓" : "Save Knowledge →"}
           </button>
         </div>
       </form>
 
-      {/* Student Tasks Section */}
+      {/* Recent Captures / Saved Knowledge */}
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Student Tasks</h2>
-            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your AI-solved questions, step-by-step explanations, and assignments</span>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Captures</h2>
+            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your saved notes, web clippings, and study media</span>
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "3px 10px", borderRadius: 12 }}>
-            {tasks.length} active
+            {captures.length} saved
           </span>
         </div>
 
-        {tasks.length === 0 && (
+        {captures.length === 0 && (
           <div className="empty" style={{ padding: 40, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No student tasks yet</div>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📝</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No saved captures yet</div>
             <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-              Type or speak a calculus problem, science question, or assignment above to generate your first step-by-step AI solution.
+              Type a note, paste a link, or record a voice note above to save your first piece of knowledge.
             </div>
           </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {tasks.map((task) => {
-            const isExpanded = expandedTask === task.id;
-            return (
-              <div
-                key={task.id}
-                style={{
-                  background: "var(--surface)",
-                  border: "1.5px solid var(--line)",
-                  borderRadius: "var(--r)",
-                  padding: 16,
-                  boxShadow: "var(--sh-sm)",
-                  transition: "all .2s ease",
-                }}
-              >
-                {/* Task Item Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14 }}>{task.icon}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
-                        {task.subject}
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-                        · {new Date(task.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      </span>
-                    </div>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)", lineHeight: 1.4 }}>
-                      {task.title}
-                    </h3>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "3px 8px",
-                        borderRadius: 10,
-                        background: "#ECFDF5",
-                        color: "#059669",
-                        border: "1px solid #A7F3D0",
-                      }}
-                    >
-                      {task.status}
-                    </span>
-
-                    <button
-                      onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 12,
-                        border: "1px solid var(--line)",
-                        background: "var(--surface-2)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "var(--ink-soft)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {isExpanded ? "Hide Steps" : "View Steps →"}
-                    </button>
-
-                    <button
-                      onClick={() => deleteTask(task.id)}
-                      title="Delete task"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--ink-faint)",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        padding: 4,
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
+          {captures.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                background: "var(--surface)",
+                border: "1.5px solid var(--line)",
+                borderRadius: "var(--r)",
+                padding: 16,
+                boxShadow: "var(--sh-sm)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: ".05em",
+                    color: "var(--marigold-dark)",
+                    background: "var(--marigold-light)",
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                  }}
+                >
+                  {item.kind || "Note"}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+                    {new Date(item.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </span>
+                  <button
+                    onClick={() => deleteCapture(item.id)}
+                    title="Delete capture"
+                    style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14 }}
+                  >
+                    ✕
+                  </button>
                 </div>
-
-                {/* Task Details & Step-by-Step AI Solution */}
-                {isExpanded && (
-                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-                    <div style={{ background: "var(--surface-2)", padding: 12, borderRadius: 10, marginBottom: 12 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 2 }}>
-                        AI Direct Solution
-                      </span>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--marigold-dark)" }}>
-                        {task.solution}
-                      </div>
-                    </div>
-
-                    {/* Step by Step reasoning */}
-                    {task.steps && task.steps.length > 0 && (
-                      <div style={{ marginBottom: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
-                          Step-by-Step Explanation
-                        </span>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {task.steps.map((step, idx) => (
-                            <div key={idx} style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
-                              <span style={{ fontWeight: 700, color: "var(--marigold)", minWidth: 20 }}>{idx + 1}.</span>
-                              <span>{step}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Formulas / Principles */}
-                    {task.formulas && task.formulas.length > 0 && (
-                      <div style={{ marginBottom: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-                          Formulas & Key Concepts
-                        </span>
-                        {task.formulas.map((f, idx) => (
-                          <div key={idx} style={{ fontSize: 12.5, fontFamily: "monospace", background: "var(--surface-3)", padding: "4px 8px", borderRadius: 6, display: "inline-block", marginRight: 6, marginTop: 4 }}>
-                            {f}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Simple Intuition */}
-                    {task.intuition && (
-                      <div style={{ fontSize: 12.5, color: "var(--ink-soft)", fontStyle: "italic", background: "var(--marigold-light)", padding: 8, borderRadius: 8 }}>
-                        💡 <b>Intuition:</b> {task.intuition}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            );
-          })}
+
+              {item.title && (
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+                  {item.title}
+                </div>
+              )}
+
+              {item.text && item.text !== item.title && (
+                <div style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                  {item.text}
+                </div>
+              )}
+
+              {item.url && (
+                <div style={{ marginTop: 8 }}>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#2563EB", textDecoration: "underline", wordBreak: "break-all" }}>
+                    🔗 {item.url}
+                  </a>
+                </div>
+              )}
+
+              {item.imageUrl && (
+                <div style={{ marginTop: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
+                  <img src={item.imageUrl} alt="Saved thumbnail" style={{ maxHeight: 200, width: "100%", objectFit: "cover" }} />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
