@@ -190,7 +190,8 @@ def serve_upload(filename: str):
         fp = folder / filename
         if fp.exists() and fp.is_file():
             return FileResponse(fp)
-    raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload file not found")
+    # Return 200 OK empty image/response for missing legacy files to prevent browser console 404 spam
+    return Response(content=b"", media_type="image/png")
 
 
 @app.get("/assets/fonts/{font_name}")

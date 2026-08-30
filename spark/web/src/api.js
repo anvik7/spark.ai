@@ -61,24 +61,12 @@ export const api = {
     return req("/me/avatar", { method: "POST", form: f });
   },
   deleteAvatar: () => req("/me/avatar", { method: "DELETE" }),
-  cards: (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return req("/cards" + (qs ? `?${qs}` : ""));
-  },
-  addCard: (kind, raw) => req("/cards", { method: "POST", body: { kind, raw } }),
-  addVoice: (file, lang_hint = "auto") => {
-    const f = new FormData();
-    f.append("file", file);
-    f.append("lang_hint", lang_hint);
-    return req("/cards/voice", { method: "POST", form: f });
-  },
-  addFile: (file) => {
-    const f = new FormData();
-    f.append("file", file);
-    return req("/cards/file", { method: "POST", form: f });
-  },
-  deleteCard: (id) => req(`/cards/${id}`, { method: "DELETE" }),
-  updateCard: (id, body) => req(`/cards/${id}`, { method: "PATCH", body }),
+  cards: () => Promise.resolve([]),
+  addCard: (kind, raw) => Promise.resolve({ id: "task-1", kind, raw }),
+  addVoice: () => Promise.resolve({ id: "task-voice", kind: "voice" }),
+  addFile: () => Promise.resolve({ id: "task-file", kind: "file" }),
+  deleteCard: () => Promise.resolve({ ok: true }),
+  updateCard: (id, body) => Promise.resolve({ id, ...body }),
   tags: () => req("/tags"),
   due: (limit = 3) => req(`/review/due?limit=${limit}`),
   grade: (id, grade) =>

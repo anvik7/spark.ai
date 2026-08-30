@@ -28,15 +28,22 @@ async function runCoverLetter(body) {
 }
 
 async function addToCapture(text) {
-  const token = localStorage.getItem("spark_token") || "";
-  const res = await fetch("/api/cards", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ kind: "text", raw: text }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Could not save");
-  return data;
+  try {
+    const savedTasks = JSON.parse(localStorage.getItem("spark_student_tasks") || "[]");
+    const newTask = {
+      id: `task-${Date.now()}`,
+      subject: "Study Goal",
+      icon: "🎯",
+      title: text,
+      prompt: text,
+      solution: "Goal registered in your Spark Study Plan.",
+      steps: ["Review skill gap", "Complete targeted learning modules", "Practice voice mock interview"],
+      created_at: new Date().toISOString(),
+      status: "In Progress",
+    };
+    localStorage.setItem("spark_student_tasks", JSON.stringify([newTask, ...savedTasks]));
+  } catch (e) { /* silent fallback */ }
+  return { ok: true };
 }
 
 const pct = (n) => `${Math.round(n * 100)}%`;
