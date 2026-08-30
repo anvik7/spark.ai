@@ -94,6 +94,16 @@ export const api = {
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
   updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
+  getCareerProfile: () => req("/career/profile"),
+  auditCareer: (data) => req("/career/audit", { method: "POST", body: data }),
+  uploadResume: (file, target_role = "", job_description = "") => {
+    const f = new FormData();
+    f.append("file", file);
+    if (target_role) f.append("target_role", target_role);
+    if (job_description) f.append("job_description", job_description);
+    return req("/career/upload-resume", { method: "POST", form: f });
+  },
+  draftCoverLetter: (data) => req("/career/cover-letter", { method: "POST", body: data }),
 
   // Papers
   listPapers: (params = {}) => {

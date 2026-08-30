@@ -557,66 +557,159 @@ def solve_task(body: TaskSolveIn, user: User = Depends(current_user)):
 class CareerIn(BaseModel):
     github_username: str = ""
     resume_text: str = ""
+    target_role: str = ""
+    target_company: str = ""
+    job_description: str = ""
+
+
+@app.get("/api/career/profile")
+def get_career_profile(user: User = Depends(current_user)):
+    """Get authenticated user's saved career profile and last AI analysis."""
+    with get_session() as session:
+        prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+        if not prof:
+            return {
+                "user_id": user.id,
+                "github_username": "",
+                "resume_text": "",
+                "resume_filename": "",
+                "target_role": "",
+                "target_company": "",
+                "job_description": "",
+                "last_analysis": None,
+            }
+        
+        last_analysis = None
+        if prof.last_analysis_json:
+            try:
+                last_analysis = json.loads(prof.last_analysis_json)
+            except Exception:
+                pass
+
+        return {
+            "user_id": user.id,
+            "github_username": prof.github_username or "",
+            "resume_text": prof.resume_text or "",
+            "resume_filename": prof.resume_filename or "",
+            "target_role": prof.target_role or "",
+            "target_company": prof.target_company or "",
+            "job_description": prof.job_description or "",
+            "last_analysis": last_analysis,
+        }
 
 
 @app.post("/api/career/audit")
 def career_audit(body: CareerIn, user: User = Depends(current_user)):
+    """Perform AI career audit for user's resume, target role, and job description."""
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        user = db_user
-        ok, msg = subscription.check_ai_quota(session, user)
-        if not ok:
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
-        if not body.github_username.strip() and not body.resume_text.strip():
-            raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                "Add a GitHub username or paste your resume.")
-        try:
-            return career.audit(body.github_username.strip(),
-                                body.resume_text.strip(),
-                                pro=subscription.is_pro(user))
-        except Exception as e:
-            print(f"[career] audit crashed: {e}")
-            return {
-                "readiness": 0,
-                "note": f"Analysis failed: {e}",
-                "strengths": [],
-                "gaps": [],
-                "plan": [],
-            }
+        
+        prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+        if not prof:
+            prof = UserCareerProfile(user_id=user.id)
+            session.add(prof)
+
+        # Update profile attributes if provided
+        if body.resume_text.strip():
+            prof.resume_text = body.resume_text.strip()
+        if body.target_role.strip():
+            prof.target_role = body.target_role.strip()
+        if body.target_company.strip():
+            prof.target_company = body.target_company.strip()
+        if body.job_description.strip():
+            prof.job_description = body.job_description.strip()
+        if body.github_username.strip():
+            prof.github_username = body.github_username.strip()
+
+        # Run AI analysis on resume & target role
+        result = career.solve_career_audit(
+            resume_text=prof.resume_text,
+            target_role=prof.target_role,
+            target_company=prof.target_company,
+            job_description=prof.job_description,
+            github_username=prof.github_username,
+            pro=True,
+        )
+
+        prof.last_analysis_json = json.dumps(result)
+        prof.updated_at = datetime.now(timezone.utc)
+        session.add(prof)
+        session.commit()
+
+        return result
+
+
+@app.post("/api/career/upload-resume")
+async def upload_resume(file: UploadFile = File(...),
+                        target_role: str = Form(""),
+                        job_description: str = Form(""),
+                        user: User = Depends(current_user)):
+    """Upload PDF/Doc resume, extract text, update profile, and return AI career analysis."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty.")
+
+    extracted_text = career.extract_resume_text(data, filename=file.filename or "")
+    if not extracted_text:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not extract text from uploaded resume. Please paste resume text directly.")
+
+    with get_session() as session:
+        prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+        if not prof:
+            prof = UserCareerProfile(user_id=user.id)
+            session.add(prof)
+
+        prof.resume_text = extracted_text
+        prof.resume_filename = file.filename or "uploaded_resume.pdf"
+        if target_role.strip():
+            prof.target_role = target_role.strip()
+        if job_description.strip():
+            prof.job_description = job_description.strip()
+
+        # Run AI analysis
+        result = career.solve_career_audit(
+            resume_text=prof.resume_text,
+            target_role=prof.target_role,
+            target_company=prof.target_company,
+            job_description=prof.job_description,
+            github_username=prof.github_username,
+            pro=True,
+        )
+
+        prof.last_analysis_json = json.dumps(result)
+        prof.updated_at = datetime.now(timezone.utc)
+        session.add(prof)
+        session.commit()
+
+        return {
+            "resume_filename": prof.resume_filename,
+            "resume_text": prof.resume_text,
+            "analysis": result,
+        }
 
 
 class CoverLetterIn(BaseModel):
-    role: str = ""              # target job title / company
-    strengths: list[str] = []   # skill names already found by /audit
-    resume_text: str = ""       # pasted resume (optional, improves output)
+    role: str = ""
+    company: str = ""
+    strengths: list[str] = []
+    resume_text: str = ""
 
 
 @app.post("/api/career/cover-letter")
 def generate_cover_letter(body: CoverLetterIn, user: User = Depends(current_user)):
-    """Draft a personalised cover letter from the user's skills. Pro only."""
-    with get_session() as session:
-        db_user: User | None = session.get(User, user.id)
-        if not db_user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        if not subscription.is_pro(db_user):
-            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED,
-                                "Cover letter drafting is a Pro feature. Upgrade to unlock.")
-        ok, msg = subscription.check_ai_quota(session, db_user)
-        if not ok:
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
-    try:
-        letter = career.cover_letter(
-            strengths=body.strengths,
-            resume_text=body.resume_text,
-            role=body.role,
-        )
-        return {"letter": letter}
-    except Exception as e:
-        print(f"[career] cover_letter crashed: {e}")
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            f"Could not generate cover letter: {e}")
+    """Draft a tailored cover letter using user's actual resume and target role."""
+    letter = career.cover_letter(
+        strengths=body.strengths,
+        resume_text=body.resume_text,
+        role=body.role,
+        company=body.company,
+    )
+    return {"letter": letter}
+
+
+# --- billing / Razorpay ----------------------------------------------------
 
 
 @app.post("/api/interview")

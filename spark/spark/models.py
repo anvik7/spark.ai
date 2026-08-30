@@ -134,7 +134,17 @@ class CircleMessage(SQLModel, table=True):
     reply_to_id: Optional[int] = Field(default=None, foreign_key="circlemessage.id")
     is_deleted: bool = False
     edited_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class UserCareerProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, unique=True, foreign_key="user.id")
+    github_username: str = ""
+    resume_text: str = ""
+    resume_filename: str = ""
+    target_role: str = ""
+    target_company: str = ""
+    job_description: str = ""
+    last_analysis_json: Optional[str] = None
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def init_db() -> None:
