@@ -28,7 +28,7 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, StudySession, User, UserCareerProfile, get_session, init_db
+from .models import Card, CardEmbedding, StudentTask, StudySession, User, UserCareerProfile, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
@@ -537,6 +537,37 @@ def draft_content(body: DraftIn, user: User = Depends(current_user)):
         return {"draft": text, "source_count": len(notes)}
 
 
+def _format_task_out(t: StudentTask) -> dict:
+    return {
+        "id": t.id,
+        "subject": t.subject,
+        "icon": t.icon,
+        "title": t.title,
+        "prompt": t.prompt,
+        "imageUrl": t.image_url,
+        "solution": t.solution,
+        "steps": json.loads(t.steps_json or "[]"),
+        "formulas": json.loads(t.formulas_json or "[]"),
+        "intuition": t.intuition,
+        "practice": json.loads(t.practice_json or "[]"),
+        "thread": json.loads(t.thread_json or "[]"),
+        "status": t.status,
+        "created_at": t.created_at.isoformat() if t.created_at else datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/tasks")
+def list_student_tasks(user: User = Depends(current_user)):
+    """List real saved student tasks for authenticated user."""
+    with get_session() as session:
+        tasks = session.exec(
+            select(StudentTask)
+            .where(StudentTask.user_id == user.id)
+            .order_by(col(StudentTask.created_at).desc())
+        ).all()
+        return [_format_task_out(t) for t in tasks]
+
+
 class TaskSolveIn(BaseModel):
     prompt: str = ""
     subject_hint: str = ""
@@ -544,12 +575,151 @@ class TaskSolveIn(BaseModel):
 
 @app.post("/api/tasks/solve")
 def solve_task(body: TaskSolveIn, user: User = Depends(current_user)):
-    """Solve an academic task or student question using LLM engine."""
+    """Solve an academic task, save DB record for user, return created task."""
     prompt = body.prompt.strip()
     if not prompt:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prompt is required.")
+
     res = llm.solve_student_task(prompt, subject_hint=body.subject_hint)
-    return res
+
+    with get_session() as session:
+        task = StudentTask(
+            user_id=user.id,
+            subject=res.get("subject") or "General Academic",
+            icon=res.get("icon") or "📚",
+            title=res.get("title") or prompt[:80],
+            prompt=prompt,
+            solution=res.get("solution") or "AI Solution",
+            steps_json=json.dumps(res.get("steps") or []),
+            formulas_json=json.dumps(res.get("formulas") or []),
+            intuition=res.get("intuition") or "",
+            practice_json=json.dumps(res.get("practice") or []),
+            thread_json="[]",
+            status="Solved by AI",
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        return _format_task_out(task)
+
+
+@app.post("/api/tasks/upload-solve")
+async def upload_and_solve_task(
+    file: UploadFile = File(...),
+    prompt: str = Form(""),
+    subject_hint: str = Form(""),
+    user: User = Depends(current_user),
+):
+    """Upload photo/PDF attachment, extract content, solve via LLM, and save DB record."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty.")
+
+    ext = Path(file.filename or "file.png").suffix or ".png"
+    filename = f"task_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = _UPLOAD_FILES_DIR / filename
+    with open(file_path, "wb") as f:
+        f.write(data)
+
+    extracted_text = ""
+    if data[:5] == b"%PDF-" or (file.filename and file.filename.lower().endswith(".pdf")):
+        extracted_text = career.extract_resume_text(data, filename=file.filename or "")
+
+    full_prompt = (prompt + "\n" + extracted_text).strip() if extracted_text else (prompt.strip() or f"Problem in file: {file.filename}")
+    res = llm.solve_student_task(full_prompt, subject_hint=subject_hint)
+
+    with get_session() as session:
+        task = StudentTask(
+            user_id=user.id,
+            subject=res.get("subject") or "General Academic",
+            icon=res.get("icon") or "📚",
+            title=res.get("title") or prompt[:80] or file.filename or "Uploaded Problem",
+            prompt=full_prompt,
+            image_url=f"/api/uploads/{filename}",
+            solution=res.get("solution") or "AI Solution",
+            steps_json=json.dumps(res.get("steps") or []),
+            formulas_json=json.dumps(res.get("formulas") or []),
+            intuition=res.get("intuition") or "",
+            practice_json=json.dumps(res.get("practice") or []),
+            thread_json="[]",
+            status="Solved by AI",
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        return _format_task_out(task)
+
+
+class TaskFollowupIn(BaseModel):
+    followup_text: str = ""
+
+
+@app.post("/api/tasks/{task_id}/followup")
+def followup_task(task_id: int, body: TaskFollowupIn, user: User = Depends(current_user)):
+    """Add a contextual follow-up question to an existing task thread."""
+    followup = body.followup_text.strip()
+    if not followup:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Follow-up text is required.")
+
+    with get_session() as session:
+        task = session.get(StudentTask, task_id)
+        if not task or task.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
+
+        thread = json.loads(task.thread_json or "[]")
+        ai_reply = llm.solve_task_followup(task.prompt, task.solution, thread, followup)
+
+        thread.append({"role": "user", "content": followup, "timestamp": datetime.now(timezone.utc).isoformat()})
+        thread.append({"role": "assistant", "content": ai_reply, "timestamp": datetime.now(timezone.utc).isoformat()})
+
+        task.thread_json = json.dumps(thread)
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        return _format_task_out(task)
+
+
+@app.post("/api/tasks/{task_id}/regenerate")
+def regenerate_task(task_id: int, user: User = Depends(current_user)):
+    """Regenerate AI solution for an existing task."""
+    with get_session() as session:
+        task = session.get(StudentTask, task_id)
+        if not task or task.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
+
+        res = llm.solve_student_task(task.prompt, subject_hint=task.subject)
+        task.solution = res.get("solution") or task.solution
+        task.steps_json = json.dumps(res.get("steps") or [])
+        task.formulas_json = json.dumps(res.get("formulas") or [])
+        task.intuition = res.get("intuition") or task.intuition
+        task.practice_json = json.dumps(res.get("practice") or [])
+
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        return _format_task_out(task)
+
+
+@app.delete("/api/tasks/{task_id}")
+def delete_student_task(task_id: int, user: User = Depends(current_user)):
+    """Delete a student task from database."""
+    with get_session() as session:
+        task = session.get(StudentTask, task_id)
+        if not task or task.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
+
+        if task.image_url and task.image_url.startswith("/api/uploads/"):
+            fn = task.image_url.replace("/api/uploads/", "")
+            fp = _UPLOAD_FILES_DIR / fn
+            if fp.exists():
+                try:
+                    fp.unlink()
+                except Exception as e:
+                    print(f"[delete_task] File unlink error: {e}")
+
+        session.delete(task)
+        session.commit()
+        return {"deleted": task_id}
 
 
 # --- career intelligence ----------------------------------------------------

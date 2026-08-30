@@ -50,7 +50,7 @@ function useVoiceInput({ onTranscript, onError }) {
       console.error("SpeechRecognition error:", e.error);
       setListening(false);
       setInterim("");
-      onError?.("Voice recording error — check site microphone permissions.");
+      onError?.("Voice error — check microphone permissions.");
     };
 
     rec.start();
@@ -80,72 +80,42 @@ const SUBJECT_PILLS = [
   { label: "General", icon: "❓", hint: "General Academic" },
 ];
 
-const INITIAL_TASKS = [
-  {
-    id: "task-initial-1",
-    subject: "Mathematics",
-    icon: "🧮",
-    title: "Solve Calculus Integration: ∫ x · e^x dx",
-    prompt: "Solve ∫ x · e^x dx using integration by parts.",
-    solution: "x · e^x - e^x + C",
-    steps: [
-      "Use Integration by Parts formula: ∫ u dv = u v - ∫ v du",
-      "Set u = x  =>  du = dx",
-      "Set dv = e^x dx  =>  v = e^x",
-      "Apply formula: ∫ x e^x dx = x e^x - ∫ e^x dx = x e^x - e^x + C",
-    ],
-    formulas: ["Integration by Parts: ∫ u dv = u v - ∫ v du"],
-    intuition: "Differentiating x simplifies the integrand to a standard exponential form.",
-    practice: ["Solve ∫ x · sin(x) dx", "Solve ∫ x · ln(x) dx"],
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    status: "Solved by AI",
-  },
-  {
-    id: "task-initial-2",
-    subject: "Physics",
-    icon: "🔬",
-    title: "Calculate Newton's Second Law force on 5kg mass at 3m/s²",
-    prompt: "A 5kg object accelerates at 3m/s². Find net force.",
-    solution: "Net Force F = 15 N (Newtons)",
-    steps: [
-      "Identify given values: Mass m = 5 kg, Acceleration a = 3 m/s²",
-      "Apply Newton's Second Law: F = m × a",
-      "Substitute values: F = 5 kg × 3 m/s² = 15 N",
-    ],
-    formulas: ["F = m · a"],
-    intuition: "Force measures the rate of momentum change needed to accelerate an object.",
-    practice: ["Calculate acceleration for F = 50N and m = 10kg"],
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    status: "Solved by AI",
-  },
-];
-
 export default function Tasks() {
   const [promptText, setPromptText] = useState("");
   const [activeSubject, setActiveSubject] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(true);
   const [err, setErr] = useState("");
+
+  // Solved Student Tasks from database
+  const [tasks, setTasks] = useState([]);
   const [expandedTask, setExpandedTask] = useState(null);
 
-  // Solved Student Tasks
-  const [tasks, setTasks] = useState(() => {
-    try {
-      const saved = localStorage.getItem("spark_student_tasks");
-      return saved ? JSON.parse(saved) : INITIAL_TASKS;
-    } catch {
-      return INITIAL_TASKS;
-    }
-  });
+  // Action states per task
+  const [copiedTask, setCopiedTask] = useState(null);
+  const [regeneratingTask, setRegeneratingTask] = useState(null);
+  const [followupInputs, setFollowupInputs] = useState({});
+  const [followupBusy, setFollowupBusy] = useState({});
+
+  // Fetch real user tasks from database on mount
+  const loadTasks = useCallback(() => {
+    setLoadingTasks(true);
+    api.getTasks()
+      .then((data) => {
+        setTasks(Array.isArray(data) ? data : []);
+      })
+      .catch((e) => {
+        console.error("Failed to load student tasks from DB:", e);
+        setErr("Could not connect to database to load tasks.");
+      })
+      .finally(() => setLoadingTasks(false));
+  }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("spark_student_tasks", JSON.stringify(tasks));
-    } catch (e) {
-      console.error("Failed to persist student tasks:", e);
-    }
-  }, [tasks]);
+    loadTasks();
+  }, [loadTasks]);
 
   const fileInputRef = useRef();
   const textareaRef = useRef();
@@ -170,88 +140,109 @@ export default function Tasks() {
     if (!started) setErr("Could not start recording microphone.");
   };
 
-  const handleImageFile = (file) => {
+  const handleSelectFile = (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-      setErr("Please select an image file (PNG, JPG, WebP) or PDF document.");
+    if (file.size > 25 * 1024 * 1024) {
+      setErr("File size must be under 25MB.");
       return;
     }
-    setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
+    setSelectedFile(file);
+    if (file.type.startsWith("image/")) {
+      setFilePreviewUrl(URL.createObjectURL(file));
+    } else {
+      setFilePreviewUrl(null);
+    }
     setErr("");
   };
 
-  const clearImage = () => {
-    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
-    setImageFile(null);
-    setImagePreviewUrl(null);
+  const clearFile = () => {
+    if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
   };
 
   const handleSolveTask = async (e) => {
     e?.preventDefault();
     const input = promptText.trim();
-    if (!input && !imageFile) return;
+    if (!input && !selectedFile) {
+      setErr("Please type a question or select a file to solve.");
+      return;
+    }
 
     setBusy(true);
     setErr("");
 
     try {
-      // Call LLM solver backend API endpoint
-      let aiResult;
-      try {
-        aiResult = await api.solveTask(input, activeSubject || "");
-      } catch (backendError) {
-        console.warn("[Tasks] Backend solver fallback triggered:", backendError);
+      let createdTask;
+      if (selectedFile) {
+        createdTask = await api.uploadTaskFile(selectedFile, input, activeSubject || "");
+      } else {
+        createdTask = await api.solveTask(input, activeSubject || "");
       }
 
-      // If backend responded with valid solver JSON, use it; otherwise build structured fallback
-      const isMath = /math|calculus|equation|solve|integral|derivative|matrix|vector|x\^/i.test(input) || activeSubject === "Math";
-      const isCoding = /code|function|python|js|bug|error|array|algorithm/i.test(input) || activeSubject === "Coding";
-      const isPhysics = /physics|force|velocity|mass|energy|joule|newton/i.test(input) || activeSubject === "Physics";
-
-      const subjectName = aiResult?.subject || activeSubject || (isMath ? "Mathematics" : isPhysics ? "Physics" : isCoding ? "Coding" : "General Academic");
-      const icon = isMath ? "🧮" : isPhysics ? "🔬" : isCoding ? "💻" : "📚";
-
-      const solvedTask = {
-        id: `task-${Date.now()}`,
-        subject: subjectName,
-        icon: aiResult?.icon || icon,
-        title: aiResult?.title || (input.length > 85 ? input.slice(0, 85) + "…" : input || "Uploaded Problem File"),
-        prompt: input,
-        imageUrl: imagePreviewUrl,
-        solution: aiResult?.solution || (isMath ? "Step-by-step calculus solution verified by AI" : "Structured academic solution and breakdown"),
-        steps: aiResult?.steps || [
-          "Understand the problem statement and identify key variables.",
-          "Apply fundamental principles, formulas, or logical algorithms.",
-          "Transform and evaluate the mathematical/textual expressions step-by-step.",
-          "Verify the final answer against boundary conditions.",
-        ],
-        formulas: aiResult?.formulas || (isMath ? ["Integration / Differentiation Principle"] : ["Core Subject Principle"]),
-        intuition: aiResult?.intuition || "Breaking complex academic tasks into sequential steps builds lasting conceptual clarity.",
-        practice: aiResult?.practice || [
-          "Practice exercise 1 to test your understanding",
-          "Practice exercise 2 for exam preparation",
-        ],
-        created_at: new Date().toISOString(),
-        status: "Solved by AI",
-      };
-
-      setTasks((prev) => [solvedTask, ...prev]);
-      setExpandedTask(solvedTask.id);
-
-      setPromptText("");
-      clearImage();
-      setActiveSubject(null);
+      if (createdTask) {
+        setTasks((prev) => [createdTask, ...prev.filter((t) => t.id !== createdTask.id)]);
+        setExpandedTask(createdTask.id);
+        setPromptText("");
+        clearFile();
+        setActiveSubject(null);
+      }
     } catch (error) {
-      setErr(error.message || "Failed to solve task. Please try again.");
+      console.error("Solve task error:", error);
+      setErr(error.message || "Failed to solve question. Please try again.");
     } finally {
       setBusy(false);
     }
   };
 
-  const deleteTask = (taskId) => {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    if (expandedTask === taskId) setExpandedTask(null);
+  const handleCopyTask = (task) => {
+    const textToCopy = `Question: ${task.prompt}\n\nSolution: ${task.solution}\n\nSteps:\n${(task.steps || []).map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopiedTask(task.id);
+      setTimeout(() => setCopiedTask(null), 2000);
+    });
+  };
+
+  const handleRegenerateTask = async (taskId) => {
+    setRegeneratingTask(taskId);
+    try {
+      const updated = await api.regenerateTask(taskId);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+    } catch (error) {
+      console.error("Regenerate error:", error);
+      setErr(error.message || "Failed to regenerate AI solution.");
+    } finally {
+      setRegeneratingTask(null);
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    try {
+      await api.deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (expandedTask === taskId) setExpandedTask(null);
+    } catch (error) {
+      console.error("Delete task error:", error);
+      setErr(error.message || "Failed to delete task.");
+    }
+  };
+
+  const handlePostFollowup = async (taskId, e) => {
+    e?.preventDefault();
+    const followupText = (followupInputs[taskId] || "").trim();
+    if (!followupText) return;
+
+    setFollowupBusy((prev) => ({ ...prev, [taskId]: true }));
+    try {
+      const updated = await api.postTaskFollowup(taskId, followupText);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      setFollowupInputs((prev) => ({ ...prev, [taskId]: "" }));
+    } catch (error) {
+      console.error("Follow-up error:", error);
+      setErr(error.message || "Failed to post follow-up question.");
+    } finally {
+      setFollowupBusy((prev) => ({ ...prev, [taskId]: false }));
+    }
   };
 
   return (
@@ -261,14 +252,14 @@ export default function Tasks() {
         <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Student Workspace</div>
         <h1 className="title" style={{ fontSize: 26, margin: 0 }}>What do you need help solving?</h1>
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 14 }}>
-          Ask any calculus problem, physics question, code bug, essay topic, or general academic task. Spark AI provides direct answers and step-by-step reasoning.
+          Ask any calculus problem, physics question, code error, research paper, writing assignment, or general academic task. Spark AI provides direct answers, step-by-step reasoning, and contextual follow-ups.
         </p>
       </div>
 
-      {/* Subject Filter Chips */}
+      {/* Subject Filter Chips (Optional) */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 8 }}>
-          Select Subject (Optional)
+          Select Subject (Optional — AI Auto-detects if unselected)
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {SUBJECT_PILLS.map((sp) => {
@@ -301,7 +292,7 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Question / Task Input Form */}
+      {/* Universal Task Input Form */}
       <form
         onSubmit={handleSolveTask}
         style={{
@@ -317,7 +308,7 @@ export default function Tasks() {
           ref={textareaRef}
           value={promptText}
           onChange={(e) => setPromptText(e.target.value)}
-          placeholder="Ask anything: e.g. 'Solve this integral ∫ x sin(x) dx step-by-step', 'Explain quantum superposition', or paste a code error..."
+          placeholder="Ask anything: e.g. 'Solve this integral ∫ x sin(x) dx', 'Explain quantum entanglement', 'Debug this Python script', or paste a research text..."
           rows={3}
           style={{
             width: "100%",
@@ -332,22 +323,28 @@ export default function Tasks() {
           }}
         />
 
-        {listening && interim && (
+        {listening && (
           <div style={{ padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 8, fontSize: 13, color: "var(--marigold-dark)", marginBottom: 10 }}>
-            🎙️ Listening: <i>{interim}</i>
+            🎙️ Listening to voice: <i>{interim || "speak your question…"}</i>
           </div>
         )}
 
-        {imagePreviewUrl && (
+        {selectedFile && (
           <div style={{ position: "relative", marginBottom: 12, display: "inline-block" }}>
-            <img
-              src={imagePreviewUrl}
-              alt="Attachment preview"
-              style={{ maxHeight: 120, borderRadius: 8, border: "1px solid var(--line)", display: "block" }}
-            />
+            {filePreviewUrl ? (
+              <img
+                src={filePreviewUrl}
+                alt="File preview"
+                style={{ maxHeight: 130, borderRadius: 8, border: "1px solid var(--line)", display: "block" }}
+              />
+            ) : (
+              <div style={{ padding: "10px 14px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}>
+                📄 {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+              </div>
+            )}
             <button
               type="button"
-              onClick={clearImage}
+              onClick={clearFile}
               style={{
                 position: "absolute",
                 top: -6,
@@ -378,7 +375,7 @@ export default function Tasks() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Attach problem picture or PDF"
+              title="Attach photo or PDF document"
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
@@ -398,15 +395,15 @@ export default function Tasks() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf"
+              accept="image/*,application/pdf,text/plain"
               style={{ display: "none" }}
-              onChange={(e) => handleImageFile(e.target.files?.[0])}
+              onChange={(e) => handleSelectFile(e.target.files?.[0])}
             />
 
             <button
               type="button"
               onClick={toggleVoice}
-              title={listening ? "Stop listening" : "Speak question"}
+              title={listening ? "Stop recording" : "Speak question"}
               style={{
                 padding: "6px 12px",
                 borderRadius: 16,
@@ -428,16 +425,16 @@ export default function Tasks() {
 
           <button
             type="submit"
-            disabled={busy || (!promptText.trim() && !imageFile)}
+            disabled={busy || (!promptText.trim() && !selectedFile)}
             style={{
               padding: "9px 20px",
               borderRadius: "var(--r-s)",
               border: "none",
-              background: busy || (!promptText.trim() && !imageFile) ? "var(--line)" : "var(--p-gradient)",
+              background: busy || (!promptText.trim() && !selectedFile) ? "var(--line)" : "var(--p-gradient)",
               color: "#FFFFFF",
               fontSize: 14,
               fontWeight: 700,
-              cursor: busy || (!promptText.trim() && !imageFile) ? "not-allowed" : "pointer",
+              cursor: busy || (!promptText.trim() && !selectedFile) ? "not-allowed" : "pointer",
               boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
               transition: "all .15s ease",
             }}
@@ -452,19 +449,25 @@ export default function Tasks() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Tasks</h2>
-            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your AI-solved questions, formulas, and step-by-step reasoning</span>
+            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your authenticated user solved questions and step-by-step AI reasoning</span>
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "3px 10px", borderRadius: 12 }}>
-            {tasks.length} solved
+            {tasks.length} saved
           </span>
         </div>
 
-        {tasks.length === 0 && (
+        {loadingTasks && (
+          <div style={{ textAlign: "center", padding: 30, color: "var(--ink-soft)", fontSize: 14 }}>
+            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading your solved tasks from database…
+          </div>
+        )}
+
+        {!loadingTasks && tasks.length === 0 && (
           <div className="empty" style={{ padding: 40, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>🧮</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No solved tasks yet</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No tasks yet</div>
             <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-              Enter any calculus problem, physics question, code error, or essay prompt above to generate your first AI solution.
+              Enter any math problem, physics question, code error, or essay prompt above to generate your first AI solution.
             </div>
           </div>
         )}
@@ -472,6 +475,9 @@ export default function Tasks() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {tasks.map((task) => {
             const isExpanded = expandedTask === task.id;
+            const isCopied = copiedTask === task.id;
+            const isRegenerating = regeneratingTask === task.id;
+
             return (
               <div
                 key={task.id}
@@ -488,16 +494,16 @@ export default function Tasks() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14 }}>{task.icon}</span>
+                      <span style={{ fontSize: 14 }}>{task.icon || "📚"}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
-                        {task.subject}
+                        {task.subject || "General Academic"}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-                        · {new Date(task.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        · {new Date(task.created_at || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </span>
                     </div>
                     <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)", lineHeight: 1.4 }}>
-                      {task.title}
+                      {task.title || task.prompt}
                     </h3>
                   </div>
 
@@ -513,7 +519,7 @@ export default function Tasks() {
                         border: "1px solid #A7F3D0",
                       }}
                     >
-                      {task.status}
+                      {task.status || "Solved by AI"}
                     </span>
 
                     <button
@@ -529,12 +535,12 @@ export default function Tasks() {
                         cursor: "pointer",
                       }}
                     >
-                      {isExpanded ? "Hide Steps" : "View Steps →"}
+                      {isExpanded ? "Hide Solution" : "View Solution →"}
                     </button>
 
                     <button
-                      onClick={() => deleteTask(task.id)}
-                      title="Delete task"
+                      onClick={() => handleDeleteTask(task.id)}
+                      title="Delete task from database"
                       style={{
                         background: "none",
                         border: "none",
@@ -552,15 +558,58 @@ export default function Tasks() {
                 {/* Step-by-Step AI Solution Drawer */}
                 {isExpanded && (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                    {/* Action Bar: Copy & Regenerate */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+                      <button
+                        onClick={() => handleCopyTask(task)}
+                        style={{
+                          fontSize: 12,
+                          padding: "3px 10px",
+                          borderRadius: 8,
+                          border: `1px solid ${isCopied ? "#059669" : "var(--line)"}`,
+                          background: isCopied ? "#ECFDF5" : "var(--surface-2)",
+                          color: isCopied ? "#059669" : "var(--ink-soft)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isCopied ? "✓ Copied Solution" : "📋 Copy Solution"}
+                      </button>
+
+                      <button
+                        onClick={() => handleRegenerateTask(task.id)}
+                        disabled={isRegenerating}
+                        style={{
+                          fontSize: 12,
+                          padding: "3px 10px",
+                          borderRadius: 8,
+                          border: "1px solid var(--line)",
+                          background: "var(--surface-2)",
+                          color: "var(--ink-soft)",
+                          cursor: isRegenerating ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {isRegenerating ? "Regenerating…" : "🔄 Regenerate Answer"}
+                      </button>
+                    </div>
+
+                    {/* Image / Attachment display */}
+                    {task.imageUrl && (
+                      <div style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
+                        <img src={task.imageUrl} alt="Attached problem" style={{ maxHeight: 220, width: "100%", objectFit: "cover" }} />
+                      </div>
+                    )}
+
+                    {/* Direct AI Answer */}
                     <div style={{ background: "var(--surface-2)", padding: 12, borderRadius: 10, marginBottom: 12 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 2 }}>
                         AI Direct Answer
                       </span>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--marigold-dark)" }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--marigold-dark)", lineHeight: 1.5 }}>
                         {task.solution}
                       </div>
                     </div>
 
+                    {/* Step by step explanation */}
                     {task.steps && task.steps.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
@@ -568,7 +617,7 @@ export default function Tasks() {
                         </span>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {task.steps.map((step, idx) => (
-                            <div key={idx} style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
+                            <div key={idx} style={{ display: "flex", gap: 8, fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5 }}>
                               <span style={{ fontWeight: 700, color: "var(--marigold)", minWidth: 20 }}>{idx + 1}.</span>
                               <span>{step}</span>
                             </div>
@@ -577,6 +626,7 @@ export default function Tasks() {
                       </div>
                     )}
 
+                    {/* Formulas / Principles */}
                     {task.formulas && task.formulas.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
@@ -590,14 +640,16 @@ export default function Tasks() {
                       </div>
                     )}
 
+                    {/* Intuition */}
                     {task.intuition && (
-                      <div style={{ fontSize: 12.5, color: "var(--ink-soft)", fontStyle: "italic", background: "var(--marigold-light)", padding: 8, borderRadius: 8, marginBottom: 10 }}>
+                      <div style={{ fontSize: 12.5, color: "var(--ink-soft)", fontStyle: "italic", background: "var(--marigold-light)", padding: 10, borderRadius: 8, marginBottom: 12 }}>
                         💡 <b>Intuition:</b> {task.intuition}
                       </div>
                     )}
 
+                    {/* Practice Exercises */}
                     {task.practice && task.practice.length > 0 && (
-                      <div>
+                      <div style={{ marginBottom: 14 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
                           Follow-up Practice Questions
                         </span>
@@ -608,6 +660,75 @@ export default function Tasks() {
                         ))}
                       </div>
                     )}
+
+                    {/* Follow-up Contextual Conversation Thread */}
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--marigold-dark)", display: "block", marginBottom: 8 }}>
+                        💬 Follow-up Conversation
+                      </span>
+
+                      {task.thread && task.thread.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                          {task.thread.map((msg, idx) => {
+                            const isUser = msg.role === "user";
+                            return (
+                              <div
+                                key={idx}
+                                style={{
+                                  alignSelf: isUser ? "flex-end" : "flex-start",
+                                  maxWidth: "90%",
+                                  padding: "8px 12px",
+                                  borderRadius: 10,
+                                  fontSize: 13,
+                                  lineHeight: 1.5,
+                                  background: isUser ? "var(--marigold-light)" : "var(--surface-2)",
+                                  color: isUser ? "var(--marigold-dark)" : "var(--ink)",
+                                  border: isUser ? "1px solid var(--line)" : "1px solid var(--line)",
+                                }}
+                              >
+                                <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 2, textTransform: "uppercase", color: "var(--ink-faint)" }}>
+                                  {isUser ? "You" : "Spark AI"}
+                                </div>
+                                {msg.content}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <form onSubmit={(e) => handlePostFollowup(task.id, e)} style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="text"
+                          value={followupInputs[task.id] || ""}
+                          onChange={(e) => setFollowupInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                          placeholder="Ask a follow-up question about this problem..."
+                          style={{
+                            flex: 1,
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid var(--line)",
+                            background: "var(--surface)",
+                            fontSize: 13,
+                          }}
+                        />
+                        <button
+                          type="submit"
+                          disabled={followupBusy[task.id] || !(followupInputs[task.id] || "").trim()}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: followupBusy[task.id] || !(followupInputs[task.id] || "").trim() ? "var(--line)" : "var(--p-gradient)",
+                            color: "#fff",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: followupBusy[task.id] || !(followupInputs[task.id] || "").trim() ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {followupBusy[task.id] ? "Replying…" : "Send →"}
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 )}
               </div>

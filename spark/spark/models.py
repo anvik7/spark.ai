@@ -144,7 +144,22 @@ class UserCareerProfile(SQLModel, table=True):
     target_company: str = ""
     job_description: str = ""
     last_analysis_json: Optional[str] = None
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class StudentTask(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    subject: str = "General Academic"
+    icon: str = "📚"
+    title: str = ""
+    prompt: str = ""
+    image_url: Optional[str] = None
+    solution: str = ""
+    steps_json: str = "[]"
+    formulas_json: str = "[]"
+    intuition: str = ""
+    practice_json: str = "[]"
+    thread_json: str = "[]"
+    status: str = "Solved by AI"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def init_db() -> None:

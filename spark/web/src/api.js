@@ -93,7 +93,18 @@ export const api = {
   getGoal: () => req("/goals"),
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
   updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
+  getTasks: () => req("/tasks"),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
+  uploadTaskFile: (file, prompt = "", subject_hint = "") => {
+    const f = new FormData();
+    f.append("file", file);
+    if (prompt) f.append("prompt", prompt);
+    if (subject_hint) f.append("subject_hint", subject_hint);
+    return req("/tasks/upload-solve", { method: "POST", form: f });
+  },
+  postTaskFollowup: (taskId, followupText) => req(`/tasks/${taskId}/followup`, { method: "POST", body: { followup_text: followupText } }),
+  regenerateTask: (taskId) => req(`/tasks/${taskId}/regenerate`, { method: "POST" }),
+  deleteTask: (taskId) => req(`/tasks/${taskId}`, { method: "DELETE" }),
   getCareerProfile: () => req("/career/profile"),
   auditCareer: (data) => req("/career/audit", { method: "POST", body: data }),
   uploadResume: (file, target_role = "", job_description = "") => {

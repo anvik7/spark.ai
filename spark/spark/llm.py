@@ -372,3 +372,29 @@ def solve_student_task(prompt: str, subject_hint: str = "") -> dict:
           "Practice problem 2 for exam preparation",
         ],
     }
+
+
+def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict], followup_text: str) -> str:
+    """Answer a follow-up question for an ongoing student task thread."""
+    history = "\n".join(f"{m.get('role','user').capitalize()}: {m.get('content','')}" for m in (thread or [])[-6:])
+    p_text = (
+        f"You are Spark AI, a top-tier academic tutor.\n"
+        f"ORIGINAL TASK: \"{task_prompt}\"\n"
+        f"INITIAL SOLUTION: \"{task_solution}\"\n"
+        f"PAST CONVERSATION:\n{history}\n\n"
+        f"STUDENT FOLLOW-UP QUESTION: \"{followup_text}\"\n\n"
+        "Provide a direct, concise, and clear answer to the student's follow-up question. "
+        "Explain step-by-step if needed."
+    )
+    try:
+        p = settings.llm_provider
+        if p == "gemini" and settings.gemini_api_key:
+            return _gemini_text(p_text)
+        if p == "groq" and settings.groq_api_key:
+            return _groq_text(p_text)
+        if p == "anthropic" and settings.anthropic_api_key:
+            return _anthropic_text(p_text)
+    except Exception as e:
+        print(f"[llm] solve_task_followup LLM fallback: {e}")
+
+    return f"Explanation for '{followup_text}': Spark AI provides contextual clarification based on your previous solution for '{task_prompt[:50]}'."
