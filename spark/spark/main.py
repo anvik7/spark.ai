@@ -161,69 +161,41 @@ def me(user: User = Depends(current_user)):
 
 # --- user profile / avatar --------------------------------------------------
 
-_AVATAR_DIR = Path(__file__).resolve().parent.parent / "uploads" / "avatars"
-_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+_UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_UPLOAD_FILES_DIR = _UPLOAD_DIR / "files"
+_UPLOAD_FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class AvatarPresetIn(BaseModel):
+    avatar_url: str
 
 
 @app.post("/api/me/avatar")
-async def upload_avatar(file: UploadFile = File(...), user: User = Depends(current_user)):
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file type. Only images are allowed.")
-
-    data = await file.read()
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image size exceeds 5MB limit.")
-
-    ext = Path(file.filename or "avatar.jpg").suffix or ".jpg"
-    filename = f"user_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = _AVATAR_DIR / filename
-    with open(file_path, "wb") as f:
-        f.write(data)
-
-    avatar_url = f"/api/avatars/{filename}"
-
+def update_avatar_preset(body: AvatarPresetIn, user: User = Depends(current_user)):
     with get_session() as session:
         db_user = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        db_user.avatar_url = avatar_url
+        db_user.avatar_url = body.avatar_url
         session.add(db_user)
         session.commit()
         session.refresh(db_user)
         return _public_user(session, db_user)
-
-
-@app.delete("/api/me/avatar")
-def delete_avatar(user: User = Depends(current_user)):
-    with get_session() as session:
-        db_user = session.get(User, user.id)
-        if not db_user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        db_user.avatar_url = ""
-        session.add(db_user)
-        session.commit()
-        session.refresh(db_user)
-        return _public_user(session, db_user)
-
-
-@app.get("/api/avatars/{filename}")
-def serve_avatar(filename: str):
-    file_path = _AVATAR_DIR / filename
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Avatar not found")
-    return FileResponse(file_path)
-
-
-_UPLOAD_FILES_DIR = Path(__file__).resolve().parent.parent / "uploads" / "files"
-_UPLOAD_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/api/uploads/{filename}")
 def serve_upload(filename: str):
-    file_path = _UPLOAD_FILES_DIR / filename
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload file not found")
-    return FileResponse(file_path)
+    for folder in [_UPLOAD_FILES_DIR, _UPLOAD_DIR, _UPLOAD_DIR / "avatars"]:
+        fp = folder / filename
+        if fp.exists() and fp.is_file():
+            return FileResponse(fp)
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Upload file not found")
+
+
+@app.get("/assets/fonts/{font_name}")
+def serve_font_fallback(font_name: str):
+    return Response(content=b"", media_type="font/woff2")
 
 
 # --- cards ------------------------------------------------------------------
@@ -627,18 +599,13 @@ class TTSIn(BaseModel):
 @app.post("/api/tts")
 def tts_generate(body: TTSIn, user: User = Depends(current_user)):
     """Generate speech audio from text via MiniMax Speech 2.8 Turbo.
-    Returns audio/mpeg on success, 503 on failure so client falls back."""
+    Returns audio/mpeg on success, or json with available=False on failure for clean client failover."""
     s = get_settings()
     if not s.minimax_api_key:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "TTS not configured — missing MINIMAX_API_KEY",
-        )
-    text = body.text.strip()
+        return JSONResponse(status_code=200, content={"available": False, "reason": "MINIMAX_API_KEY not configured"})
+    text = body.text.strip()[:2000]
     if not text:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Text is required")
-    # Cap text length to prevent abuse (interview questions are short)
-    text = text[:2000]
+        return JSONResponse(status_code=200, content={"available": False, "reason": "Text is empty"})
     try:
         r = httpx.post(
             "https://api.minimax.io/v1/t2a_v2",
@@ -649,35 +616,19 @@ def tts_generate(body: TTSIn, user: User = Depends(current_user)):
                 "text": text,
                 "voice_setting": {"voice_id": "Friendly_Person"},
             },
-            timeout=30,
+            timeout=15,
         )
-        r.raise_for_status()
+        if r.status_code != 200:
+            return JSONResponse(status_code=200, content={"available": False, "reason": f"MiniMax error {r.status_code}"})
         data = r.json()
-        # MiniMax returns hex-encoded audio in data.audio_file
-        hex_audio = data.get("data", {}).get("audio", {}).get("audio_file")
-        # Fallback: try top-level audio_file key
+        hex_audio = data.get("data", {}).get("audio", {}).get("audio_file") or data.get("audio_file")
         if not hex_audio:
-            hex_audio = data.get("audio_file")
-        if not hex_audio:
-            print(f"[tts] Unexpected MiniMax response structure: {list(data.keys())}")
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "TTS returned unexpected format",
-            )
+            return JSONResponse(status_code=200, content={"available": False, "reason": "No audio in MiniMax response"})
         audio_bytes = bytes.fromhex(hex_audio)
         return Response(content=audio_bytes, media_type="audio/mpeg")
-    except httpx.HTTPStatusError as e:
-        print(f"[tts] MiniMax API error: {e.response.status_code} {e.response.text[:200]}")
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"TTS provider error: {e.response.status_code}",
-        )
     except Exception as e:
-        print(f"[tts] MiniMax call failed: {e}")
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"TTS unavailable: {e}",
-        )
+        print(f"[tts] Fallback triggered: {e}")
+        return JSONResponse(status_code=200, content={"available": False, "reason": str(e)})
 
 
 # --- daily digest -----------------------------------------------------------

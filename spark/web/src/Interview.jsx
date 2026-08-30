@@ -36,11 +36,20 @@ function speak(text, onEnd) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ text }),
   })
-    .then(res => {
-      if (!res.ok) throw new Error(`TTS ${res.status}`);
-      return res.blob();
-    })
-    .then(blob => {
+    .then(async (res) => {
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const data = await res.json();
+        if (data.available === false) {
+          speakBrowser(text, onEnd);
+          return;
+        }
+      }
+      if (!res.ok) {
+        speakBrowser(text, onEnd);
+        return;
+      }
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       _currentAudio = audio;
@@ -52,7 +61,6 @@ function speak(text, onEnd) {
       audio.onerror = () => {
         URL.revokeObjectURL(url);
         _currentAudio = null;
-        console.warn("[TTS] Audio playback failed, falling back to browser voice");
         speakBrowser(text, onEnd);
       };
       audio.play().catch(() => {
@@ -62,7 +70,6 @@ function speak(text, onEnd) {
       });
     })
     .catch(() => {
-      console.warn("[TTS] Server TTS unavailable, using browser voice");
       speakBrowser(text, onEnd);
     });
 }

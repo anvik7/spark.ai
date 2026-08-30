@@ -93,6 +93,7 @@ export const api = {
     req("/billing/verify", { method: "POST", body: { order_id } }),
   getGoal: () => req("/goals"),
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
+  updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
 
   // Papers
   listPapers: (params = {}) => {

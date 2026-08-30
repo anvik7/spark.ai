@@ -1,12 +1,18 @@
-import React, { useState } from "react";
+import React from "react";
 
-const BG_COLORS = [
-  "linear-gradient(135deg, #F59E0B, #D97706)",
-  "linear-gradient(135deg, #6366F1, #4F46E5)",
-  "linear-gradient(135deg, #10B981, #059669)",
-  "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-  "linear-gradient(135deg, #EC4899, #DB2777)",
-  "linear-gradient(135deg, #3B82F6, #2563EB)",
+export const AVATAR_PRESETS = [
+  { id: "preset-1", name: "Cosmic Spark", bg: "linear-gradient(135deg, #8B5CF6, #EC4899)", icon: "✨" },
+  { id: "preset-2", name: "Amber Pulse", bg: "linear-gradient(135deg, #F59E0B, #EF4444)", icon: "⚡" },
+  { id: "preset-3", name: "Emerald Flow", bg: "linear-gradient(135deg, #10B981, #059669)", icon: "🌿" },
+  { id: "preset-4", name: "Neon Cyber", bg: "linear-gradient(135deg, #06B6D4, #3B82F6)", icon: "🌐" },
+  { id: "preset-5", name: "Solar Flare", bg: "linear-gradient(135deg, #F97316, #EAB308)", icon: "☀️" },
+  { id: "preset-6", name: "Violet Nebula", bg: "linear-gradient(135deg, #6366F1, #A855F7)", icon: "🔮" },
+  { id: "preset-7", name: "Ocean Crest", bg: "linear-gradient(135deg, #0284C7, #0D9488)", icon: "🌊" },
+  { id: "preset-8", name: "Ruby Nova", bg: "linear-gradient(135deg, #E11D48, #9333EA)", icon: "💎" },
+  { id: "preset-9", name: "Aurora Sky", bg: "linear-gradient(135deg, #34D399, #3B82F6)", icon: "🌌" },
+  { id: "preset-10", name: "Golden Horizon", bg: "linear-gradient(135deg, #D97706, #B45309)", icon: "🌅" },
+  { id: "preset-11", name: "Plasma Glow", bg: "linear-gradient(135deg, #EC4899, #8B5CF6)", icon: "🔥" },
+  { id: "preset-12", name: "Midnight Prism", bg: "linear-gradient(135deg, #1E293B, #475569)", icon: "✺" },
 ];
 
 function getInitials(name) {
@@ -18,51 +24,34 @@ function getInitials(name) {
   return parts[0] ? parts[0][0].toUpperCase() : "U";
 }
 
-function getColorIndex(name) {
-  if (!name) return 0;
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+export function getPreset(src, name = "User") {
+  if (src && typeof src === "string" && src.startsWith("preset-")) {
+    const found = AVATAR_PRESETS.find((p) => p.id === src);
+    if (found) return found;
   }
-  return Math.abs(hash) % BG_COLORS.length;
+  let hash = 0;
+  const str = String(name || "User");
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % AVATAR_PRESETS.length;
+  return AVATAR_PRESETS[idx];
 }
 
 export function Avatar({ src, name = "User", size = 36, style = {}, className = "" }) {
-  const [imgError, setImgError] = useState(false);
-
-  const fontSize = Math.max(10, Math.floor(size * 0.4));
-  const bg = BG_COLORS[getColorIndex(name)];
+  const preset = getPreset(src, name);
   const initials = getInitials(name);
-
-  if (src && !imgError) {
-    return (
-      <img
-        src={src}
-        alt={name}
-        onError={() => setImgError(true)}
-        className={className}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          objectFit: "cover",
-          flexShrink: 0,
-          border: "1px solid rgba(0,0,0,0.08)",
-          ...style,
-        }}
-      />
-    );
-  }
+  const fontSize = Math.max(11, Math.floor(size * 0.38));
 
   return (
     <div
       className={className}
-      title={name}
+      title={`${name} (${preset.name})`}
       style={{
         width: size,
         height: size,
         borderRadius: "50%",
-        background: bg,
+        background: preset.bg,
         color: "#FFFFFF",
         fontWeight: 700,
         fontSize: fontSize,
@@ -73,11 +62,25 @@ export function Avatar({ src, name = "User", size = 36, style = {}, className = 
         flexShrink: 0,
         letterSpacing: ".02em",
         userSelect: "none",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.14)",
+        border: "1.5px solid rgba(255,255,255,0.25)",
+        position: "relative",
         ...style,
       }}
     >
-      {initials}
+      <span>{initials}</span>
+      <span
+        style={{
+          position: "absolute",
+          bottom: -2,
+          right: -2,
+          fontSize: Math.max(8, Math.floor(size * 0.32)),
+          lineHeight: 1,
+          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
+        }}
+      >
+        {preset.icon}
+      </span>
     </div>
   );
 }

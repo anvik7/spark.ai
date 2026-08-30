@@ -85,8 +85,10 @@ def get_or_create_user(session: Session, email: str, password: str,
             "An account with this email already exists. Try logging in instead.",
         )
 
+    preset_id = f"preset-{(sum(ord(c) for c in email) % 12) + 1}"
     user = User(channel="web", external_id=email, email=email,
                 name=name or email.split("@")[0],
+                avatar_url=preset_id,
                 hashed_password=hash_password(password))
     session.add(user)
     try:
