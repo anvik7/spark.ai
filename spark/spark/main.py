@@ -580,7 +580,11 @@ def solve_task(body: TaskSolveIn, user: User = Depends(current_user)):
     if not prompt:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prompt is required.")
 
-    res = llm.solve_student_task(prompt, subject_hint=body.subject_hint)
+    try:
+        res = llm.solve_student_task(prompt, subject_hint=body.subject_hint)
+    except Exception as e:
+        print(f"[solve_task] AI solver error: {e}")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e))
 
     with get_session() as session:
         task = StudentTask(

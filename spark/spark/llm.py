@@ -320,32 +320,106 @@ def enrich_full(text: str, source_type: str = "text") -> dict:
             "topic": topic[:30], "difficulty": difficulty, "importance": importance}
 
 
+def _complete_text(prompt: str) -> str:
+    p = settings.llm_provider
+    if p == "gemini" and settings.gemini_api_key:
+        return _gemini_text(prompt)
+    if p == "groq" and settings.groq_api_key:
+        return _groq_text(prompt)
+    if p == "anthropic" and settings.anthropic_api_key:
+        return _anthropic_text(prompt)
+    raise RuntimeError("No LLM provider configured (set GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
+
+
 _SOLVE_TASK_PROMPT = (
-    "You are Spark AI, a top-tier academic tutor and problem solver. "
-    "Solve the following question/task for a student: \"{prompt}\". "
-    "Subject Hint: {subject_hint}. "
-    "Return STRICT JSON with keys:\n"
-    "- \"subject\": string (e.g., 'Mathematics', 'Physics', 'Chemistry', 'Coding', 'Writing', 'Economics', 'History', 'General Academic')\n"
+    "You are Spark AI, an expert academic tutor and problem solver. "
+    "Solve the following student question/task step-by-step: \"{prompt}\". "
+    "Subject Hint: {subject_hint}.\n\n"
+    "ACCURACY REQUIREMENTS:\n"
+    "1. For Mathematics/Science: Provide the EXACT mathematical working, algebraic derivations, line-by-line calculations, and final answer. Do NOT use generic placeholder text like 'apply formulas' or 'calculate exact steps'. Show the actual numbers, equations, and steps!\n"
+    "2. For Practice Problems: Include 2 to 3 genuine practice questions with their explicit correct solutions. Format each item EXACTLY as: 'Problem: <question text> | Answer: <correct answer>'\n"
+    "3. Return STRICT JSON with keys:\n"
+    "- \"subject\": string (e.g. 'Mathematics', 'Physics', 'Chemistry', 'Coding', 'Writing', 'Economics', 'Research', 'General Academic')\n"
     "- \"title\": string (short concise title, <=10 words)\n"
-    "- \"solution\": string (clear direct primary answer or final result)\n"
-    "- \"steps\": array of 3-5 strings (numbered step-by-step reasoning/explanation)\n"
-    "- \"formulas\": array of 1-3 strings (key formulas or core principles used)\n"
-    "- \"intuition\": string (1-2 sentences explaining plain English intuition)\n"
-    "- \"practice\": array of 2-3 strings (follow-up practice exercises with answers)\n"
+    "- \"solution\": string (explicit final answer or primary solution result, e.g. 'x = 3, x = -1/2')\n"
+    "- \"steps\": array of 3-5 strings (numbered explicit step-by-step mathematical/analytical steps with actual working)\n"
+    "- \"formulas\": array of 1-3 strings (exact formulas or core principles used, e.g. 'Quadratic Formula: x = (-b ± √(b²-4ac)) / (2a)')\n"
+    "- \"intuition\": string (1-2 sentences explaining intuitive reasoning)\n"
+    "- \"practice\": array of 2-3 strings (format: 'Problem: <exercise question> | Answer: <explicit solution>')\n"
 )
 
 
-def solve_student_task(prompt: str, subject_hint: str = "") -> dict:
-    """Solve an academic question or task. Offline-safe with structured fallback."""
-    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:3000], subject_hint=subject_hint or "General")
+def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> dict | None:
+    """Exact mathematical & algebraic solver using SymPy for offline accuracy."""
     try:
-        raw_json = _complete(p_text)
-        parsed = _extract_json(raw_json)
-        if parsed and "solution" in parsed:
+        import sympy as sp
+        from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+
+        clean_prompt = re.sub(r'^(solve|calculate|find|eval|evaluate|integrate|differentiate)\s+', '', prompt, flags=re.I).strip()
+        transform = standard_transformations + (implicit_multiplication_application,)
+
+        if "=" in clean_prompt:
+            parts = clean_prompt.split("=")
+            x = sp.Symbol('x')
+            left_expr = parse_expr(parts[0].replace("^", "**"), transformations=transform)
+            right_expr = parse_expr(parts[1].replace("^", "**"), transformations=transform)
+            eq = left_expr - right_expr
+
+            sols = sp.solve(eq, x)
+            factored = sp.factor(eq)
+
+            sols_str = ", ".join(f"x = {s}" for s in sols)
+            
+            steps = [
+                f"Write equation in standard form: {eq} = 0",
+                f"Factorize expression: {factored} = 0",
+                f"Solve linear factors for x: {sols_str}",
+                f"Verify solutions by substituting back into original equation.",
+            ]
+
+            return {
+                "subject": "Mathematics",
+                "icon": "🧮",
+                "title": f"Solve {prompt.strip()}",
+                "solution": f"Solutions: {sols_str}",
+                "steps": steps,
+                "formulas": [
+                    "Quadratic Formula: x = (-b ± √(b² - 4ac)) / (2a)",
+                    "Factorization Rule: ax² + bx + c = (mx + p)(nx + q)",
+                ],
+                "intuition": "The solutions (roots) represent the x-intercepts where the quadratic function equals zero.",
+                "practice": [
+                    "Problem: Solve 3x² - 7x + 2 = 0 | Answer: x = 2, x = 1/3",
+                    "Problem: Solve x² - 9 = 0 | Answer: x = 3, x = -3",
+                    "Problem: Solve x² - 6x + 9 = 0 | Answer: x = 3 (repeated root)",
+                ],
+            }
+    except Exception as e:
+        print(f"[sympy_solver] parsing skipped: {e}")
+    return None
+
+
+def solve_student_task(prompt: str, subject_hint: str = "") -> dict:
+    """Solve an academic question or task using real LLM execution or exact SymPy solver."""
+    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:3000], subject_hint=subject_hint or "General")
+
+    # 1. Try LLM Provider
+    try:
+        raw_text = _complete_text(p_text)
+        parsed = _extract_json(raw_text)
+        if parsed and isinstance(parsed, dict) and "solution" in parsed:
+            if "practice" in parsed and isinstance(parsed["practice"], list):
+                parsed["practice"] = [str(pr).strip() for pr in parsed["practice"] if pr]
             return parsed
     except Exception as e:
-        print(f"[llm] solve_student_task fell back to template: {e}")
+        print(f"[solve_student_task] LLM execution error: {e}")
 
+    # 2. Try Exact SymPy Mathematical Engine
+    sympy_res = _sympy_algebraic_solver(prompt, subject_hint)
+    if sympy_res:
+        return sympy_res
+
+    # 3. Handle specific academic domain queries explicitly
     low = (prompt or "").lower()
     is_math = any(k in low for k in ["math", "calculus", "integral", "derivative", "solve", "equation", "+", "-", "*", "/", "="])
     is_coding = any(k in low for k in ["code", "python", "js", "react", "bug", "function", "array", "algorithm"])
@@ -354,24 +428,8 @@ def solve_student_task(prompt: str, subject_hint: str = "") -> dict:
     subj = subject_hint or ("Mathematics" if is_math else "Coding" if is_coding else "Physics" if is_physics else "General Academic")
     icon = "🧮" if is_math else "💻" if is_coding else "🔬" if is_physics else "📚"
 
-    return {
-        "subject": subj,
-        "icon": icon,
-        "title": (prompt[:75] + "…") if len(prompt) > 75 else (prompt or "Academic Question"),
-        "solution": f"AI Solution for: {prompt[:60]}",
-        "steps": [
-          "Understand problem statement and constraints.",
-          "Apply relevant formulas, laws, or logical algorithms.",
-          "Calculate exact steps and simplify terms.",
-          "Verify solution against edge cases.",
-        ],
-        "formulas": ["Core Formula / Principle"],
-        "intuition": "Breaking complex problems into smaller step-by-step components ensures clarity and accuracy.",
-        "practice": [
-          "Practice problem 1 to test your understanding",
-          "Practice problem 2 for exam preparation",
-        ],
-    }
+    # If unconfigured/failed without SymPy parseable equation, raise error to display error banner
+    raise RuntimeError(f"AI solver could not compute solution for query '{prompt[:60]}'. Please configure an LLM API key (GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
 
 
 def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict], followup_text: str) -> str:
@@ -387,14 +445,7 @@ def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict]
         "Explain step-by-step if needed."
     )
     try:
-        p = settings.llm_provider
-        if p == "gemini" and settings.gemini_api_key:
-            return _gemini_text(p_text)
-        if p == "groq" and settings.groq_api_key:
-            return _groq_text(p_text)
-        if p == "anthropic" and settings.anthropic_api_key:
-            return _anthropic_text(p_text)
+        return _complete_text(p_text)
     except Exception as e:
-        print(f"[llm] solve_task_followup LLM fallback: {e}")
-
-    return f"Explanation for '{followup_text}': Spark AI provides contextual clarification based on your previous solution for '{task_prompt[:50]}'."
+        print(f"[llm] solve_task_followup LLM error: {e}")
+        return f"Explanation for '{followup_text}': Contextual clarification based on initial solution '{task_solution[:60]}'."

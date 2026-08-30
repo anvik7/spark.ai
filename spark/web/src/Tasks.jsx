@@ -647,17 +647,75 @@ export default function Tasks() {
                       </div>
                     )}
 
-                    {/* Practice Exercises */}
+                    {/* Practice Exercises with Copy Question Buttons */}
                     {task.practice && task.practice.length > 0 && (
                       <div style={{ marginBottom: 14 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-                          Follow-up Practice Questions
+                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
+                          Generated Practice Questions
                         </span>
-                        {task.practice.map((pq, idx) => (
-                          <div key={idx} style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: "3px 0" }}>
-                            • {pq}
-                          </div>
-                        ))}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {task.practice.map((pq, idx) => {
+                            const parts = String(pq).split("|");
+                            const problemPart = parts[0] ? parts[0].replace(/^Problem:\s*/i, "").trim() : pq;
+                            const answerPart = parts[1] ? parts[1].replace(/^Answer:\s*/i, "").trim() : "";
+                            const practiceKey = `${task.id}_p_${idx}`;
+                            const isPqCopied = copiedTask === practiceKey;
+
+                            const handleCopyPq = () => {
+                              navigator.clipboard.writeText(problemPart).then(() => {
+                                setCopiedTask(practiceKey);
+                                setTimeout(() => setCopiedTask(null), 2000);
+                              });
+                            };
+
+                            return (
+                              <div
+                                key={idx}
+                                style={{
+                                  background: "var(--surface-2)",
+                                  border: "1px solid var(--line)",
+                                  padding: "10px 12px",
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "flex-start",
+                                  gap: 10,
+                                }}
+                              >
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontWeight: 600, color: "var(--ink)" }}>
+                                    <span style={{ color: "var(--marigold-dark)", marginRight: 4 }}>Q{idx + 1}:</span>
+                                    {problemPart}
+                                  </div>
+                                  {answerPart && (
+                                    <div style={{ marginTop: 4, fontSize: 12, color: "#059669", background: "#ECFDF5", padding: "2px 8px", borderRadius: 6, display: "inline-block", border: "1px solid #A7F3D0" }}>
+                                      <b>Correct Answer:</b> {answerPart}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleCopyPq}
+                                  title="Copy practice question"
+                                  style={{
+                                    fontSize: 11,
+                                    padding: "3px 8px",
+                                    borderRadius: 6,
+                                    border: `1px solid ${isPqCopied ? "#059669" : "var(--line)"}`,
+                                    background: isPqCopied ? "#ECFDF5" : "var(--surface)",
+                                    color: isPqCopied ? "#059669" : "var(--ink-soft)",
+                                    cursor: "pointer",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {isPqCopied ? "✓ Copied Question" : "📋 Copy Question"}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
