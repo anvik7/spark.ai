@@ -552,7 +552,7 @@ def _format_task_out(t: StudentTask) -> dict:
         "practice": json.loads(t.practice_json or "[]"),
         "thread": json.loads(t.thread_json or "[]"),
         "status": t.status,
-        "created_at": t.created_at.isoformat() if t.created_at else datetime.now(timezone.utc).isoformat(),
+        "created_at": t.created_at.isoformat() if getattr(t, "created_at", None) and hasattr(t.created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
     }
 
 
