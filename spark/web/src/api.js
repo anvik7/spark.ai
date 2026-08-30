@@ -61,12 +61,23 @@ export const api = {
     return req("/me/avatar", { method: "POST", form: f });
   },
   deleteAvatar: () => req("/me/avatar", { method: "DELETE" }),
-  cards: () => Promise.resolve([]),
-  addCard: (kind, raw) => Promise.resolve({ id: "task-1", kind, raw }),
-  addVoice: () => Promise.resolve({ id: "task-voice", kind: "voice" }),
-  addFile: () => Promise.resolve({ id: "task-file", kind: "file" }),
-  deleteCard: () => Promise.resolve({ ok: true }),
-  updateCard: (id, body) => Promise.resolve({ id, ...body }),
+  cards: () => req("/captures"),
+  getCaptures: () => req("/captures"),
+  createCapture: (kind, raw, source_url = "") =>
+    req("/captures", { method: "POST", body: { kind, raw, source_url } }),
+  uploadCaptureFile: (file) => {
+    const f = new FormData();
+    f.append("file", file);
+    return req("/captures/file", { method: "POST", form: f });
+  },
+  uploadCaptureVoice: (blob) => {
+    const f = new FormData();
+    f.append("file", blob, "voice.webm");
+    return req("/captures/voice", { method: "POST", form: f });
+  },
+  deleteCapture: (id) => req(`/captures/${id}`, { method: "DELETE" }),
+  addCard: (kind, raw) => req("/captures", { method: "POST", body: { kind, raw } }),
+  deleteCard: (id) => req(`/captures/${id}`, { method: "DELETE" }),
   tags: () => req("/tags"),
   due: (limit = 3) => req(`/review/due?limit=${limit}`),
   grade: (id, grade) =>

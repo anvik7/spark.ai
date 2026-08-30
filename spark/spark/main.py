@@ -242,6 +242,7 @@ def create_card(body: CardIn, user: User = Depends(current_user)):
 
 
 @app.post("/api/cards/voice")
+@app.post("/api/captures/voice")
 async def create_voice_card(file: UploadFile = File(...),
                             lang_hint: str = Form("auto"),
                             user: User = Depends(current_user)):
@@ -257,15 +258,26 @@ async def create_voice_card(file: UploadFile = File(...),
         ok, msg = subscription.check_ai_quota(session, user)
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
+        
+        # Save voice recording file to disk
+        ext = Path(file.filename or "voice.webm").suffix or ".webm"
+        filename = f"voice_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+        file_path = _UPLOAD_FILES_DIR / filename
+        with open(file_path, "wb") as f:
+            f.write(audio)
+
         fields = build_card_fields("voice", audio_bytes=audio, lang_hint=lang_hint)
+        fields["source_url"] = f"/api/uploads/{filename}"
+        fields["kind"] = "voice"
         return _card_out(_save_card(session, user, fields))
 
 
 @app.post("/api/cards/file")
+@app.post("/api/captures/file")
 async def create_file_card(file: UploadFile = File(...),
                            user: User = Depends(current_user)):
     data = await file.read()
-    is_pdf = data[:5] == b"%PDF-"
+    is_pdf = data[:5] == b"%PDF-" or (file.filename and file.filename.lower().endswith(".pdf"))
     is_image = (file.content_type and file.content_type.startswith("image/")) or \
                (file.filename and Path(file.filename).suffix.lower() in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"])
 
@@ -281,26 +293,35 @@ async def create_file_card(file: UploadFile = File(...),
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
 
+        ext = Path(file.filename or "file.bin").suffix or (".pdf" if is_pdf else ".jpg")
+        filename = f"file_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+        file_path = _UPLOAD_FILES_DIR / filename
+        with open(file_path, "wb") as f:
+            f.write(data)
+
         if is_pdf:
             fields = build_card_fields("pdf", pdf_bytes=data)
+            fields["source_url"] = f"/api/uploads/{filename}"
+            fields["kind"] = "pdf"
+            if not fields.get("title"):
+                fields["title"] = file.filename or "PDF Document"
         elif is_image:
-            ext = Path(file.filename or "image.jpg").suffix or ".jpg"
-            filename = f"card_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-            file_path = _UPLOAD_FILES_DIR / filename
-            with open(file_path, "wb") as f:
-                f.write(data)
-
             fields = build_card_fields("image", raw=f"Image capture: {file.filename or 'photo'}")
             fields["source_url"] = f"/api/uploads/{filename}"
             fields["kind"] = "image"
+            if not fields.get("title"):
+                fields["title"] = file.filename or "Photo / Diagram"
         else:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                "Unsupported file format. Please upload a PDF or image (PNG, JPG, WebP, GIF).")
+            fields = build_card_fields("text", raw=f"Uploaded file: {file.filename}")
+            fields["source_url"] = f"/api/uploads/{filename}"
+            fields["kind"] = "file"
+            fields["title"] = file.filename or "Uploaded File"
 
         return _card_out(_save_card(session, user, fields))
 
 
 @app.get("/api/cards")
+@app.get("/api/captures")
 def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
                user: User = Depends(current_user)):
     with get_session() as session:
@@ -317,7 +338,13 @@ def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
         return [_card_out(c) for c in cards]
 
 
+@app.post("/api/captures")
+def create_capture_alias(body: CardIn, user: User = Depends(current_user)):
+    return create_card(body, user)
+
+
 @app.delete("/api/cards/{card_id}")
+@app.delete("/api/captures/{card_id}")
 def delete_card(card_id: int, user: User = Depends(current_user)):
     with get_session() as session:
         db_user = session.get(User, user.id)
@@ -327,7 +354,7 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         if not card:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Card not found")
         if card.user_id != user.id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this card")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this item")
 
         # Delete related CardEmbedding row if present
         emb = session.get(CardEmbedding, card_id)
