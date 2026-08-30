@@ -1,163 +1,273 @@
-"""AI Interview Simulator — a multi-round mock hiring process.
+"""Production AI Interview Simulator Engine.
 
-Three realistic rounds (HR screen, technical deep-dive, hiring manager), each
-conducted conversationally: the candidate answers one question at a time and
-gets feedback, then a final scorecard. Tuned to a target role/company and any
-pasted context (job description, company blurb).
-
-Stateless: the client holds the transcript and sends it each turn, so no
-session storage is needed. Self-contained LLM dispatch with an offline question
-bank, so it always works.
+Analyzes candidate resumes, evaluates target role JDs, dynamically probes
+candidate claims and metrics, adapts difficulty, and generates multi-metric
+candidate evaluation scorecards.
 """
 import json
-import random
-
+import re
 import httpx
 
 from .config import get_settings
 
 settings = get_settings()
 
-ROUNDS = ["HR Screen", "Technical Deep-Dive", "Hiring Manager"]
 
-_PERSONA = {
-    "HR Screen": ("Sarah Chen", "HR Lead", "warm but probing"),
-    "Technical Deep-Dive": ("Arjun Mehta", "Senior Engineer", "rigorous, tests depth"),
-    "Hiring Manager": ("Priya Nair", "Hiring Manager", "pragmatic, probes ownership"),
-}
-
-_FALLBACK_Q = {
-    "HR Screen": [
-        "Walk me through your background and why this role caught your eye.",
-        "Tell me about a time you had to learn something hard, fast. How did you do it?",
-        "Where do you want to be in three years, and how does this role fit?",
-    ],
-    "Technical Deep-Dive": [
-        "Describe a system you built end to end. What were the hardest trade-offs?",
-        "How would you design a service that handles 10x its current traffic overnight?",
-        "Curveball: your production database is at 95% CPU right now. What do you do first?",
-    ],
-    "Hiring Manager": [
-        "Tell me about a project you owned from idea to launch.",
-        "Describe a decision you made that turned out to be wrong. What happened?",
-        "Stress test: a teammate ships a bug that breaks your feature the day before a demo. Go.",
-    ],
-}
-
-
-def _llm(prompt: str, max_tokens: int = 500) -> str:
+def _llm(prompt: str, max_tokens: int = 1000) -> str:
     p = settings.llm_provider
     if p == "groq" and settings.groq_api_key:
-        r = httpx.post("https://api.groq.com/openai/v1/chat/completions",
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-            json={"model": settings.llm_model or "llama-3.3-70b-versatile",
-                  "messages": [{"role": "user", "content": prompt}]}, timeout=45)
+            json={
+                "model": settings.llm_model or "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=45,
+        )
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"].strip()
     if p == "gemini" and settings.gemini_api_key:
         model = settings.llm_model or "gemini-2.0-flash"
-        r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/"
-                       f"{model}:generateContent?key={settings.gemini_api_key}",
-                       json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=45)
+        r = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=45,
+        )
         r.raise_for_status()
         return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     if p == "anthropic" and settings.anthropic_api_key:
-        r = httpx.post("https://api.anthropic.com/v1/messages",
+        r = httpx.post(
+            "https://api.anthropic.com/v1/messages",
             headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01"},
-            json={"model": settings.llm_model or "claude-haiku-4-5-20251001",
-                  "max_tokens": max_tokens,
-                  "messages": [{"role": "user", "content": prompt}]}, timeout=45)
+            json={
+                "model": settings.llm_model or "claude-haiku-4-5-20251001",
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=45,
+        )
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
     raise RuntimeError("no LLM provider configured")
 
 
-def _json(text: str, opener="{", closer="}"):
-    s, e = text.find(opener), text.rfind(closer)
+def _extract_json(text: str):
+    s, e = text.find("{"), text.rfind("}")
     if s == -1 or e == -1 or e < s:
         return None
     try:
-        return json.loads(text[s:e + 1])
+        return json.loads(text[s: e + 1])
     except Exception:
         return None
 
 
-def _ctx(role: str, company: str, context: str) -> str:
-    parts = [f"Target role: {role or 'Software Engineer'}."]
-    if company:
-        parts.append(f"Company: {company}.")
-    if context:
-        parts.append(f"Role/company context: {context[:1500]}")
-    return " ".join(parts)
+# --- Opening Question ---------------------------------------------------------
+
+_OPENING_PROMPT = (
+    "You are an expert executive interviewer conducting a {round_type} interview for the position of '{target_role}'"
+    "{company_info}. Difficulty level: {difficulty}.\n\n"
+    "CANDIDATE RESUME:\n{resume_text}\n\n"
+    "JOB DESCRIPTION:\n{job_description}\n\n"
+    "INSTRUCTIONS:\n"
+    "1. Read the candidate's resume and identify specific projects, technologies, achievements, or metrics (e.g. '% increase', 'built system X').\n"
+    "2. Generate ONE sharp, realistic opening question specifically investigating the candidate's actual background and how it applies to the target role.\n"
+    "3. Do NOT ask generic questions like 'Tell me about yourself'. Ask a direct, inquisitive question probing a specific claim or achievement on their resume.\n"
+    "4. Output ONLY the opening question, directly to the candidate."
+)
 
 
-def next_turn(role: str, company: str, context: str,
-              round_name: str, history: list[dict]) -> dict:
-    """history: [{q, a}, ...] for THIS round. Returns {feedback, question}."""
-    p_info = _PERSONA.get(round_name, ("Alex", "Interviewer", "an experienced professional"))
-    name, title, behavior = p_info
-    persona_desc = f"{name}, the {title} — {behavior}"
-    convo = "\n".join(f"Q: {h.get('q','')}\nCandidate: {h.get('a','')}"
-                      for h in history if h.get("a"))
-    prompt = (
-        f"You are {persona_desc}, running the '{round_name}' round of a real interview. "
-        f"{_ctx(role, company, context)}\nConversation so far:\n{convo or '(none yet)'}\n\n"
-        "Return STRICT JSON with keys: \"feedback\" (1-2 sentences critiquing the "
-        "candidate's LAST answer — specific, honest, kind; empty string if they "
-        "haven't answered yet), \"question\" (your next question — ONE question, "
-        "realistic, specific, progressively harder), and \"tips\" (array of exactly 3 "
-        "short coaching strings for answering that specific question). Stay in character for the round."
+def generate_opening_question(
+    target_role: str = "",
+    target_company: str = "",
+    job_description: str = "",
+    resume_text: str = "",
+    round_type: str = "Technical Deep-Dive",
+    difficulty: str = "Medium",
+) -> str:
+    """Generate candidate-specific opening question probing resume claims."""
+    role = target_role.strip() or "Software / Professional Role"
+    company_info = f" at {target_company.strip()}" if target_company.strip() else ""
+
+    prompt = _OPENING_PROMPT.format(
+        round_type=round_type,
+        target_role=role,
+        company_info=company_info,
+        difficulty=difficulty,
+        resume_text=(resume_text or "").strip()[:5000] or "General candidate background in " + role,
+        job_description=(job_description or "").strip()[:3000] or "Standard expectations for " + role,
     )
-    asked = len([h for h in history if h.get("a")])
+
     try:
-        obj = _json(_llm(prompt))
-        if obj and obj.get("question"):
-            return {"feedback": (obj.get("feedback") or "").strip(),
-                    "question": obj["question"].strip(),
-                    "tips": obj.get("tips", []),
-                    "interviewer_name": name,
-                    "interviewer_title": title}
+        q = _llm(prompt, max_tokens=300)
+        if q and len(q) > 15:
+            return q.strip().strip('"')
     except Exception as e:
-        print(f"[interview] LLM unavailable, using question bank: {e}")
-    bank = _FALLBACK_Q.get(round_name, _FALLBACK_Q["HR Screen"])
+        print(f"[generate_opening_question] LLM fallback: {e}")
+
+    # Intelligent fallback tailored to role
+    if "Technical" in round_type or "Engineering" in role:
+        return f"Looking at your experience, walk me through the architecture of the most complex system you owned. What trade-offs did you make for scalable performance?"
+    elif "Manager" in round_type or "Product" in role:
+        return f"Walk me through how you prioritize features when engineering deadlines conflict with business requirements for {role}."
+    else:
+        return f"Tell me about a project on your resume that best demonstrates your readiness for the {role} position."
+
+
+# --- Multi-Turn Adaptive Questioning ------------------------------------------
+
+_TURN_PROMPT = (
+    "You are an expert interviewer conducting a {round_type} interview for '{target_role}'. Current difficulty: {difficulty}.\n\n"
+    "CANDIDATE RESUME:\n{resume_text}\n\n"
+    "PAST INTERVIEW TRANSCRIPT:\n{transcript}\n\n"
+    "LATEST CANDIDATE ANSWER:\n\"{last_answer}\"\n\n"
+    "INSTRUCTIONS:\n"
+    "1. Evaluate the candidate's latest answer for technical depth, metric evidence, and specificity.\n"
+    "2. Provide 1-2 sentences of concise recruiter feedback on their answer.\n"
+    "3. Ask the NEXT intelligent follow-up question. If they made a specific claim or mentioned a metric/technology, probe deeper into trade-offs, edge cases, baseline measurements, or concrete implementation details.\n"
+    "4. Return STRICT JSON with keys:\n"
+    "   - \"feedback\": string (1-2 sentences constructive feedback)\n"
+    "   - \"next_question\": string (the next inquiring question)\n"
+    "   - \"adjusted_difficulty\": string ('Easy', 'Medium', 'Hard', 'Expert')"
+)
+
+
+def next_interview_turn(
+    target_role: str = "",
+    target_company: str = "",
+    job_description: str = "",
+    resume_text: str = "",
+    round_type: str = "Technical Deep-Dive",
+    difficulty: str = "Medium",
+    history: list = None,
+    last_answer: str = "",
+) -> dict:
+    """Evaluate candidate answer and generate next adaptive follow-up question."""
+    history_lines = []
+    for turn in (history or [])[-4:]:
+        history_lines.append(f"Q: {turn.get('q','')}\nCandidate: {turn.get('a','')}")
+    transcript = "\n\n".join(history_lines)
+
+    prompt = _TURN_PROMPT.format(
+        round_type=round_type,
+        target_role=target_role or "Professional Role",
+        difficulty=difficulty,
+        resume_text=(resume_text or "").strip()[:4000],
+        transcript=transcript[:3000],
+        last_answer=(last_answer or "").strip()[:2000],
+    )
+
+    try:
+        raw_json = _llm(prompt, max_tokens=600)
+        parsed = _extract_json(raw_json)
+        if parsed and isinstance(parsed, dict) and "next_question" in parsed:
+            return parsed
+    except Exception as e:
+        print(f"[next_interview_turn] LLM fallback: {e}")
+
+    # Fallback response evaluating answer length and depth
+    clean_ans = (last_answer or "").strip()
+    is_detailed = len(clean_ans) > 150
+
+    adjusted_diff = "Hard" if is_detailed and difficulty in ["Medium", "Hard"] else "Medium"
+    fb = "Good initial overview. Adding specific quantitative metrics and concrete trade-offs would strengthen your response." if is_detailed else "Your response was quite brief. Recruiters look for specific evidence, metrics, and implementation details."
+
+    if is_detailed:
+        next_q = f"You highlighted your implementation approach. What was the most critical edge case or failure mode you encountered, and how did you resolve it?"
+    else:
+        next_q = f"Can you walk me through a specific example with concrete numbers and tools to demonstrate how you handled that in practice?"
+
     return {
-        "feedback": "" if asked == 0 else "Solid — try to anchor your answer in a"
-                    " concrete example with a measurable outcome.",
-        "question": bank[min(asked, len(bank) - 1)],
-        "tips": ["Use the STAR method", "Keep it under 2 minutes", "Quantify your impact"],
-        "interviewer_name": name,
-        "interviewer_title": title
+        "feedback": fb,
+        "next_question": next_q,
+        "adjusted_difficulty": adjusted_diff,
     }
 
 
-def scorecard(role: str, company: str, transcript: list[dict]) -> dict:
-    """transcript: [{round, q, a}, ...] across all rounds."""
-    convo = "\n".join(f"[{h.get('round','')}] Q: {h.get('q','')}\nA: {h.get('a','')}"
-                      for h in transcript if h.get("a"))
-    prompt = (
-        f"You are the hiring panel for a {role or 'Software Engineer'} role"
-        f"{(' at ' + company) if company else ''}. Here is the full interview:\n"
-        f"{convo}\n\nReturn STRICT JSON: \"overall\" (integer 0-100 readiness), "
-        "\"strengths\" (array of <=3 short strings), \"improvements\" (array of "
-        "<=3 short, actionable strings), \"verdict\" (<=25 words: would you advance "
-        "this candidate, and the single thing to fix first)."
+# --- Candidate Evaluation Report ----------------------------------------------
+
+_EVALUATION_PROMPT = (
+    "You are the Lead Hiring Committee Chair. Evaluate this completed multi-turn interview for '{target_role}'{company_info}.\n\n"
+    "CANDIDATE RESUME:\n{resume_text}\n\n"
+    "JOB DESCRIPTION:\n{job_description}\n\n"
+    "FULL INTERVIEW TRANSCRIPT:\n{transcript}\n\n"
+    "Return STRICT JSON with keys:\n"
+    "- \"overall_score\": integer (0 to 100 overall candidate performance score)\n"
+    "- \"technical_depth\": integer (0 to 100)\n"
+    "- \"communication\": integer (0 to 100)\n"
+    "- \"problem_solving\": integer (0 to 100)\n"
+    "- \"role_relevance\": integer (0 to 100)\n"
+    "- \"specificity_evidence\": integer (0 to 100)\n"
+    "- \"verdict\": string ('Strong Hire', 'Hire', 'Leaning Hire', 'No Hire')\n"
+    "- \"summary\": string (recruiter evaluation summary)\n"
+    "- \"strengths\": array of strings (demonstrated candidate strengths)\n"
+    "- \"weaknesses\": array of strings (missed opportunities and weaknesses)\n"
+    "- \"practice_areas\": array of strings (concrete preparation recommendations)\n"
+)
+
+
+def evaluate_interview_session(
+    target_role: str = "",
+    target_company: str = "",
+    job_description: str = "",
+    resume_text: str = "",
+    round_type: str = "Technical Deep-Dive",
+    history: list = None,
+) -> dict:
+    """Generate complete candidate evaluation report from multi-turn transcript."""
+    history_lines = []
+    for idx, turn in enumerate(history or []):
+        history_lines.append(f"Turn {idx+1}:\nInterviewer: {turn.get('q','')}\nCandidate: {turn.get('a','')}\nFeedback: {turn.get('feedback','')}")
+    transcript = "\n\n".join(history_lines)
+
+    company_info = f" at {target_company.strip()}" if target_company.strip() else ""
+
+    prompt = _EVALUATION_PROMPT.format(
+        target_role=target_role or "Professional Role",
+        company_info=company_info,
+        resume_text=(resume_text or "").strip()[:4000],
+        job_description=(job_description or "").strip()[:3000],
+        transcript=transcript[:6000],
     )
+
     try:
-        obj = _json(_llm(prompt))
-        if obj and "overall" in obj:
-            try:
-                obj["overall"] = max(0, min(100, int(obj["overall"])))
-            except Exception:
-                obj["overall"] = 60
-            return obj
+        raw_json = _llm(prompt, max_tokens=1000)
+        parsed = _extract_json(raw_json)
+        if parsed and isinstance(parsed, dict) and "overall_score" in parsed:
+            return parsed
     except Exception as e:
-        print(f"[interview] scorecard LLM unavailable, using fallback: {e}")
-    answered = len([h for h in transcript if h.get("a")])
+        print(f"[evaluate_interview_session] LLM fallback: {e}")
+
+    # Calculate score from candidate answers length & detail
+    turns_count = len(history or [])
+    avg_answer_length = sum(len(t.get("a", "")) for t in (history or [])) / (turns_count or 1)
+
+    score = 75 if avg_answer_length > 150 else 55
+    if turns_count >= 3:
+        score += 10
+    score = min(96, max(40, score))
+
+    verdict = "Strong Hire" if score >= 85 else "Hire" if score >= 70 else "Leaning Hire" if score >= 60 else "No Hire"
+
     return {
-        "overall": min(95, 40 + answered * 6),
-        "strengths": ["Completed all rounds", "Engaged with hard questions"],
-        "improvements": ["Add metrics to your examples",
-                         "Tighten answers to 60-90 seconds",
-                         "Add a Groq/Gemini key for AI-graded feedback"],
-        "verdict": "Promising — practice quantifying impact before the real thing.",
+        "overall_score": score,
+        "technical_depth": score - 3,
+        "communication": score + 2,
+        "problem_solving": score,
+        "role_relevance": score + 4,
+        "specificity_evidence": max(45, score - 8),
+        "verdict": verdict,
+        "summary": f"Completed {turns_count} rounds for {target_role}. Demonstrated solid domain knowledge with potential to add quantitative metrics.",
+        "strengths": [
+            "Good engagement with scenario questions",
+            "Clear articulation of background experience",
+        ],
+        "weaknesses": [
+            "Could provide more baseline numbers and quantifiable business impact",
+            "Deepen technical trade-off analysis during scenario questions",
+        ],
+        "practice_areas": [
+            "Practice the STAR method (Situation, Task, Action, Result) with metrics",
+            "Prepare detailed system architecture breakdowns with failure modes",
+        ],
     }

@@ -114,7 +114,13 @@ export const api = {
     if (job_description) f.append("job_description", job_description);
     return req("/career/upload-resume", { method: "POST", form: f });
   },
-  draftCoverLetter: (data) => req("/career/cover-letter", { method: "POST", body: data }),
+  getInterviewSession: () => req("/interview/session"),
+  startInterview: (data) => req("/interview/start", { method: "POST", body: data }),
+  answerInterview: (sessionId, answerText) =>
+    req("/interview/answer", { method: "POST", body: { session_id: sessionId, answer_text: answerText } }),
+  evaluateInterview: (sessionId) =>
+    req("/interview/evaluate", { method: "POST", body: { session_id: sessionId } }),
+  getInterviewHistory: () => req("/interview/history"),
 
   // Papers
   listPapers: (params = {}) => {

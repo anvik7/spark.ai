@@ -159,7 +159,20 @@ class StudentTask(SQLModel, table=True):
     practice_json: str = "[]"
     thread_json: str = "[]"
     status: str = "Solved by AI"
+class InterviewSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    target_role: str = ""
+    target_company: str = ""
+    job_description: str = ""
+    resume_text: str = ""
+    round_type: str = "Technical Deep-Dive"
+    difficulty: str = "Medium"
+    status: str = "active"
+    turns_json: str = "[]"
+    evaluation_json: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def init_db() -> None:

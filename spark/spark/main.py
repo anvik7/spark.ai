@@ -28,7 +28,7 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, StudentTask, StudySession, User, UserCareerProfile, get_session, init_db
+from .models import Card, CardEmbedding, InterviewSession, StudentTask, StudySession, User, UserCareerProfile, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
@@ -882,18 +882,184 @@ def generate_cover_letter(body: CoverLetterIn, user: User = Depends(current_user
 # --- billing / Razorpay ----------------------------------------------------
 
 
-@app.post("/api/interview")
-def interview_turn(body: InterviewIn, user: User = Depends(current_user)):
+def _format_interview_session(s: InterviewSession) -> dict:
+    return {
+        "id": s.id,
+        "target_role": s.target_role,
+        "target_company": s.target_company,
+        "job_description": s.job_description,
+        "resume_text": s.resume_text,
+        "round_type": s.round_type,
+        "difficulty": s.difficulty,
+        "status": s.status,
+        "turns": json.loads(s.turns_json or "[]"),
+        "evaluation": json.loads(s.evaluation_json) if s.evaluation_json else None,
+        "created_at": s.created_at.isoformat() if s.created_at else datetime.now(timezone.utc).isoformat(),
+        "updated_at": s.updated_at.isoformat() if s.updated_at else datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/interview/session")
+def get_active_interview_session(user: User = Depends(current_user)):
+    """Get active or latest interview session for authenticated user."""
     with get_session() as session:
-        u = session.get(User, user.id)
-        if not u:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        ok, msg = subscription.check_ai_quota(session, u)
-        if not ok:
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
-    if body.action == "score":
-        return interview.scorecard(body.role, body.company, body.transcript)
-    return interview.next_turn(body.role, body.company, body.context, body.round, body.history)
+        sess = session.exec(
+            select(InterviewSession)
+            .where(InterviewSession.user_id == user.id)
+            .order_by(col(InterviewSession.created_at).desc())
+        ).first()
+        if not sess:
+            return None
+        return _format_interview_session(sess)
+
+
+class InterviewStartIn(BaseModel):
+    target_role: str = ""
+    target_company: str = ""
+    job_description: str = ""
+    resume_text: str = ""
+    round_type: str = "Technical Deep-Dive"
+    difficulty: str = "Medium"
+
+
+@app.post("/api/interview/start")
+def start_interview_session(body: InterviewStartIn, user: User = Depends(current_user)):
+    """Start a new dynamic candidate-specific interview session."""
+    target_role = body.target_role.strip() or "Software / Professional Role"
+
+    opening_q = interview.generate_opening_question(
+        target_role=target_role,
+        target_company=body.target_company,
+        job_description=body.job_description,
+        resume_text=body.resume_text,
+        round_type=body.round_type,
+        difficulty=body.difficulty,
+    )
+
+    initial_turn = {
+        "q": opening_q,
+        "a": "",
+        "feedback": "",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    with get_session() as session:
+        sess = InterviewSession(
+            user_id=user.id,
+            target_role=target_role,
+            target_company=body.target_company.strip(),
+            job_description=body.job_description.strip(),
+            resume_text=body.resume_text.strip(),
+            round_type=body.round_type,
+            difficulty=body.difficulty,
+            status="active",
+            turns_json=json.dumps([initial_turn]),
+        )
+        session.add(sess)
+        session.commit()
+        session.refresh(sess)
+        return _format_interview_session(sess)
+
+
+class InterviewAnswerIn(BaseModel):
+    session_id: int
+    answer_text: str = ""
+
+
+@app.post("/api/interview/answer")
+def answer_interview_turn(body: InterviewAnswerIn, user: User = Depends(current_user)):
+    """Submit candidate answer, evaluate, adapt difficulty, and generate next question."""
+    answer = body.answer_text.strip()
+    if not answer:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Answer text is required.")
+
+    with get_session() as session:
+        sess = session.get(InterviewSession, body.session_id)
+        if not sess or sess.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Interview session not found.")
+
+        turns = json.loads(sess.turns_json or "[]")
+        if not turns:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Session has no active question.")
+
+        # Update last question with candidate's answer
+        turns[-1]["a"] = answer
+
+        # Generate next question & turn feedback
+        res = interview.next_interview_turn(
+            target_role=sess.target_role,
+            target_company=sess.target_company,
+            job_description=sess.job_description,
+            resume_text=sess.resume_text,
+            round_type=sess.round_type,
+            difficulty=sess.difficulty,
+            history=turns,
+            last_answer=answer,
+        )
+
+        turns[-1]["feedback"] = res.get("feedback", "")
+        if res.get("adjusted_difficulty"):
+            sess.difficulty = res["adjusted_difficulty"]
+
+        # Append next turn question
+        turns.append({
+            "q": res.get("next_question", "Walk me through your next step."),
+            "a": "",
+            "feedback": "",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        sess.turns_json = json.dumps(turns)
+        sess.updated_at = datetime.now(timezone.utc)
+        session.add(sess)
+        session.commit()
+        session.refresh(sess)
+        return _format_interview_session(sess)
+
+
+class InterviewEvaluateIn(BaseModel):
+    session_id: int
+
+
+@app.post("/api/interview/evaluate")
+def evaluate_interview_session_route(body: InterviewEvaluateIn, user: User = Depends(current_user)):
+    """Conclude interview session and generate complete candidate evaluation report."""
+    with get_session() as session:
+        sess = session.get(InterviewSession, body.session_id)
+        if not sess or sess.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Interview session not found.")
+
+        turns = json.loads(sess.turns_json or "[]")
+        answered_turns = [t for t in turns if t.get("a", "").strip()]
+
+        report = interview.evaluate_interview_session(
+            target_role=sess.target_role,
+            target_company=sess.target_company,
+            job_description=sess.job_description,
+            resume_text=sess.resume_text,
+            round_type=sess.round_type,
+            history=answered_turns if answered_turns else turns,
+        )
+
+        sess.evaluation_json = json.dumps(report)
+        sess.status = "completed"
+        sess.updated_at = datetime.now(timezone.utc)
+        session.add(sess)
+        session.commit()
+        session.refresh(sess)
+        return _format_interview_session(sess)
+
+
+@app.get("/api/interview/history")
+def list_interview_history(user: User = Depends(current_user)):
+    """List completed interview session history for authenticated user."""
+    with get_session() as session:
+        sessions = session.exec(
+            select(InterviewSession)
+            .where(InterviewSession.user_id == user.id)
+            .order_by(col(InterviewSession.created_at).desc())
+        ).all()
+        return [_format_interview_session(s) for s in sessions]
 
 
 # --- text-to-speech (MiniMax Speech 2.8) ------------------------------------
