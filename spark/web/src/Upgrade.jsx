@@ -6,12 +6,12 @@ const FREE = [
   "AI auto-tagging + summarization",
   "Spaced repetition review",
   "Semantic search (Connect)",
-  "Up to 30 knowledge cards",
+  "Full second-brain storage",
 ];
 
 const PRO = [
   "Everything in Free",
-  "Unlimited cards",
+  "Unlimited AI captures & voice notes",
   "AI career readiness score",
   "Live job market analysis",
   "AI resume audit",

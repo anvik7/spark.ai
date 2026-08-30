@@ -500,13 +500,12 @@ nav button.active, .nav-btn.active,
 nav button[data-active="true"] {
   color: currentColor;
 }
-.nav button:nth-child(1).active, .nav-btn:nth-child(1).active { color: var(--c-capture); }
-.nav button:nth-child(2).active, .nav-btn:nth-child(2).active { color: var(--c-cards); }
-.nav button:nth-child(3).active, .nav-btn:nth-child(3).active { color: #10B981; }
+.nav button:nth-child(1).active, .nav-btn:nth-child(1).active { color: var(--marigold); }
+.nav button:nth-child(2).active, .nav-btn:nth-child(2).active { color: #10B981; }
+.nav button:nth-child(3).active, .nav-btn:nth-child(3).active { color: #3B82F6; }
 .nav button:nth-child(4).active, .nav-btn:nth-child(4).active { color: #8B5CF6; }
-.nav button:nth-child(5).active, .nav-btn:nth-child(5).active { color: #F43F5E; }
-.nav button:nth-child(6).active, .nav-btn:nth-child(6).active { color: var(--c-career); }
-.nav button:nth-child(7).active, .nav-btn:nth-child(7).active { color: var(--c-coach); }
+.nav button:nth-child(5).active, .nav-btn:nth-child(5).active { color: #F59E0B; }
+.nav button:nth-child(6).active, .nav-btn:nth-child(6).active { color: #FB7185; }
 
 nav button.active::before, .nav-btn.active::before,
 nav button[data-active="true"]::before {

@@ -119,7 +119,7 @@ export default function App() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button className={`plan-chip ${user.plan === "pro" ? "pro" : ""}`}
             onClick={() => { setShowAccount(false); setShowUpgrade(true); }}>
-            {user.plan === "pro" ? "Pro" : `Free · ${user.card_count}/${user.free_card_limit}`}
+            {user.plan === "pro" ? "Pro" : "Free Plan"}
           </button>
           <button
             className={`nav-btn ${showAccount ? "active" : ""}`}
@@ -142,8 +142,7 @@ export default function App() {
         <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
       ) : (
         <>
-          {tab === "capture" && <Capture onSaved={() => { setRefreshCards(r => r + 1); refreshUser(); }} />}
-          {tab === "cards" && <Cards key={refreshCards} flash={flash} onChange={refreshUser} />}
+          {(tab === "capture" || tab === "cards") && <Capture onSaved={refreshUser} />}
           {tab === "study" && <StudyTracker />}
           {tab === "papers" && <Papers />}
           {tab === "circles" && <Circles />}
@@ -156,7 +155,6 @@ export default function App() {
 
       <nav className="nav">
         <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.pen} label="Capture" />
-        <NavBtn id="cards" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.cards} label="Cards" />
         <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
         <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.paper} label="Papers" />
         <NavBtn id="circles" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.circles} label="Circles" />

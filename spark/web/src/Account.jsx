@@ -148,8 +148,13 @@ export default function Account({ user = {}, onLogout, onUpdateUser }) {
           boxShadow: "var(--sh-sm)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Plan</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", display: "block" }}>Account Plan</span>
+            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>
+              {isPro ? "Full access to AI tools, voice mock interviews & learning plans." : "Standard access to Spark capture, study & practice tools."}
+            </span>
+          </div>
           <span
             style={{
               fontSize: 12,
@@ -160,33 +165,13 @@ export default function Account({ user = {}, onLogout, onUpdateUser }) {
                 ? "linear-gradient(135deg, var(--marigold), var(--marigold-dark))"
                 : "var(--surface-2)",
               color: isPro ? "#fff" : "var(--ink-soft)",
+              flexShrink: 0,
+              marginLeft: 12,
             }}
           >
             {isPro ? "Pro" : "Free"}
           </span>
         </div>
-
-        {!isPro && (
-          <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 12.5,
-                color: "var(--ink-soft)",
-                marginBottom: 6,
-              }}
-            >
-              <span>Cards used</span>
-              <span>
-                {cardCount} / {freeLimit}
-              </span>
-            </div>
-            <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: "var(--marigold)" }} />
-            </div>
-          </>
-        )}
 
         {isPro && user?.plan_until && (
           <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: 0 }}>
