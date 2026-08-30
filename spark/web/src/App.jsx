@@ -71,6 +71,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (user?.avatar_url) {
+      document.body.setAttribute("data-persona", user.avatar_url);
+    } else {
+      document.body.removeAttribute("data-persona");
+    }
+  }, [user?.avatar_url]);
+
+  useEffect(() => {
     const onUnauthorized = () => { setUser(null); setShowAuth(true); };
     window.addEventListener("spark:unauthorized", onUnauthorized);
     return () => window.removeEventListener("spark:unauthorized", onUnauthorized);

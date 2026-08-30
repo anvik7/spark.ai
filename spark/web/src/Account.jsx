@@ -17,11 +17,13 @@ export default function Account({ user = {}, onLogout, onUpdateUser }) {
     if (updatingPreset || user?.avatar_url === presetId) return;
     setUpdatingPreset(true);
     setErr("");
+    document.body.setAttribute("data-persona", presetId);
     try {
       const updatedUser = await api.updateAvatarPreset(presetId);
       onUpdateUser?.(updatedUser);
     } catch (error) {
       setErr(error.message || "Failed to update avatar persona.");
+      if (user?.avatar_url) document.body.setAttribute("data-persona", user.avatar_url);
     } finally {
       setUpdatingPreset(false);
     }

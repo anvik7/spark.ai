@@ -9,7 +9,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Brand */
+  /* Brand Defaults */
   --marigold:       #F59E0B;
   --marigold-dark:  #D97706;
   --marigold-glow:  rgba(245,158,11,.18);
@@ -53,6 +53,148 @@
   --c-connect:  #8B5CF6;
   --c-career:   #3B82F6;
   --c-coach:    #FB7185;
+
+  --p-gradient: linear-gradient(135deg, var(--marigold), var(--marigold-dark));
+}
+
+/* ============================================================
+   PERSONA THEME PALETTES (12 Distinct Visual Personalities)
+   ============================================================ */
+
+body, .app, header, .app-header, .nav, button, input, textarea, select, .card, .tag, .screen {
+  transition: background-color .3s ease, border-color .3s ease, color .3s ease, box-shadow .3s ease;
+}
+
+/* Preset 1: Cosmic Spark (Deep Violet & Magenta) */
+body[data-persona="preset-1"], [data-persona="preset-1"] {
+  --marigold:       #8B5CF6;
+  --marigold-dark:  #7C3AED;
+  --marigold-glow:  rgba(139,92,246,.20);
+  --marigold-light: #F3E8FF;
+  --c-capture:      #8B5CF6;
+  --c-cards:        #EC4899;
+  --p-gradient:     linear-gradient(135deg, #8B5CF6, #EC4899);
+}
+
+/* Preset 2: Amber Pulse (Golden Amber & Crimson) */
+body[data-persona="preset-2"], [data-persona="preset-2"] {
+  --marigold:       #F59E0B;
+  --marigold-dark:  #D97706;
+  --marigold-glow:  rgba(245,158,11,.20);
+  --marigold-light: #FEF9EC;
+  --c-capture:      #F59E0B;
+  --c-cards:        #EF4444;
+  --p-gradient:     linear-gradient(135deg, #F59E0B, #EF4444);
+}
+
+/* Preset 3: Emerald Flow (Vibrant Mint & Emerald) */
+body[data-persona="preset-3"], [data-persona="preset-3"] {
+  --marigold:       #10B981;
+  --marigold-dark:  #059669;
+  --marigold-glow:  rgba(16,185,129,.20);
+  --marigold-light: #ECFDF5;
+  --c-capture:      #10B981;
+  --c-cards:        #047857;
+  --p-gradient:     linear-gradient(135deg, #10B981, #059669);
+}
+
+/* Preset 4: Neon Cyber (Electric Cyan & Royal Blue) */
+body[data-persona="preset-4"], [data-persona="preset-4"] {
+  --marigold:       #06B6D4;
+  --marigold-dark:  #0284C7;
+  --marigold-glow:  rgba(6,182,212,.20);
+  --marigold-light: #E0F2FE;
+  --c-capture:      #06B6D4;
+  --c-cards:        #3B82F6;
+  --p-gradient:     linear-gradient(135deg, #06B6D4, #3B82F6);
+}
+
+/* Preset 5: Solar Flare (Sunburst Orange & Gold) */
+body[data-persona="preset-5"], [data-persona="preset-5"] {
+  --marigold:       #F97316;
+  --marigold-dark:  #EA580C;
+  --marigold-glow:  rgba(249,115,22,.20);
+  --marigold-light: #FFF7ED;
+  --c-capture:      #F97316;
+  --c-cards:        #EAB308;
+  --p-gradient:     linear-gradient(135deg, #F97316, #EAB308);
+}
+
+/* Preset 6: Violet Nebula (Indigo & Amethyst) */
+body[data-persona="preset-6"], [data-persona="preset-6"] {
+  --marigold:       #6366F1;
+  --marigold-dark:  #4F46E5;
+  --marigold-glow:  rgba(99,102,241,.20);
+  --marigold-light: #EEF2FF;
+  --c-capture:      #6366F1;
+  --c-cards:        #A855F7;
+  --p-gradient:     linear-gradient(135deg, #6366F1, #A855F7);
+}
+
+/* Preset 7: Ocean Crest (Deep Sea Blue & Teal) */
+body[data-persona="preset-7"], [data-persona="preset-7"] {
+  --marigold:       #0284C7;
+  --marigold-dark:  #0369A1;
+  --marigold-glow:  rgba(2,132,199,.20);
+  --marigold-light: #F0F9FF;
+  --c-capture:      #0284C7;
+  --c-cards:        #0D9488;
+  --p-gradient:     linear-gradient(135deg, #0284C7, #0D9488);
+}
+
+/* Preset 8: Ruby Nova (Vibrant Rose & Deep Purple) */
+body[data-persona="preset-8"], [data-persona="preset-8"] {
+  --marigold:       #E11D48;
+  --marigold-dark:  #BE123C;
+  --marigold-glow:  rgba(225,29,72,.20);
+  --marigold-light: #FFF1F2;
+  --c-capture:      #E11D48;
+  --c-cards:        #9333EA;
+  --p-gradient:     linear-gradient(135deg, #E11D48, #9333EA);
+}
+
+/* Preset 9: Aurora Sky (Teal & Sky Blue) */
+body[data-persona="preset-9"], [data-persona="preset-9"] {
+  --marigold:       #0D9488;
+  --marigold-dark:  #0F766E;
+  --marigold-glow:  rgba(13,148,136,.20);
+  --marigold-light: #F0FDFA;
+  --c-capture:      #0D9488;
+  --c-cards:        #3B82F6;
+  --p-gradient:     linear-gradient(135deg, #34D399, #3B82F6);
+}
+
+/* Preset 10: Golden Horizon (Warm Honey & Amber) */
+body[data-persona="preset-10"], [data-persona="preset-10"] {
+  --marigold:       #D97706;
+  --marigold-dark:  #B45309;
+  --marigold-glow:  rgba(217,119,6,.20);
+  --marigold-light: #FFFBEB;
+  --c-capture:      #D97706;
+  --c-cards:        #B45309;
+  --p-gradient:     linear-gradient(135deg, #D97706, #B45309);
+}
+
+/* Preset 11: Plasma Glow (Hot Pink & Electric Violet) */
+body[data-persona="preset-11"], [data-persona="preset-11"] {
+  --marigold:       #EC4899;
+  --marigold-dark:  #DB2777;
+  --marigold-glow:  rgba(236,72,153,.20);
+  --marigold-light: #FDF2F8;
+  --c-capture:      #EC4899;
+  --c-cards:        #8B5CF6;
+  --p-gradient:     linear-gradient(135deg, #EC4899, #8B5CF6);
+}
+
+/* Preset 12: Midnight Prism (Sleek Dark Slate & Platinum) */
+body[data-persona="preset-12"], [data-persona="preset-12"] {
+  --marigold:       #475569;
+  --marigold-dark:  #1E293B;
+  --marigold-glow:  rgba(71,85,105,.20);
+  --marigold-light: #F8FAFC;
+  --c-capture:      #475569;
+  --c-cards:        #334155;
+  --p-gradient:     linear-gradient(135deg, #1E293B, #475569);
 }
 
 /* ── Base ──────────────────────────────────────────── */
