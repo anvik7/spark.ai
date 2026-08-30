@@ -14,15 +14,7 @@ class Settings(BaseSettings):
     app_name: str = "Spark"
     database_url: str = "sqlite:///./spark.db"
 
-    # --- LLM adapter --------------------------------------------------------
-    # provider: "mock" (no key needed) | "xai" | "grok" | "gemini" | "groq" | "anthropic"
-    llm_provider: str = "mock"
-    xai_api_key: str = ""
-    grok_api_key: str = ""
-    gemini_api_key: str = ""
-    groq_api_key: str = ""
-    anthropic_api_key: str = ""
-    llm_model: str = ""  # optional override
+
 
     # --- Channel adapter ----------------------------------------------------
     # The MVP channel. "telegram" is recommended (free, instant). "whatsapp"
@@ -49,6 +41,18 @@ class Settings(BaseSettings):
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""
 
+    # --- LLM adapter --------------------------------------------------------
+    # provider: "mock" (no key needed) | "openrouter" | "xai" | "grok" | "gemini" | "groq" | "anthropic"
+    llm_provider: str = "mock"
+    openrouter_api_key: str = ""
+    openrouter_model: str = ""
+    xai_api_key: str = ""
+    grok_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    anthropic_api_key: str = ""
+    llm_model: str = ""  # optional override
+
     # --- Plan limits --------------------------------------------------------
     free_card_limit: int = 30           # lifetime cards on free tier
     free_ai_calls_per_day: int = 20     # rate-limit AI endpoints on free tier
@@ -60,7 +64,9 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     s = Settings()
     if s.llm_provider == "mock":
-        if s.xai_api_key or s.grok_api_key:
+        if s.openrouter_api_key:
+            s.llm_provider = "openrouter"
+        elif s.xai_api_key or s.grok_api_key:
             s.llm_provider = "xai"
         elif s.gemini_api_key:
             s.llm_provider = "gemini"

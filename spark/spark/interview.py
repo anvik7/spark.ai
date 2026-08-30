@@ -16,6 +16,21 @@ settings = get_settings()
 
 def _llm(prompt: str, max_tokens: int = 1000) -> str:
     p = settings.llm_provider
+    if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
+        model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
+        r = httpx.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "HTTP-Referer": "https://spark.ai",
+                "X-Title": "Spark AI Student Workspace",
+                "Content-Type": "application/json",
+            },
+            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+            timeout=45,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
     key = settings.xai_api_key or settings.grok_api_key
     if (p in ["xai", "grok"] or key) and key:
         r = httpx.post(

@@ -50,6 +50,8 @@ def enrich(text: str) -> dict:
     """Return {'summary': str, 'tags': [str]} for a raw note."""
     p = settings.llm_provider
     try:
+        if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
+            return _openrouter(text)
         if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
             return _xai(text)
         if p == "gemini" and settings.gemini_api_key:
@@ -61,6 +63,25 @@ def enrich(text: str) -> dict:
     except Exception as e:  # never let tagging take down ingestion
         print(f"[llm] provider '{p}' failed, falling back to mock: {e}")
     return _mock(text)
+
+
+def _openrouter(text: str) -> dict:
+    key = settings.openrouter_api_key
+    model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "HTTP-Referer": "https://spark.ai",
+        "X-Title": "Spark AI Student Workspace",
+        "Content-Type": "application/json",
+    }
+    r = httpx.post("https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json={"model": model, "messages": [
+            {"role": "user", "content": _PROMPT.format(text=text)}]},
+        timeout=30)
+    r.raise_for_status()
+    out = r.json()["choices"][0]["message"]["content"]
+    return _normalise(_extract_json(out), text)
 
 
 def _xai(text: str) -> dict:
@@ -346,8 +367,40 @@ def _xai_text(prompt: str) -> str:
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
+def _openrouter_text(prompt: str) -> str:
+    key = settings.openrouter_api_key
+    if not key:
+        raise RuntimeError("OPENROUTER_API_KEY is missing on server.")
+
+    model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "HTTP-Referer": "https://spark.ai",
+        "X-Title": "Spark AI Student Workspace",
+        "Content-Type": "application/json",
+    }
+    r = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=45,
+    )
+    if r.status_code == 401:
+        raise RuntimeError("Invalid OpenRouter API Key.")
+    if r.status_code == 429:
+        raise RuntimeError("OpenRouter API rate limit exceeded.")
+    r.raise_for_status()
+
+    data = r.json()
+    if "choices" in data and len(data["choices"]) > 0:
+        return data["choices"][0]["message"]["content"].strip()
+    raise RuntimeError("OpenRouter API returned a malformed response.")
+
+
 def _complete_text(prompt: str) -> str:
     p = settings.llm_provider
+    if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
+        return _openrouter_text(prompt)
     if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
         return _xai_text(prompt)
     if p == "gemini" and settings.gemini_api_key:
@@ -356,7 +409,7 @@ def _complete_text(prompt: str) -> str:
         return _groq_text(prompt)
     if p == "anthropic" and settings.anthropic_api_key:
         return _anthropic_text(prompt)
-    raise RuntimeError("No LLM provider configured (set XAI_API_KEY, GROK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
+    raise RuntimeError("No LLM provider configured (set OPENROUTER_API_KEY, XAI_API_KEY, GROK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
 
 
 _SOLVE_TASK_PROMPT = (
