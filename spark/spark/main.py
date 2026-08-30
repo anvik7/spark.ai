@@ -13,7 +13,7 @@ import httpx
 from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile, status)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlmodel import col, select
