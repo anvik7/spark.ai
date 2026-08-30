@@ -6,6 +6,7 @@ candidate evaluation scorecards.
 """
 import json
 import re
+from typing import Optional
 import httpx
 
 from .config import get_settings
@@ -139,7 +140,7 @@ def next_interview_turn(
     resume_text: str = "",
     round_type: str = "Technical Deep-Dive",
     difficulty: str = "Medium",
-    history: list = None,
+    history: Optional[list] = None,
     last_answer: str = "",
 ) -> dict:
     """Evaluate candidate answer and generate next adaptive follow-up question."""
@@ -212,7 +213,7 @@ def evaluate_interview_session(
     job_description: str = "",
     resume_text: str = "",
     round_type: str = "Technical Deep-Dive",
-    history: list = None,
+    history: Optional[list] = None,
 ) -> dict:
     """Generate complete candidate evaluation report from multi-turn transcript."""
     history_lines = []
