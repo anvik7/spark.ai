@@ -15,8 +15,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./spark.db"
 
     # --- LLM adapter --------------------------------------------------------
-    # provider: "mock" (no key needed) | "gemini" | "groq" | "anthropic"
+    # provider: "mock" (no key needed) | "xai" | "grok" | "gemini" | "groq" | "anthropic"
     llm_provider: str = "mock"
+    xai_api_key: str = ""
+    grok_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
     anthropic_api_key: str = ""
@@ -56,4 +58,14 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if s.llm_provider == "mock":
+        if s.xai_api_key or s.grok_api_key:
+            s.llm_provider = "xai"
+        elif s.gemini_api_key:
+            s.llm_provider = "gemini"
+        elif s.groq_api_key:
+            s.llm_provider = "groq"
+        elif s.anthropic_api_key:
+            s.llm_provider = "anthropic"
+    return s

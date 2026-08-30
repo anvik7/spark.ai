@@ -50,6 +50,8 @@ def enrich(text: str) -> dict:
     """Return {'summary': str, 'tags': [str]} for a raw note."""
     p = settings.llm_provider
     try:
+        if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
+            return _xai(text)
         if p == "gemini" and settings.gemini_api_key:
             return _gemini(text)
         if p == "groq" and settings.groq_api_key:
@@ -59,6 +61,19 @@ def enrich(text: str) -> dict:
     except Exception as e:  # never let tagging take down ingestion
         print(f"[llm] provider '{p}' failed, falling back to mock: {e}")
     return _mock(text)
+
+
+def _xai(text: str) -> dict:
+    key = settings.xai_api_key or settings.grok_api_key
+    model = settings.llm_model or "grok-2-latest"
+    r = httpx.post("https://api.x.ai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [
+            {"role": "user", "content": _PROMPT.format(text=text)}],
+            "response_format": {"type": "json_object"}}, timeout=30)
+    r.raise_for_status()
+    out = r.json()["choices"][0]["message"]["content"]
+    return _normalise(_extract_json(out), text)
 
 
 def _gemini(text: str) -> dict:
@@ -320,15 +335,28 @@ def enrich_full(text: str, source_type: str = "text") -> dict:
             "topic": topic[:30], "difficulty": difficulty, "importance": importance}
 
 
+def _xai_text(prompt: str) -> str:
+    key = settings.xai_api_key or settings.grok_api_key
+    model = settings.llm_model or "grok-2-latest"
+    r = httpx.post("https://api.x.ai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=45)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"].strip()
+
+
 def _complete_text(prompt: str) -> str:
     p = settings.llm_provider
+    if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
+        return _xai_text(prompt)
     if p == "gemini" and settings.gemini_api_key:
         return _gemini_text(prompt)
     if p == "groq" and settings.groq_api_key:
         return _groq_text(prompt)
     if p == "anthropic" and settings.anthropic_api_key:
         return _anthropic_text(prompt)
-    raise RuntimeError("No LLM provider configured (set GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
+    raise RuntimeError("No LLM provider configured (set XAI_API_KEY, GROK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
 
 
 _SOLVE_TASK_PROMPT = (

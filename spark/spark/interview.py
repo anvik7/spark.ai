@@ -16,6 +16,19 @@ settings = get_settings()
 
 def _llm(prompt: str, max_tokens: int = 1000) -> str:
     p = settings.llm_provider
+    key = settings.xai_api_key or settings.grok_api_key
+    if (p in ["xai", "grok"] or key) and key:
+        r = httpx.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": settings.llm_model or "grok-2-latest",
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=45,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
     if p == "groq" and settings.groq_api_key:
         r = httpx.post(
             "https://api.groq.com/openai/v1/chat/completions",
