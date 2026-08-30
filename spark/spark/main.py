@@ -4,7 +4,7 @@ billing. Serves the built React PWA from ./web/dist in production."""
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -28,7 +28,7 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, StudySession, User, get_session, init_db
+from .models import Card, CardEmbedding, StudySession, User, UserCareerProfile, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
