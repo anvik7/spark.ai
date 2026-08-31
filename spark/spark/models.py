@@ -1,6 +1,6 @@
 """Data model. SQLModel over SQLite for dev; flip database_url to a Postgres
 URL for production (the brief's planned migration) with no code changes."""
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from typing import Optional
 from sqlmodel import SQLModel, Field, create_engine, Session, JSON, Column
 from .config import get_settings
