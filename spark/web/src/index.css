@@ -348,7 +348,7 @@ html, body {
   padding: 24px 28px 48px;
 }
 
-/* ── MOBILE ADAPTATIONS (<768px) ────────────────────────── */
+/* ── RESPONSIVE MEDIA QUERIES ────────────────────────── */
 @media (max-width: 767px) {
   .app-sidebar {
     display: none;
@@ -366,6 +366,12 @@ html, body {
   }
   .workspace-container {
     padding: 16px 16px calc(var(--nav-h) + 24px);
+  }
+}
+
+@media (min-width: 768px) {
+  nav.nav {
+    display: none !important;
   }
 }
 
@@ -591,18 +597,16 @@ hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
 nav, .nav-bar {
   position: fixed;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
   width: 100%;
-  max-width: 480px;
-  height: var(--nav-h);
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
   background: var(--nav-bg);
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 4px;
+  padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px));
   z-index: 100;
-  border-top: 1px solid rgba(255,255,255,.06);
+  border-top: 1px solid rgba(255,255,255,.08);
 }
 
 nav button, .nav-bar button, .nav-btn {
