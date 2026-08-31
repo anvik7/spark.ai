@@ -8,11 +8,12 @@ export default function Practice() {
   const [busy, setBusy] = useState(false);
   const [solution, setSolution] = useState(null);
   const [err, setErr] = useState("");
+  const [activeMode, setActiveMode] = useState("solver"); // "solver" | "quiz"
 
   const handleSolve = async (e) => {
     e?.preventDefault();
     if (!prompt.trim() && !selectedFile) {
-      setErr("Please type a problem prompt or upload a question image/document.");
+      setErr("Please type a question prompt or attach a problem image/document.");
       return;
     }
 
@@ -36,72 +37,88 @@ export default function Practice() {
   return (
     <div className="screen">
       {/* Header */}
-      <div style={{ marginBottom: 16 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Practice & Question Solver</h1>
+      <div style={{ marginBottom: 20 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>Practice & Question Solver</h1>
         <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Solve academic questions, practice test problems, and analyze step-by-step reasoning.
+          Solve academic problems step-by-step, practice custom question sets, and simulate exam sessions.
         </p>
       </div>
 
-      {/* Quick Practice Mode Buttons */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-        <button
-          onClick={() => { setPrompt("Solve 5 practice questions on Quadratic Equations with detailed steps."); setSubjectHint("Mathematics"); }}
+      {/* Assessment Mode Selector Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <div
+          onClick={() => { setPrompt("Solve 5 practice problems on Linear Algebra with step-by-step reasoning."); setSubjectHint("Mathematics"); }}
           style={{
-            padding: "12px",
-            borderRadius: 10,
-            border: "1px solid var(--line)",
+            padding: 16,
+            borderRadius: 12,
+            border: "1.5px solid var(--line)",
             background: "var(--surface)",
-            textAlign: "left",
             cursor: "pointer",
+            boxShadow: "var(--sh-sm)",
           }}
         >
-          <div style={{ fontSize: 18, marginBottom: 4 }}>🔢</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>10 Questions</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Mathematics</div>
-        </button>
+          <div style={{ fontSize: 20, marginBottom: 6 }}>🛡️</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Quick Practice</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>5-10 Focused Questions</div>
+        </div>
 
-        <button
-          onClick={() => { setPrompt("Explain Newton's laws of motion with numerical practice problems."); setSubjectHint("Physics"); }}
+        <div
+          onClick={() => { setPrompt("Generate a 15-minute timed test on Mechanics and Laws of Motion."); setSubjectHint("Physics"); }}
           style={{
-            padding: "12px",
-            borderRadius: 10,
-            border: "1px solid var(--line)",
+            padding: 16,
+            borderRadius: 12,
+            border: "1.5px solid var(--line)",
             background: "var(--surface)",
-            textAlign: "left",
             cursor: "pointer",
+            boxShadow: "var(--sh-sm)",
           }}
         >
-          <div style={{ fontSize: 18, marginBottom: 4 }}>⚡</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>20 Questions</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Physics</div>
-        </button>
+          <div style={{ fontSize: 20, marginBottom: 6 }}>⏱️</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Timed Test</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Simulated Exam Environment</div>
+        </div>
 
-        <button
-          onClick={() => { setPrompt("Provide a 15-minute timed test on Organic Reaction Mechanisms."); setSubjectHint("Chemistry"); }}
+        <div
+          onClick={() => { setPrompt("Explain common conceptual mistakes in Organic Chemistry reaction mechanisms with examples."); setSubjectHint("Chemistry"); }}
           style={{
-            padding: "12px",
-            borderRadius: 10,
-            border: "1px solid var(--line)",
+            padding: 16,
+            borderRadius: 12,
+            border: "1.5px solid var(--line)",
             background: "var(--surface)",
-            textAlign: "left",
             cursor: "pointer",
+            boxShadow: "var(--sh-sm)",
           }}
         >
-          <div style={{ fontSize: 18, marginBottom: 4 }}>⏱️</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Timed Test</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>15 mins</div>
-        </button>
+          <div style={{ fontSize: 20, marginBottom: 6 }}>🔍</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Mistake Review</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Review Weak Areas</div>
+        </div>
+
+        <div
+          onClick={() => { setPrompt("Provide 5 multiple-choice questions on Data Structures and Algorithms with explanations."); setSubjectHint("Computer Science"); }}
+          style={{
+            padding: 16,
+            borderRadius: 12,
+            border: "1.5px solid var(--line)",
+            background: "var(--surface)",
+            cursor: "pointer",
+            boxShadow: "var(--sh-sm)",
+          }}
+        >
+          <div style={{ fontSize: 20, marginBottom: 6 }}>💻</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Custom Practice</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Subject & Topic Select</div>
+        </div>
       </div>
 
-      {/* Problem Input Composer */}
+      {/* AI Question Solver Composer */}
       <form
         onSubmit={handleSolve}
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: 12,
-          padding: 16,
+          padding: 18,
           boxShadow: "var(--sh-sm)",
           marginBottom: 20,
         }}
@@ -113,7 +130,7 @@ export default function Practice() {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Paste a question, math problem, or concept you want to practice..."
+          placeholder="Paste a question, math equation, code problem, or concept you want to practice..."
           rows={3}
           style={{
             width: "100%",
@@ -181,7 +198,7 @@ export default function Practice() {
         </div>
       </form>
 
-      {/* Solution Display */}
+      {/* Solution & Reasoning Display */}
       {solution && (
         <div
           style={{

@@ -39,13 +39,12 @@ export default function CommandMenu({ isOpen, onClose, onNavigate }) {
   const q = query.trim().toLowerCase();
 
   const navItems = [
-    { id: "home", label: "Go to Home Dashboard", icon: "🏠", category: "Navigation" },
-    { id: "study", label: "Go to Study Space", icon: "📖", category: "Navigation" },
-    { id: "practice", label: "Go to Practice & Solver", icon: "🛡️", category: "Navigation" },
-    { id: "tasks", label: "Go to Study Tasks", icon: "📋", category: "Navigation" },
+    { id: "capture", label: "Go to Capture", icon: "✏️", category: "Navigation" },
+    { id: "tasks", label: "Go to Tasks", icon: "📋", category: "Navigation" },
+    { id: "study", label: "Go to Study", icon: "📖", category: "Navigation" },
+    { id: "career", label: "Go to Career OS", icon: "🎯", category: "Navigation" },
     { id: "papers", label: "Go to Paper Vault", icon: "📚", category: "Navigation" },
     { id: "circles", label: "Go to Study Circles", icon: "👥", category: "Navigation" },
-    { id: "career", label: "Go to Career OS", icon: "🎯", category: "Navigation" },
     { id: "coach", label: "Go to Interview Coach", icon: "💬", category: "Navigation" },
   ].filter((item) => !q || item.label.toLowerCase().includes(q));
 

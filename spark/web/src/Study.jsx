@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { api } from "./api.js";
 
 const DEFAULT_SUBJECTS = [
-  { id: "math", name: "Mathematics", icon: "📐", topics: ["Algebra", "Calculus", "Trigonometry", "Geometry", "Statistics"], progress: 65 },
-  { id: "physics", name: "Physics", icon: "⚡", topics: ["Mechanics", "Thermodynamics", "Optics", "Electromagnetism"], progress: 48 },
-  { id: "chemistry", name: "Chemistry", icon: "🧪", topics: ["Organic Chemistry", "Physical Chemistry", "Inorganic"], progress: 52 },
-  { id: "cs", name: "Computer Science", icon: "💻", topics: ["Data Structures", "Algorithms", "Databases", "Networks"], progress: 80 },
+  { id: "math", name: "Mathematics & Problem Solving", icon: "📐", topics: ["Algebra & Equations", "Calculus & Derivatives", "Trigonometry", "Statistics & Probability"], progress: 65 },
+  { id: "cs", name: "Computer Science & Engineering", icon: "💻", topics: ["Data Structures", "Algorithms", "Databases & SQL", "System Architecture"], progress: 80 },
+  { id: "biology", name: "Biology & Life Sciences", icon: "🧬", topics: ["Cellular Genetics", "Molecular Physiology", "Ecology & Environment"], progress: 54 },
+  { id: "physics", name: "Physics & Mechanics", icon: "⚡", topics: ["Newtonian Mechanics", "Thermodynamics", "Electromagnetism", "Quantum Optics"], progress: 48 },
+  { id: "economics", name: "Economics & Finance", icon: "📊", topics: ["Microeconomics", "Macroeconomic Policy", "Financial Accounting"], progress: 70 },
 ];
 
 export default function Study() {
@@ -77,20 +78,20 @@ export default function Study() {
   return (
     <div className="screen">
       {/* Header */}
-      <div style={{ marginBottom: 16 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Study Space</h1>
+      <div style={{ marginBottom: 20 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>Study Space</h1>
         <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Subjects, topics, study materials, and learning roadmap.
+          Personalized study roadmap, focus session timer, and learning materials.
         </p>
       </div>
 
-      {/* Live Focus Timer Header Card */}
+      {/* Live Focus Session Timer Card */}
       <div
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: 12,
-          padding: 16,
+          padding: 18,
           marginBottom: 20,
           boxShadow: "var(--sh-sm)",
         }}
@@ -164,7 +165,7 @@ export default function Study() {
         <input
           value={materialInput}
           onChange={(e) => setMaterialInput(e.target.value)}
-          placeholder="Topic or material studied (e.g. Quadratic Equations practice)..."
+          placeholder="Topic or material being studied (e.g. Linear Algebra revision)..."
           style={{
             width: "100%",
             padding: "8px 12px",
@@ -183,7 +184,7 @@ export default function Study() {
         )}
       </div>
 
-      {/* Subject Selection Tabs */}
+      {/* Subject Selector Tabs */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6, marginBottom: 16 }}>
         {DEFAULT_SUBJECTS.map((subj) => {
           const isSelected = activeSubject.id === subj.id;
@@ -227,7 +228,7 @@ export default function Study() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
-              {activeSubject.icon} {activeSubject.name} Roadmap
+              {activeSubject.icon} {activeSubject.name}
             </h2>
             <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>
               {activeSubject.topics.length} core topics · {activeSubject.progress}% mastery

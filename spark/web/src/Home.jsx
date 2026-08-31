@@ -38,17 +38,17 @@ export default function Home({ user, onNavigate }) {
 
   return (
     <div className="screen">
-      {/* Header Greeting */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      {/* Top Bar Greeting */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--marigold-dark)", textTransform: "uppercase", letterSpacing: ".05em" }}>
-            Personal Study Space
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+            Spark Learning System
           </div>
-          <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: "2px 0 0", color: "var(--ink)" }}>
-            Welcome back, {user?.name ? user.name.split(" ")[0] : "Learner"}
+          <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: "2px 0 0", color: "var(--ink)" }}>
+            Good morning, {user?.name ? user.name.split(" ")[0] : "Learner"}
           </h1>
           <p style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-            Everything you need for today's preparation.
+            Here is your daily study focus and action plan.
           </p>
         </div>
 
@@ -56,25 +56,87 @@ export default function Home({ user, onNavigate }) {
           onClick={() => onNavigate("account")}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
-          <Avatar src={user?.avatar_url} name={user?.name || "User"} size={44} />
+          <Avatar src={user?.avatar_url} name={user?.name || "User"} size={42} />
         </button>
       </div>
 
-      {/* Today's Study Progress Card */}
+      {/* Primary Action Card: What Should I Do Next? */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%)",
+          border: "1.5px solid var(--line)",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 20,
+          boxShadow: "var(--sh-sm)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 6 }}>
+            Recommended Action
+          </span>
+          <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
+            {recentSession ? `Last active ${new Date(recentSession.date || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "New Session"}
+          </span>
+        </div>
+
+        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+          {recentSession?.subject || "Continue Study Goal"}
+        </div>
+        <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 16 }}>
+          {recentSession?.material || "Resume topic learning, study roadmap, and practice problems."}
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => onNavigate("study")}
+            style={{
+              flex: 1,
+              padding: "10px 18px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--p-gradient)",
+              color: "#ffffff",
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Continue Learning →
+          </button>
+          <button
+            onClick={() => onNavigate("practice")}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: "var(--ink)",
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Start Practice
+          </button>
+        </div>
+      </div>
+
+      {/* Today's Focus Progress Bar */}
       <div
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: 12,
           padding: 18,
-          marginBottom: 16,
+          marginBottom: 20,
           boxShadow: "var(--sh-sm)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-faint)" }}>
-              Today's Focus Progress
+            <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-faint)" }}>
+              Today's Focus Target
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: "var(--ink)", marginTop: 2 }}>
               {formatMins(todayMinutes)} <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-soft)" }}>/ 3h daily target</span>
@@ -91,11 +153,10 @@ export default function Home({ user, onNavigate }) {
               fontWeight: 700,
             }}
           >
-            {progressPercent}% Goal
+            {progressPercent}% Target
           </div>
         </div>
 
-        {/* Progress Bar */}
         <div style={{ height: 8, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--line)" }}>
           <div
             style={{
@@ -109,81 +170,19 @@ export default function Home({ user, onNavigate }) {
         </div>
       </div>
 
-      {/* Primary Action: Continue Studying */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%)",
-          border: "1.5px solid var(--line)",
-          borderRadius: 12,
-          padding: 18,
-          marginBottom: 16,
-          boxShadow: "var(--sh-sm)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 8 }}>
-            Current Subject
-          </span>
-          <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-            {recentSession ? `Last studied ${new Date(recentSession.date || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "Ready to start"}
-          </span>
-        </div>
-
-        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-          {recentSession?.subject || "Mathematics & Problem Solving"}
-        </div>
-        <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 14 }}>
-          {recentSession?.material || "Algebra, Calculus & Practice Problems"}
-        </div>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => onNavigate("study")}
-            style={{
-              flex: 1,
-              padding: "10px 16px",
-              borderRadius: 8,
-              border: "none",
-              background: "var(--p-gradient)",
-              color: "#ffffff",
-              fontSize: 13.5,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Continue Studying →
-          </button>
-          <button
-            onClick={() => onNavigate("practice")}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 8,
-              border: "1px solid var(--line)",
-              background: "var(--surface)",
-              color: "var(--ink)",
-              fontSize: 13.5,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Quick Practice
-          </button>
-        </div>
-      </div>
-
-      {/* Today's Study Plan Tasks */}
+      {/* Today's Action Plan Tasks */}
       <div
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: 12,
           padding: 18,
-          marginBottom: 16,
+          marginBottom: 20,
           boxShadow: "var(--sh-sm)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Today's Study Plan</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Today's Action Plan</h2>
           <button
             onClick={() => onNavigate("tasks")}
             style={{ background: "none", border: "none", color: "var(--marigold-dark)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
@@ -200,7 +199,7 @@ export default function Home({ user, onNavigate }) {
 
         {!loading && pendingTasks.length === 0 && (
           <div style={{ padding: "16px 12px", background: "var(--surface-2)", borderRadius: 8, textAlign: "center", fontSize: 13, color: "var(--ink-soft)" }}>
-            No pending tasks for today. <span style={{ color: "var(--marigold-dark)", fontWeight: 600, cursor: "pointer" }} onClick={() => onNavigate("tasks")}>+ Add a study task</span>
+            No pending tasks. <span style={{ color: "var(--marigold-dark)", fontWeight: 600, cursor: "pointer" }} onClick={() => onNavigate("tasks")}>+ Add a study task</span>
           </div>
         )}
 
@@ -234,20 +233,20 @@ export default function Home({ user, onNavigate }) {
         </div>
       </div>
 
-      {/* Weekly Performance Summary */}
+      {/* Performance Summary Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-faint)", textTransform: "uppercase" }}>Total Sessions</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-faint)", textTransform: "uppercase" }}>Study Sessions</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)", marginTop: 4 }}>{sessions.length}</div>
           <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Recorded in workspace</div>
         </div>
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-faint)", textTransform: "uppercase" }}>Tasks Completed</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-faint)", textTransform: "uppercase" }}>Tasks Done</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#059669", marginTop: 4 }}>
             {tasks.filter((t) => t.completed).length} / {tasks.length}
           </div>
-          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Assignments done</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>Assignments finished</div>
         </div>
       </div>
     </div>

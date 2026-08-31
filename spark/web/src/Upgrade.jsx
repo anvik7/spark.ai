@@ -1,33 +1,6 @@
 import React, { useState } from "react";
 import { api } from "./api.js";
 
-const FREE = [
-  "Capture notes, links, PDFs, voice",
-  "AI auto-tagging + summarization",
-  "Spaced repetition review",
-  "Semantic search (Connect)",
-  "Full second-brain storage",
-];
-
-const PRO = [
-  "Everything in Free",
-  "Unlimited AI captures & voice notes",
-  "AI career readiness score",
-  "Live job market analysis",
-  "AI resume audit",
-  "Personalised 90-day learning plan",
-  "Voice interview simulator (all rounds)",
-  "Priority AI responses",
-];
-
-const ULTRA = [
-  "Everything in Pro",
-  "Unlimited everything",
-  "Priority support (24 h response)",
-  "Early access to new features",
-  "Dedicated onboarding session",
-];
-
 function loadRazorpay() {
   return new Promise((resolve, reject) => {
     if (window.Razorpay) { resolve(); return; }
@@ -40,31 +13,18 @@ function loadRazorpay() {
 }
 
 export default function Upgrade({ user, onUpgraded, onBack }) {
-  const [busy, setBusy]   = useState(false);
-  const [err,  setErr]    = useState("");
-  const [done, setDone]   = useState(false);
-  const [target, setTarget] = useState("pro"); // "pro" | "ultra"
-  const [deckBusy, setDeckBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
 
-  const handleDownloadDeck = async () => {
-    setDeckBusy(true);
-    try {
-      const { generateDeck } = await import("./deck.js");
-      await generateDeck();
-    } catch (e) {
-      console.error("Deck generation failed:", e);
-    } finally {
-      setDeckBusy(false);
-    }
-  };
-
-  const currentPlan = user?.plan ?? "free";
-  const isPro   = currentPlan === "pro";
-  const isUltra = currentPlan === "ultra";
+  const entitlements = user?.entitlements || {};
+  const currentPlan = user?.plan || "free";
+  const effectivePlan = user?.effective_plan || currentPlan;
+  const isTrial = entitlements?.trial?.active;
 
   const handleUpgrade = async (planTarget) => {
-    setTarget(planTarget);
-    setBusy(true); setErr("");
+    setBusy(true);
+    setErr("");
     try {
       await loadRazorpay();
       const token = localStorage.getItem("spark_token") || "";
@@ -76,8 +36,16 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
       const order = await res.json();
       if (!res.ok) throw new Error(order.detail || "Could not create order");
 
-      const priceLabel = planTarget === "ultra" ? "₹599/month" : "₹299/month";
-      const planLabel  = planTarget === "ultra" ? "Ultra" : "Pro";
+      const priceLabel = planTarget === "pro" ? "₹799/month" : "₹499/month";
+      const planLabel = planTarget === "pro" ? "Pro" : "Plus";
+
+      // If mock flow (dev mode without Razorpay API keys)
+      if (order.mock) {
+        await api.verify(order.order_id);
+        setDone(true);
+        onUpgraded?.();
+        return;
+      }
 
       await new Promise((resolve, reject) => {
         const rzp = new window.Razorpay({
@@ -87,7 +55,6 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
           name: "Spark",
           description: `${planLabel} Plan — ${priceLabel}`,
           order_id: order.order_id,
-          image: "",
           handler: async (response) => {
             try {
               await api.verify(order.order_id);
@@ -100,7 +67,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             name: user?.email?.split("@")[0] || "",
             email: user?.email || "",
           },
-          theme: { color: planTarget === "ultra" ? "#7C3AED" : "#F59E0B" },
+          theme: { color: planTarget === "pro" ? "#1E293B" : "#F59E0B" },
           modal: {
             ondismiss: () => reject(new Error("Payment cancelled")),
           },
@@ -112,220 +79,239 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
       });
     } catch (e) {
       if (!e.message.includes("cancelled")) setErr(e.message);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
-  // ── Already on highest plan or just upgraded ──────────────────────────────
-  if (isUltra || done) return (
-    <div className="screen" style={{ textAlign: "center", paddingTop: 40 }}>
-      <div style={{ fontSize: 48, marginBottom: 14 }}>🚀</div>
-      <h1 className="title">You're on Ultra</h1>
-      <p className="sub">Unlimited everything. Priority support. You're unstoppable.</p>
-      <div style={{
-        background: "linear-gradient(135deg,#EDE9FE,#F5F3FF)",
-        border: "1.5px solid #7C3AED",
-        borderRadius: "var(--r)", padding: "16px 18px",
-        marginBottom: 20, textAlign: "left",
-      }}>
-        {ULTRA.map(f => (
-          <div key={f} style={{ display: "flex", gap: 10, padding: "5px 0",
-            fontSize: 14, color: "var(--ink)" }}>
-            <span style={{ color: "#7C3AED", flexShrink: 0 }}>✓</span> {f}
-          </div>
-        ))}
-      </div>
-      {onBack && (
-        <button className="btn sm" onClick={onBack}>← Back</button>
-      )}
-    </div>
-  );
-
-  if (isPro) return (
-    <div className="screen" style={{ textAlign: "center", paddingTop: 40 }}>
-      <div style={{ fontSize: 48, marginBottom: 14 }}>⚡</div>
-      <h1 className="title">You're on Pro</h1>
-      <p className="sub">All Pro features unlocked. Want even more? Upgrade to Ultra.</p>
-      <div style={{
-        background: "var(--marigold-light, #FEF9EC)",
-        border: "1.5px solid var(--marigold)",
-        borderRadius: "var(--r)", padding: "16px 18px",
-        marginBottom: 20, textAlign: "left",
-      }}>
-        {PRO.map(f => (
-          <div key={f} style={{ display: "flex", gap: 10, padding: "5px 0",
-            fontSize: 14, color: "var(--ink)" }}>
-            <span style={{ color: "var(--marigold)", flexShrink: 0 }}>✓</span> {f}
-          </div>
-        ))}
-      </div>
-      {err && <div className="err">{err}</div>}
-      <button className="primary" onClick={() => handleUpgrade("ultra")} disabled={busy}
-        style={{ fontSize: 15, padding: "14px 20px",
-          background: "linear-gradient(135deg,#7C3AED,#9333EA)" }}>
-        {busy && target === "ultra" ? "Opening payment…" : "Upgrade to Ultra — ₹599/month"}
-      </button>
-      {onBack && (
-        <button className="btn sm" onClick={onBack}
-          style={{ display: "block", margin: "16px auto 0", width: "fit-content" }}>
-          ← Back
-        </button>
-      )}
-    </div>
-  );
-
-  // ── Pricing page (free user) ──────────────────────────────────────────────
   return (
-    <div className="screen">
-      <div className="eyebrow">Upgrade</div>
-      <h1 className="title">Unlock your full potential</h1>
-      <p className="sub">
-        Free gets you started. Pro gets you hired. Ultra keeps you ahead.
-      </p>
+    <div className="screen" style={{ maxWidth: 960, margin: "0 auto", paddingBottom: 60 }}>
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <h1 className="title" style={{ fontSize: 28, fontWeight: 800, margin: "0 0 6px", color: "var(--ink)" }}>
+          Choose your Spark plan
+        </h1>
+        <p className="sub" style={{ fontSize: 15, color: "var(--ink-soft)", margin: 0 }}>
+          Study smarter. Practice better. Make Spark your personal learning system.
+        </p>
 
-      {err && <div className="err">{err}</div>}
-
-      {/* Plan comparison */}
-      <div style={{ display: "grid", gap: 14, marginBottom: 24 }}>
-
-        {/* Free plan */}
-        <div style={{
-          border: "1.5px solid var(--line)",
-          borderRadius: "var(--r)", overflow: "hidden",
-        }}>
-          <div style={{
-            padding: "14px 18px",
-            background: "var(--surface-2)",
-            borderBottom: "1px solid var(--line)",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-          }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Free</div>
-              <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>Your current plan</div>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>₹0</div>
+        {isTrial && (
+          <div style={{ display: "inline-block", marginTop: 14, padding: "6px 16px", borderRadius: 20, background: "var(--marigold-light)", border: "1px solid var(--marigold)", color: "var(--marigold-dark)", fontSize: 13, fontWeight: 700 }}>
+            🎁 14-Day Free Trial Active — Experiencing Plus features (2 downloads/mo limit)
           </div>
-          <div style={{ padding: "14px 18px" }}>
-            {FREE.map(f => (
-              <div key={f} style={{ display: "flex", gap: 10, padding: "5px 0",
-                fontSize: 13.5, color: "var(--ink-soft)" }}>
-                <span style={{ color: "var(--ink-faint)", flexShrink: 0 }}>✓</span> {f}
-              </div>
-            ))}
-          </div>
+        )}
+      </div>
+
+      {err && <div className="err" style={{ marginBottom: 20, textAlign: "center" }}>⚠️ {err}</div>}
+      {done && (
+        <div style={{ padding: 16, background: "#ECFDF5", border: "1px solid #10B981", borderRadius: 10, color: "#047857", fontSize: 14, fontWeight: 700, marginBottom: 24, textAlign: "center" }}>
+          ✓ Plan updated successfully! Welcome to Spark {currentPlan.toUpperCase()}.
         </div>
+      )}
 
-        {/* Pro plan */}
-        <div style={{
-          border: "2px solid var(--marigold)",
-          borderRadius: "var(--r)", overflow: "hidden",
-          boxShadow: "0 4px 20px rgba(245,158,11,.15)",
-        }}>
-          <div style={{
-            padding: "14px 18px",
-            background: "var(--marigold)",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-          }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: "#fff" }}>Pro</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,.8)" }}>
-                Career OS — fully unlocked
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>₹299</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.75)" }}>/month</div>
-            </div>
+      {/* 3 Pricing Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, marginBottom: 40 }}>
+        {/* Free Tier */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1.5px solid var(--line)",
+            borderRadius: 14,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 6 }}>
+            Free
           </div>
-          <div style={{ padding: "14px 18px" }}>
-            {PRO.map(f => (
-              <div key={f} style={{ display: "flex", gap: 10, padding: "5px 0",
-                fontSize: 13.5, color: "var(--ink)" }}>
-                <span style={{ color: "var(--marigold)", flexShrink: 0, fontWeight: 700 }}>✓</span> {f}
-              </div>
-            ))}
+          <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
+            ₹0 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
           </div>
-        </div>
+          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 40 }}>
+            Explore Spark with essential AI study tools.
+          </p>
 
-        {/* Ultra plan card */}
-        <div style={{
-          background: "linear-gradient(135deg, #7C3AED, #A78BFA)",
-          borderRadius: "16px",
-          padding: "24px",
-          color: "#F3E8FF",
-        }}>
-          <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 12px", color: "#F3E8FF" }}>Ultra</h3>
-          <div style={{ fontSize: 44, fontWeight: 700, margin: "0 0 20px" }}>₹599 / month</div>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            <li style={{ fontSize: 14, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>✓</span> Everything in Pro, plus:
-            </li>
-            <li style={{ fontSize: 14, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>✓</span> 2x faster AI responses
-            </li>
-            <li style={{ fontSize: 14, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>✓</span> Priority support (24h)
-            </li>
-            <li style={{ fontSize: 14, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>✓</span> Advanced export formats
-            </li>
-          </ul>
-          <button className="primary" onClick={() => handleUpgrade("ultra")}
-            style={{ marginTop: 16, width: "100%", background: "rgba(255,255,255,0.2)" }}>
-            Upgrade to Ultra →
+          <button
+            disabled={true}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+              background: currentPlan === "free" && !isTrial ? "var(--surface-2)" : "transparent",
+              color: "var(--ink-soft)",
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: "default",
+              marginBottom: 20,
+            }}
+          >
+            {currentPlan === "free" && !isTrial ? "Current Plan" : "Basic Tier"}
           </button>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>✓ Core Spark workspace</div>
+            <div>✓ 10 AI calls per day</div>
+            <div>✓ Up to 3 file uploads (50MB)</div>
+            <div>✓ 2 downloads per month</div>
+          </div>
+        </div>
+
+        {/* Plus Tier (Most Popular) */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "2px solid var(--marigold)",
+            borderRadius: 14,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+            boxShadow: "var(--sh)",
+          }}
+        >
+          <div style={{ position: "absolute", top: -12, right: 20, background: "var(--marigold-dark)", color: "#ffffff", padding: "2px 10px", borderRadius: 12, fontSize: 11, fontWeight: 800, letterSpacing: ".05em" }}>
+            ⭐ MOST POPULAR
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--marigold-dark)", textTransform: "uppercase", marginBottom: 6 }}>
+            Plus
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
+            ₹499 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
+          </div>
+          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 40 }}>
+            Study smarter with advanced AI tools.
+          </p>
+
+          <button
+            onClick={() => handleUpgrade("plus")}
+            disabled={busy || currentPlan === "plus"}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--p-gradient)",
+              color: "#ffffff",
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: busy || currentPlan === "plus" ? "not-allowed" : "pointer",
+              marginBottom: 20,
+            }}
+          >
+            {currentPlan === "plus" ? "Current Plan" : "Start Plus →"}
+          </button>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>✓ <strong>Everything in Free</strong></div>
+            <div>✓ 100 AI calls per day</div>
+            <div>✓ Up to 25 file uploads (1GB)</div>
+            <div>✓ 25 downloads per month</div>
+            <div>✓ Priority AI processing</div>
+            <div>✓ Advanced study capabilities</div>
+          </div>
+        </div>
+
+        {/* Pro Tier */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1.5px solid var(--line)",
+            borderRadius: 14,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 6 }}>
+            Pro 🚀
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
+            ₹799 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
+          </div>
+          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 40 }}>
+            Your complete AI-powered study workspace.
+          </p>
+
+          <button
+            onClick={() => handleUpgrade("pro")}
+            disabled={busy || currentPlan === "pro"}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--ink)",
+              background: "var(--ink)",
+              color: "#ffffff",
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: busy || currentPlan === "pro" ? "not-allowed" : "pointer",
+              marginBottom: 20,
+            }}
+          >
+            {currentPlan === "pro" ? "Current Plan" : "Start Pro →"}
+          </button>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>✓ <strong>Everything in Plus</strong></div>
+            <div>✓ Highest AI usage (Fair Use)</div>
+            <div>✓ 10GB storage & unlimited uploads</div>
+            <div>✓ Highest download allowance</div>
+            <div>✓ Advanced performance analytics</div>
+            <div>✓ Highest priority AI processing</div>
+          </div>
         </div>
       </div>
 
-      {/* CTAs */}
-      <div style={{ display: "grid", gap: 10 }}>
-        <button className="primary" onClick={() => handleUpgrade("pro")} disabled={busy}
-          style={{ fontSize: 16, padding: "15px 20px" }}>
-          {busy && target === "pro" ? "Opening payment…" : "Upgrade to Pro — ₹299/month"}
-        </button>
-        <button onClick={() => handleUpgrade("ultra")} disabled={busy}
-          style={{
-            fontSize: 15, padding: "14px 20px", borderRadius: "var(--r)",
-            border: "2px solid #7C3AED", color: "#7C3AED", background: "transparent",
-            fontWeight: 700, cursor: "pointer", transition: "all .18s",
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background="#7C3AED"; e.currentTarget.style.color="#fff"; }}
-          onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.color="#7C3AED"; }}
-        >
-          {busy && target === "ultra" ? "Opening payment…" : "Upgrade to Ultra — ₹599/month"}
-        </button>
-      </div>
+      {/* Clean Comparison Table */}
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1.5px solid var(--line)",
+          borderRadius: 14,
+          padding: 20,
+          boxShadow: "var(--sh-sm)",
+        }}
+      >
+        <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px", color: "var(--ink)" }}>
+          Plan Comparison
+        </h3>
 
-      <p style={{ textAlign: "center", fontSize: 12, color: "var(--ink-faint)", marginTop: 12, lineHeight: 1.6 }}>
-        Secure payment via Razorpay · Cancel anytime<br />
-        Built for students &amp; builders in India
-      </p>
-
-      {/* Pitch deck download */}
-      <div style={{ marginTop: 20, textAlign: "center" }}>
-        <button
-          onClick={handleDownloadDeck}
-          disabled={deckBusy}
-          style={{
-            fontSize: 12, padding: "9px 18px", borderRadius: "var(--r)",
-            border: "1px solid var(--line)", background: "var(--surface-2)",
-            color: "var(--ink-soft)", cursor: "pointer",
-            display: "inline-flex", alignItems: "center", gap: 7,
-            transition: "all .18s",
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--ink-faint)"; e.currentTarget.style.color = "var(--ink)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--ink-soft)"; }}
-        >
-          {deckBusy
-            ? <><span className="spin" style={{ width: 12, height: 12 }} /> Generating deck…</>
-            : <>📊 Download Pitch Deck (.pptx)</>}
-        </button>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, color: "var(--ink)" }}>
+          <thead>
+            <tr style={{ borderBottom: "1.5px solid var(--line)", textAlign: "left" }}>
+              <th style={{ padding: "10px 12px", fontWeight: 700 }}>Feature</th>
+              <th style={{ padding: "10px 12px", fontWeight: 700 }}>Free</th>
+              <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--marigold-dark)" }}>Plus (₹499)</th>
+              <th style={{ padding: "10px 12px", fontWeight: 700 }}>Pro (₹799)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ["Spark Workspace", "✓", "✓", "✓"],
+              ["Study Tracker", "✓", "✓", "✓"],
+              ["Practice & Solver", "✓", "✓", "✓"],
+              ["AI Usage", "Limited (10/day)", "Higher (100/day)", "Highest"],
+              ["Uploads", "3 files (50MB)", "25 files (1GB)", "10GB Storage"],
+              ["Downloads", "2 / month", "25 / month", "Highest"],
+              ["Advanced AI", "—", "✓", "✓"],
+              ["Advanced Analytics", "—", "—", "✓"],
+              ["Priority Processing", "—", "✓", "✓"],
+            ].map(([feat, f, p, pr], idx) => (
+              <tr key={feat} style={{ borderBottom: idx < 8 ? "1px solid var(--line)" : "none" }}>
+                <td style={{ padding: "10px 12px", fontWeight: 600 }}>{feat}</td>
+                <td style={{ padding: "10px 12px", color: "var(--ink-soft)" }}>{f}</td>
+                <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--marigold-dark)" }}>{p}</td>
+                <td style={{ padding: "10px 12px", fontWeight: 700 }}>{pr}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {onBack && (
-        <button className="btn sm" onClick={onBack}
-          style={{ display: "block", margin: "20px auto 0", width: "fit-content" }}>
-          ← Back
-        </button>
+        <div style={{ marginTop: 24, textAlign: "center" }}>
+          <button className="btn sm" onClick={onBack}>← Back to Workspace</button>
+        </div>
       )}
     </div>
   );

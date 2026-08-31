@@ -28,6 +28,9 @@ class User(SQLModel, table=True):
     avatar_url: Optional[str] = None
     plan: str = "free"
     plan_until: Optional[datetime] = None
+    trial_active: bool = True
+    trial_started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    trial_expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=14))
     digest_hour: int = 8
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -203,6 +206,15 @@ def _migrate() -> None:
                 if "avatar_url" not in user_cols:
                     print("[migrate] Adding avatar_url column to 'user' table...")
                     conn.execute(_sql('ALTER TABLE "user" ADD COLUMN avatar_url VARCHAR DEFAULT \'\''))
+                if "trial_active" not in user_cols:
+                    print("[migrate] Adding trial_active column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN trial_active BOOLEAN DEFAULT TRUE'))
+                if "trial_started_at" not in user_cols:
+                    print("[migrate] Adding trial_started_at column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN trial_started_at TIMESTAMP WITH TIME ZONE'))
+                if "trial_expires_at" not in user_cols:
+                    print("[migrate] Adding trial_expires_at column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN trial_expires_at TIMESTAMP WITH TIME ZONE'))
 
             # 2. Card table schema sync
             if inspector.has_table("card"):

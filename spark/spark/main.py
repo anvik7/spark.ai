@@ -152,13 +152,16 @@ class SearchIn(BaseModel):
 
 def _public_user(session, user: User) -> dict:
     cards = session.exec(select(Card).where(Card.user_id == user.id)).all()
+    entitlements = subscription.get_user_entitlements(user, session)
     return {
         "id": user.id, "email": user.email, "name": user.name,
         "avatar_url": getattr(user, "avatar_url", "") or "",
-        "plan": "pro" if subscription.is_pro(user) else "free",
+        "plan": user.plan,
+        "effective_plan": entitlements["effective_plan"],
         "plan_until": user.plan_until,
         "card_count": len(cards),
         "free_card_limit": settings.free_card_limit,
+        "entitlements": entitlements,
     }
 
 
@@ -1224,43 +1227,40 @@ def activity_stats(user: User = Depends(current_user)):
 # --- subscribe (Razorpay flow) ------------------------------------------
 
 @app.post("/api/subscribe/order")
-def create_order(user: User = Depends(current_user)):
-    if razorpay is None:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Razorpay package is not installed.")
-    s = get_settings()
-    client = razorpay.Client(auth=(s.razorpay_key_id, s.razorpay_key_secret))
-    order = client.order.create({"amount": 19900, "currency": "INR", "receipt": f"spark_{user.id}"})  # type: ignore
-    return {"order_id": order["id"], "amount": order["amount"], "key_id": s.razorpay_key_id}
+def create_order(plan: str = "plus", user: User = Depends(current_user)):
+    target = plan if plan in ("plus", "pro") else "plus"
+    return subscription.create_checkout(user, plan_target=target)
 
 
 # --- billing ----------------------------------------------------------------
 
 @app.post("/api/billing/checkout")
-def checkout(user: User = Depends(current_user)):
+def checkout(plan: str = "plus", user: User = Depends(current_user)):
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        user = db_user
-        return subscription.create_checkout(user)
+        target = plan if plan in ("plus", "pro") else "plus"
+        return subscription.create_checkout(db_user, plan_target=target)
 
 
 class VerifyIn(BaseModel):
     order_id: str
+    plan: str = "plus"
     payment_id: str = "mock_payment"
     signature: str = ""
 
 
 @app.post("/api/billing/verify")
 def verify_payment(body: VerifyIn, user: User = Depends(current_user)):
-    """Called by the client after Razorpay Checkout succeeds (and by the mock
-    flow). The webhook is the source of truth; this gives instant UX feedback."""
+    """Called by the client after Razorpay Checkout succeeds (and by the mock flow)."""
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
         user = db_user
-        subscription.activate_pro(session, user, months=1)
+        target = body.plan if body.plan in ("plus", "pro") else "plus"
+        subscription.activate_plan(session, user, plan_target=target, months=1)
         return _public_user(session, user)
 
 
@@ -1280,7 +1280,8 @@ async def billing_webhook(request: Request):
             with get_session() as session:
                 user = session.get(User, int(uid))
                 if user:
-                    subscription.activate_pro(session, user, months=1)
+                    target_plan = notes.get("plan", "plus")
+                    subscription.activate_plan(session, user, plan_target=target_plan, months=1)
     return {"ok": True}
 
 

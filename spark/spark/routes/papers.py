@@ -10,6 +10,7 @@ from sqlmodel import col, func, select
 
 from ..auth import current_user
 from ..models import PaperDownloadLog, QuestionPaper, User, get_session
+from .. import subscription
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
 
@@ -99,23 +100,12 @@ async def upload_paper(
     limits = _limits_for(user)
 
     with get_session() as session:
-        used = _upload_count(session, user.id, limits["uploads_lifetime"])
-        if limits["max_uploads"] is not None and used >= limits["max_uploads"]:
-            period = "total" if limits["uploads_lifetime"] else "this month"
-            raise HTTPException(
-                status.HTTP_402_PAYMENT_REQUIRED,
-                f"Upload limit reached ({limits['max_uploads']} {period}). Upgrade your plan for more.",
-            )
-
         data = await file.read()
         size = len(data)
 
-        storage_used = _storage_used(session, user.id)
-        if storage_used + size > limits["storage_bytes"]:
-            raise HTTPException(
-                status.HTTP_402_PAYMENT_REQUIRED,
-                "This upload would exceed your storage quota. Upgrade your plan or delete old files.",
-            )
+        ok, msg = subscription.check_upload_quota(session, user, size)
+        if not ok:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
 
         ext = os.path.splitext(file.filename or "")[1] or ".pdf"
         object_key = f"papers/{uuid.uuid4().hex}{ext}"
@@ -163,19 +153,14 @@ def get_paper(paper_id: int, user: User = Depends(current_user)):
 @router.get("/{paper_id}/download")
 def download_paper(paper_id: int, user: User = Depends(current_user)):
     assert user.id is not None
-    limits = _limits_for(user)
     with get_session() as session:
         paper = session.get(QuestionPaper, paper_id)
         if not paper:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Paper not found")
 
-        if limits["max_downloads_per_month"] is not None:
-            count = _downloads_this_month(session, user.id)
-            if count >= limits["max_downloads_per_month"]:
-                raise HTTPException(
-                    status.HTTP_402_PAYMENT_REQUIRED,
-                    f"Download limit reached ({limits['max_downloads_per_month']}/month). Upgrade for unlimited downloads.",
-                )
+        ok, msg = subscription.check_download_quota(session, user)
+        if not ok:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
 
         try:
             presigned_url = _get_storage().generate_presigned_url(
