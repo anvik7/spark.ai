@@ -136,6 +136,7 @@ export const api = {
     if (job_description) f.append("job_description", job_description);
     return req("/career/upload-resume", { method: "POST", form: f });
   },
+  clearResume: () => req("/career/resume", { method: "DELETE" }),
   getInterviewSession: () => req("/interview/session"),
   startInterview: (data) => req("/interview/start", { method: "POST", body: data }),
   answerInterview: (sessionId, answerText) =>

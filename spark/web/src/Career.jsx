@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import GoalSetting from "./GoalSetting";
 import { api } from "./api";
 
-const pct = (n) => `${Math.round(n * 100)}%`;
 const scoreColor = (s) =>
   s >= 75 ? "#10B981" : s >= 50 ? "var(--marigold)" : "#EF4444";
 
@@ -62,6 +60,7 @@ export default function Career({ onNavigate, user }) {
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [err, setErr] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [analysis, setAnalysis] = useState(null);
 
   // Cover Letter state
@@ -70,18 +69,10 @@ export default function Career({ onNavigate, user }) {
   const [clLetter, setClLetter] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // User Goal state
-  const [existingGoal, setExistingGoal] = useState(null);
-
   const fileInputRef = useRef();
 
   useEffect(() => {
-    // 1. Fetch user goal
-    api.getGoal()
-      .then(setExistingGoal)
-      .catch(() => setExistingGoal(null));
-
-    // 2. Fetch user career profile & previous analysis
+    // Fetch user career profile & previous analysis
     setLoadingProfile(true);
     api.getCareerProfile()
       .then((prof) => {
@@ -99,23 +90,40 @@ export default function Career({ onNavigate, user }) {
       .finally(() => setLoadingProfile(false));
   }, []);
 
-  const handleSaveGoal = async (goalData) => {
-    const saved = await api.setGoal(goalData);
-    setExistingGoal(saved);
-    return saved;
-  };
-
   const handleFileUpload = async (file) => {
     if (!file) return;
     setBusy(true);
     setErr("");
+    setSuccessMsg("");
     try {
       const res = await api.uploadResume(file, targetRole, jobDescription);
       if (res.resume_filename) setResumeFilename(res.resume_filename);
       if (res.resume_text) setResumeText(res.resume_text);
       if (res.analysis) setAnalysis(res.analysis);
+      setSuccessMsg(`Uploaded and parsed "${file.filename || file.name}".`);
+      setTimeout(() => setSuccessMsg(""), 3000);
     } catch (e) {
       setErr(e.message || "Failed to parse resume file.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleClearResume = async () => {
+    if (!resumeFilename && !resumeText.trim()) return;
+    setBusy(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      await api.clearResume();
+      setResumeFilename("");
+      setResumeText("");
+      setAnalysis(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setSuccessMsg("Resume removed from profile.");
+      setTimeout(() => setSuccessMsg(""), 3000);
+    } catch (e) {
+      setErr(e.message || "Failed to remove resume.");
     } finally {
       setBusy(false);
     }
@@ -173,10 +181,6 @@ export default function Career({ onNavigate, user }) {
 
   return (
     <div className="screen">
-      <div style={{ marginBottom: 20 }}>
-        <GoalSetting currentGoal={existingGoal} onSave={handleSaveGoal} />
-      </div>
-
       <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Career Intelligence Engine</div>
       <h1 className="title" style={{ fontSize: 26, margin: 0 }}>Career & Resume OS</h1>
       <p className="sub" style={{ margin: "4px 0 20px", fontSize: 14 }}>
@@ -253,17 +257,42 @@ export default function Career({ onNavigate, user }) {
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>2. Resume & Qualifications</h2>
-          {resumeFilename && (
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#059669", background: "#ECFDF5", padding: "3px 10px", borderRadius: 12, border: "1px solid #A7F3D0" }}>
-              📄 {resumeFilename}
-            </span>
-          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {resumeFilename && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#059669", background: "#ECFDF5", padding: "3px 10px", borderRadius: 12, border: "1px solid #A7F3D0" }}>
+                📄 {resumeFilename}
+              </span>
+            )}
+            {(resumeFilename || resumeText.trim()) && (
+              <button
+                type="button"
+                onClick={handleClearResume}
+                disabled={busy}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 12,
+                  border: "1px solid #FECACA",
+                  background: "#FEF2F2",
+                  color: "#DC2626",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span>🗑️ Remove Resume</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "center" }}>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
             style={{
               padding: "9px 16px",
               borderRadius: 8,
@@ -272,7 +301,7 @@ export default function Career({ onNavigate, user }) {
               fontSize: 13,
               fontWeight: 600,
               color: "var(--ink)",
-              cursor: "pointer",
+              cursor: busy ? "not-allowed" : "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
@@ -310,7 +339,12 @@ export default function Career({ onNavigate, user }) {
         />
       </div>
 
-      {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
+      {err && <div className="err" style={{ marginBottom: 16 }}>⚠️ {err}</div>}
+      {successMsg && (
+        <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#059669", padding: "10px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
+          ✅ {successMsg}
+        </div>
+      )}
 
       <button
         className="btn full"
@@ -321,9 +355,9 @@ export default function Career({ onNavigate, user }) {
           fontSize: 15,
           fontWeight: 700,
           borderRadius: "var(--r-s)",
-          background: busy ? "var(--line)" : "var(--p-gradient)",
+          background: busy || (!resumeText.trim() && !resumeFilename) ? "var(--line)" : "var(--p-gradient)",
           color: "#fff",
-          cursor: busy ? "not-allowed" : "pointer",
+          cursor: busy || (!resumeText.trim() && !resumeFilename) ? "not-allowed" : "pointer",
           boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
           marginBottom: 24,
         }}
@@ -348,278 +382,135 @@ export default function Career({ onNavigate, user }) {
               borderRadius: "var(--r-l)",
               padding: 20,
               marginBottom: 20,
-              boxShadow: "var(--sh)",
               display: "flex",
               alignItems: "center",
-              gap: 20,
+              gap: 24,
             }}
           >
-            <Ring score={analysis.readiness || 0} />
+            <Ring score={analysis.overall_score || 0} />
             <div style={{ flex: 1 }}>
-              <div className="eyebrow" style={{ margin: 0, color: "var(--marigold-dark)" }}>Calculated Readiness Score</div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, margin: "2px 0 6px", color: "var(--ink)" }}>
-                {analysis.readiness >= 75 ? "High Market Alignment 🎉" : analysis.readiness >= 50 ? "Moderate Alignment — Action Required" : "High Skill Gap Detected"}
+              <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Target Match Assessment</div>
+              <h2 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 6px", color: "var(--ink)" }}>
+                {analysis.role_title || targetRole || "Career Role"} Analysis
               </h2>
-              <p className="sub" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-soft)" }}>
-                {analysis.note || "Calculated using your actual resume content against target market requirements."}
+              <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                {analysis.summary || "Complete technical readiness evaluation based on your resume and target company requirements."}
               </p>
-              {analysis.demand_source && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "var(--ink-faint)", fontFamily: "var(--mono)" }}>
-                  Source: {analysis.demand_source}
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Job Description Match Analysis */}
-          {analysis.jd_match && (
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1.5px solid var(--line)",
-                borderRadius: "var(--r)",
-                padding: 18,
-                marginBottom: 20,
-                boxShadow: "var(--sh-sm)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>🎯 Job Description Keyword Match</h3>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2563EB", background: "#EFF6FF", padding: "4px 12px", borderRadius: 12, border: "1px solid #BFDBFE" }}>
-                  {analysis.jd_match.match_score || analysis.readiness}% Match
-                </span>
+          {/* Strengths & Missing Skills */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+            {/* Strengths */}
+            <div className="card" style={{ padding: 18, marginBottom: 0 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#059669" }}>
+                ✅ Verified Strengths ({analysis.strengths?.length || 0})
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(analysis.strengths || []).map((st, idx) => (
+                  <div key={idx} style={{ background: "#F0FDF4", border: "1px solid #DCFCE7", padding: "8px 12px", borderRadius: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>{st.skill}</div>
+                    <div style={{ fontSize: 12, color: "#15803D", marginTop: 2 }}>{st.evidence}</div>
+                  </div>
+                ))}
               </div>
-
-              {analysis.jd_match.matching_keywords?.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#059669", display: "block", marginBottom: 4 }}>
-                    ✓ Matching Qualifications
-                  </span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {analysis.jd_match.matching_keywords.map((kw, i) => (
-                      <span key={i} style={{ fontSize: 12, padding: "3px 8px", borderRadius: 6, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {analysis.jd_match.missing_keywords?.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#DC2626", display: "block", marginBottom: 4 }}>
-                    ⚠ Missing Key Qualifications from JD
-                  </span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {analysis.jd_match.missing_keywords.map((kw, i) => (
-                      <span key={i} style={{ fontSize: 12, padding: "3px 8px", borderRadius: 6, background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FCA5A5" }}>
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {analysis.jd_match.recommendations?.length > 0 && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-                    Tailoring Advice
-                  </span>
-                  {analysis.jd_match.recommendations.map((rec, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--ink)", margin: "3px 0" }}>
-                      • {rec}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          )}
 
-          {/* Detected Strengths */}
-          {analysis.strengths?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div className="eyebrow" style={{ color: "var(--ok)", marginBottom: 8 }}>Detected Candidate Strengths</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {analysis.strengths.map((s) => (
-                  <div key={s.skill} style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "10px 14px", borderRadius: 10 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{s.skill}</div>
-                    <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2 }}>Proficiency: {pct(s.proficiency)}</div>
+            {/* Gaps / Missing Skills */}
+            <div className="card" style={{ padding: 18, marginBottom: 0 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#D97706" }}>
+                ⚠️ Missing Skills & Requirements ({analysis.gaps?.length || 0})
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(analysis.gaps || []).map((gap, idx) => (
+                  <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", padding: "8px 12px", borderRadius: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{gap.skill}</div>
+                    <div style={{ fontSize: 12, color: "#B45309", marginTop: 2 }}>{gap.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Action Plan */}
+          {analysis.action_plan && (
+            <div className="card" style={{ padding: 18, marginBottom: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "var(--ink)" }}>
+                🚀 AI Recommended Career Action Plan
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(analysis.action_plan || []).map((act, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
+                    <span style={{ fontWeight: 800, color: "var(--marigold-dark)", background: "var(--surface-2)", width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                      {idx + 1}
+                    </span>
+                    <span>{act}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Skill Gaps */}
-          {analysis.gaps?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div className="eyebrow" style={{ color: "var(--marigold-dark)", marginBottom: 8 }}>Highest-Leverage Skill Gaps</div>
-              {analysis.gaps.map((g) => (
-                <div key={g.skill} style={{ marginBottom: 10, background: "var(--surface)", border: "1px solid var(--line)", padding: 12, borderRadius: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
-                    <span>{g.skill}</span>
-                    <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-faint)" }}>
-                      Demand {pct(g.demand)} · You {pct(g.proficiency)}
-                    </span>
-                  </div>
-                  <div style={{ height: 6, borderRadius: 3, background: "var(--surface-2)", overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: pct(g.demand), background: "var(--line)" }}>
-                      <div style={{ height: "100%", width: pct(g.proficiency / (g.demand || 1)), background: "var(--marigold)" }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ATS Resume Audit */}
-          {analysis.resume_audit && (
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1.5px solid var(--line)",
-                borderRadius: "var(--r)",
-                padding: 18,
-                marginBottom: 20,
-                boxShadow: "var(--sh-sm)",
-              }}
-            >
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px", color: "var(--ink)" }}>📝 ATS & Recruiter Resume Audit</h3>
-              <p style={{ fontSize: 13.5, color: "var(--ink-soft)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                {analysis.resume_audit.summary}
-              </p>
-
-              {analysis.resume_audit.strengths?.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#059669", display: "block", marginBottom: 4 }}>
-                    Resume Strengths
-                  </span>
-                  {analysis.resume_audit.strengths.map((str, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--ink)", margin: "2px 0" }}>• {str}</div>
-                  ))}
-                </div>
-              )}
-
-              {analysis.resume_audit.weaknesses?.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#D97706", display: "block", marginBottom: 4 }}>
-                    Areas to Improve
-                  </span>
-                  {analysis.resume_audit.weaknesses.map((w, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--ink)", margin: "2px 0" }}>• {w}</div>
-                  ))}
-                </div>
-              )}
-
-              {analysis.resume_audit.ats_issues?.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#DC2626", display: "block", marginBottom: 4 }}>
-                    ATS Flags
-                  </span>
-                  {analysis.resume_audit.ats_issues.map((ats, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "#DC2626", margin: "2px 0" }}>⚠ {ats}</div>
-                  ))}
-                </div>
-              )}
-
-              {analysis.resume_audit.fixes?.length > 0 && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "#059669", display: "block", marginBottom: 4 }}>
-                    Suggested Rewrite Fixes
-                  </span>
-                  {analysis.resume_audit.fixes.map((fix, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--ink)", margin: "3px 0" }}>✓ {fix}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Actionable Learning Plan */}
-          {analysis.plan?.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <div className="eyebrow" style={{ color: "var(--marigold-dark)", marginBottom: 8 }}>Personalized 3-Hour Learning Plan</div>
-              {analysis.plan.map((p, i) => (
-                <article className="card kind-link" key={i} style={{ marginBottom: 10 }}>
-                  <p className="summary" style={{ fontSize: 15, fontWeight: 700 }}>{p.skill}</p>
-                  <p className="raw" style={{ fontSize: 13, color: "var(--ink-soft)", margin: "4px 0" }}>{p.why}</p>
-                  <p style={{ fontSize: 13.5, margin: "6px 0", color: "var(--ink)" }}><b>Path:</b> {p.plan}</p>
-                  <p style={{ fontSize: 13, margin: 0, color: "var(--marigold-dark)" }}><b>Project Idea:</b> {p.project}</p>
-                </article>
-              ))}
-            </div>
-          )}
-
-          {/* Tailored Cover Letter Generator */}
-          <div style={{ marginTop: 26, borderTop: "1px solid var(--line)", paddingTop: 20 }}>
-            <div className="eyebrow" style={{ color: "var(--marigold-dark)", marginBottom: 6 }}>Tailored Cover Letter</div>
-            <p className="sub" style={{ margin: "0 0 14px", fontSize: 13.5 }}>
-              Generate a tailored cover letter using your actual resume context for {targetRole || "target position"}.
-            </p>
-
-            {clErr && <div className="err" style={{ marginBottom: 10 }}>{clErr}</div>}
-
-            <button
-              className="btn full"
-              onClick={draftCoverLetter}
-              disabled={clBusy}
-              style={{
-                padding: "10px 18px",
-                borderRadius: "var(--r-s)",
-                background: "var(--surface-2)",
-                border: "1px solid var(--line)",
-                color: "var(--ink)",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                marginBottom: clLetter ? 16 : 0,
-              }}
-            >
-              {clBusy ? "Drafting Cover Letter with AI…" : "✍ Draft Tailored Cover Letter"}
-            </button>
-
-            {clLetter && (
-              <div
+          {/* Cover Letter Generator Section */}
+          <div className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
+                ✉️ AI Tailored Cover Letter Generator
+              </h3>
+              <button
+                type="button"
+                onClick={draftCoverLetter}
+                disabled={clBusy}
                 style={{
-                  position: "relative",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--line)",
-                  borderRadius: "var(--r)",
-                  padding: "16px 18px",
-                  marginTop: 12,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: clBusy ? "var(--line)" : "var(--p-gradient)",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: clBusy ? "not-allowed" : "pointer",
                 }}
               >
+                {clBusy ? "Drafting Cover Letter…" : "Generate Cover Letter →"}
+              </button>
+            </div>
+
+            {clErr && <div className="err" style={{ marginBottom: 12 }}>{clErr}</div>}
+
+            {clLetter && (
+              <div>
+                <textarea
+                  readOnly
+                  value={clLetter}
+                  rows={10}
+                  style={{
+                    width: "100%",
+                    padding: 14,
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-2)",
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    fontFamily: "var(--sans)",
+                    marginBottom: 10,
+                  }}
+                />
                 <button
+                  type="button"
                   onClick={copyLetter}
                   style={{
-                    position: "absolute",
-                    top: 10,
-                    right: 12,
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-2)",
                     fontSize: 12,
-                    padding: "4px 10px",
-                    borderRadius: 8,
-                    border: `1px solid ${copied ? "#059669" : "var(--line)"}`,
-                    background: copied ? "#ECFDF5" : "var(--surface)",
-                    color: copied ? "#059669" : "var(--ink-soft)",
+                    fontWeight: 600,
                     cursor: "pointer",
                   }}
                 >
-                  {copied ? "✓ Copied" : "Copy Letter"}
+                  {copied ? "✓ Copied to Clipboard!" : "📋 Copy Cover Letter"}
                 </button>
-                <pre
-                  style={{
-                    fontFamily: "var(--sans)",
-                    fontSize: 13.5,
-                    lineHeight: 1.65,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    margin: 0,
-                    paddingRight: 48,
-                    color: "var(--ink)",
-                  }}
-                >
-                  {clLetter}
-                </pre>
               </div>
             )}
           </div>

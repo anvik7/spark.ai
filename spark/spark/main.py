@@ -884,6 +884,29 @@ async def upload_resume(file: UploadFile = File(...),
         }
 
 
+@app.delete("/api/career/resume")
+@app.post("/api/career/clear-resume")
+def clear_resume(user: User = Depends(current_user)):
+    """Remove user's uploaded/pasted resume and reset resume fields cleanly."""
+    with get_session() as session:
+        prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+        if prof:
+            prof.resume_text = ""
+            prof.resume_filename = ""
+            prof.last_analysis_json = None
+            prof.updated_at = datetime.now(timezone.utc)
+            session.add(prof)
+            session.commit()
+            session.refresh(prof)
+        return {
+            "status": "success",
+            "message": "Resume removed successfully.",
+            "resume_filename": "",
+            "resume_text": "",
+            "last_analysis": None,
+        }
+
+
 class CoverLetterIn(BaseModel):
     role: str = ""
     company: str = ""
