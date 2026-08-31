@@ -59,15 +59,17 @@ app.add_middleware(
 
 
 @app.exception_handler(Exception)
-async def study_exception_handler(request: Request, exc: Exception):
-    """Ensure every Study API error returns valid structured JSON, never HTML."""
-    if request.url.path.startswith("/api/study"):
+async def global_api_exception_handler(request: Request, exc: Exception):
+    """Ensure every API route error returns valid structured JSON, never HTML."""
+    if request.url.path.startswith("/api"):
+        parts = request.url.path.split("/")
+        domain = parts[2].upper() if len(parts) > 2 and parts[2] else "API"
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": True,
-                "message": f"Study API Error: {str(exc)}",
-                "code": "STUDY_API_ERROR",
+                "message": f"{domain} API Error: {str(exc)}",
+                "code": f"{domain}_API_ERROR",
             },
         )
     return JSONResponse(

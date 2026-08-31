@@ -54,6 +54,10 @@ def _message_out(session, msg: CircleMessage) -> dict:
                 "content": "[Message deleted]" if parent_msg.is_deleted else parent_msg.content,
             }
 
+    created_dt = getattr(msg, "created_at", None) or datetime.now(timezone.utc)
+    if not created_dt.tzinfo:
+        created_dt = created_dt.replace(tzinfo=timezone.utc)
+
     return {
         "id": msg.id,
         "circleId": msg.circle_id,
@@ -65,7 +69,7 @@ def _message_out(session, msg: CircleMessage) -> dict:
         "replyTo": reply_to,
         "isDeleted": msg.is_deleted,
         "editedAt": msg.edited_at.isoformat() if msg.edited_at else None,
-        "createdAt": msg.created_at.isoformat(),
+        "createdAt": created_dt.isoformat(),
     }
 
 

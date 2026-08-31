@@ -135,6 +135,9 @@ class CircleMessage(SQLModel, table=True):
     reply_to_id: Optional[int] = Field(default=None, foreign_key="circlemessage.id")
     is_deleted: bool = False
     edited_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class UserCareerProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True, unique=True, foreign_key="user.id")
@@ -145,6 +148,10 @@ class UserCareerProfile(SQLModel, table=True):
     target_company: str = ""
     job_description: str = ""
     last_analysis_json: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class StudentTask(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True, foreign_key="user.id")
@@ -161,6 +168,8 @@ class StudentTask(SQLModel, table=True):
     thread_json: str = "[]"
     status: str = "Solved by AI"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class InterviewSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True, foreign_key="user.id")
@@ -226,6 +235,29 @@ def _migrate() -> None:
                 if "material" not in session_cols:
                     print("[migrate] Adding material column to 'studysession' table...")
                     conn.execute(_sql("ALTER TABLE studysession ADD COLUMN material VARCHAR DEFAULT ''"))
+
+            # 5. CircleMessage table schema sync
+            if inspector.has_table("circlemessage"):
+                msg_cols = {c["name"] for c in inspector.get_columns("circlemessage")}
+                if "created_at" not in msg_cols:
+                    print("[migrate] Adding created_at column to 'circlemessage' table...")
+                    if engine.dialect.name == "postgresql":
+                        conn.execute(_sql("ALTER TABLE circlemessage ADD COLUMN created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"))
+                    else:
+                        conn.execute(_sql("ALTER TABLE circlemessage ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"))
+                else:
+                    # Fill any legacy NULL created_at rows
+                    conn.execute(_sql("UPDATE circlemessage SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
+
+            # 6. UserCareerProfile table schema sync
+            if inspector.has_table("usercareerprofile"):
+                profile_cols = {c["name"] for c in inspector.get_columns("usercareerprofile")}
+                if "created_at" not in profile_cols:
+                    print("[migrate] Adding created_at column to 'usercareerprofile' table...")
+                    if engine.dialect.name == "postgresql":
+                        conn.execute(_sql("ALTER TABLE usercareerprofile ADD COLUMN created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"))
+                    else:
+                        conn.execute(_sql("ALTER TABLE usercareerprofile ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"))
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
 
