@@ -200,7 +200,7 @@ body[data-persona="preset-12"], [data-persona="preset-12"] {
 /* ── Base ──────────────────────────────────────────── */
 html, body {
   height: 100%;
-  background: #E5E7EB;
+  background: var(--surface-2);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 16px;
@@ -210,42 +210,170 @@ html, body {
 }
 #root { height: 100%; }
 
-/* ── App shell ─────────────────────────────────────── */
-.app {
+/* ── RESPONSIVE SAAS APPSHELL LAYOUT ────────────────────────── */
+.app-layout {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  max-width: 480px;
-  margin: 0 auto;
-  background: var(--surface);
-  box-shadow: var(--sh-lg);
-  position: relative;
+  min-height: 100vh;
+  background: var(--surface-2);
 }
 
-/* ── Header ────────────────────────────────────────── */
-header, .app-header {
+/* ── SIDEBAR (DESKTOP) ────────────────────────── */
+.app-sidebar {
+  width: 240px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 90;
+}
+
+.sidebar-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidebar-workspace {
+  padding: 10px 14px;
+  margin: 12px 12px 4px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-nav {
+  padding: 12px 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+
+.sidebar-link:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.sidebar-link.active {
+  background: var(--marigold-light);
+  color: var(--marigold-dark);
+  font-weight: 700;
+}
+
+.sidebar-footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── MAIN CONTENT WORKSPACE ────────────────────────── */
+.app-main {
+  flex: 1;
+  margin-left: 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar-desktop {
+  height: 56px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
-  padding: 0 20px;
-  height: 54px;
+  padding: 0 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: sticky;
   top: 0;
-  z-index: 50;
-  flex-shrink: 0;
+  z-index: 80;
 }
 
-/* ── Screen ────────────────────────────────────────── */
-.screen {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 20px calc(var(--nav-h) + 24px);
+.cmd-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 14px;
+  width: 320px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
-.screen::-webkit-scrollbar { width: 3px; }
-.screen::-webkit-scrollbar-track { background: transparent; }
-.screen::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+
+.cmd-search-trigger:hover {
+  border-color: var(--marigold);
+  color: var(--ink);
+}
+
+.workspace-container {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+}
+
+/* ── MOBILE ADAPTATIONS (<768px) ────────────────────────── */
+@media (max-width: 767px) {
+  .app-sidebar {
+    display: none;
+  }
+  .app-main {
+    margin-left: 0;
+  }
+  .topbar-desktop {
+    padding: 0 16px;
+  }
+  .cmd-search-trigger {
+    width: auto;
+    flex: 1;
+    max-width: 220px;
+  }
+  .workspace-container {
+    padding: 16px 16px calc(var(--nav-h) + 24px);
+  }
+}
+
+/* ── Legacy Screen Fallback ────────────────────────── */
+.screen {
+  width: 100%;
+  padding: 0;
+}
 
 /* ── Typography ────────────────────────────────────── */
 .title {

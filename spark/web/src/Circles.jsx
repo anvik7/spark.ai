@@ -33,11 +33,12 @@ export default function Circles() {
 
   return (
     <div className="screen">
-      <div className="eyebrow">Study Circles</div>
-      <h1 className="title">Your Study Groups</h1>
-      <p className="sub">
-        Create or join private study circles. Share an invite code to let friends join.
-      </p>
+      <div style={{ marginBottom: 20 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Study Circles</h1>
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Collaborate and study together with private groups, invite codes, and real-time chat.
+        </p>
+      </div>
 
       {err && (
         <div className="err" style={{ marginBottom: 12 }}>

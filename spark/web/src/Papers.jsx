@@ -41,11 +41,12 @@ export default function Papers() {
 
   return (
     <div className="screen">
-      <div className="eyebrow">Question Papers</div>
-      <h1 className="title">Paper Vault</h1>
-      <p className="sub">
-        Upload, browse, and download past exam papers. Free users get 3 uploads &amp; 10 downloads/month.
-      </p>
+      <div style={{ marginBottom: 20 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Paper Vault</h1>
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Upload, organize, and download previous exam papers and practice materials.
+        </p>
+      </div>
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>

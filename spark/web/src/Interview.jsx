@@ -279,10 +279,9 @@ export default function Interview({ onNavigate, user }) {
     <div className="screen">
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Coach OS</div>
-        <h1 className="title" style={{ fontSize: 26, margin: 0 }}>AI Interview Simulator</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 14 }}>
-          Practice adaptive HR, Technical Deep-Dive, and Hiring Manager interviews with real candidate resume probing, natural Web Speech voice, and multi-metric candidate scorecards.
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Interview Coach</h1>
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Practice technical and behavioral mock interviews with natural Web Speech voice and evaluation scorecards.
         </p>
       </div>
 

@@ -239,10 +239,9 @@ export default function Capture({ onSaved }) {
     <div className="screen">
       {/* Knowledge Saver Header */}
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>Personal Knowledge Engine</div>
-        <h1 className="title" style={{ fontSize: 26, margin: 0 }}>What do you want to save?</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 14 }}>
-          Capture notes, thoughts, web clippings, links, photos, PDFs or voice notes directly into your second brain.
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Capture Workspace</h1>
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Save notes, thoughts, web links, files, or voice ideas directly to your workspace.
         </p>
       </div>
 

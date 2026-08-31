@@ -249,10 +249,9 @@ export default function Tasks() {
     <div className="screen">
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Student Workspace</div>
-        <h1 className="title" style={{ fontSize: 26, margin: 0 }}>What do you need help solving?</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 14 }}>
-          Ask any calculus problem, physics question, code error, research paper, writing assignment, or general academic task. Spark AI provides direct answers, step-by-step reasoning, and contextual follow-ups.
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Tasks & Problem Solver</h1>
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Solve academic problems, debug code, and analyze step-by-step solutions with AI reasoning.
         </p>
       </div>
 
