@@ -87,6 +87,9 @@ export const api = {
     return req("/captures/voice", { method: "POST", form: f });
   },
   deleteCapture: (id) => req(`/captures/${id}`, { method: "DELETE" }),
+  shareCapture: (id) => req(`/captures/${id}/share`, { method: "POST" }),
+  unshareCapture: (id) => req(`/captures/${id}/unshare`, { method: "POST" }),
+  getPublicCapture: (shareToken) => req(`/public/captures/${shareToken}`),
   addCard: (kind, raw) => req("/captures", { method: "POST", body: { kind, raw } }),
   deleteCard: (id) => req(`/captures/${id}`, { method: "DELETE" }),
   tags: () => req("/tags"),

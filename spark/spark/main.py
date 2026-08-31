@@ -175,6 +175,8 @@ def _card_out(c: Card) -> dict:
         "source_type": getattr(c, "source_type", c.kind),
         "source_url": c.source_url,
         "created_at": c.created_at, "due_on": c.due_on, "reps": c.reps,
+        "is_public": getattr(c, "is_public", False),
+        "share_token": getattr(c, "share_token", None),
     }
 
 
@@ -430,6 +432,61 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         session.delete(card)
         session.commit()
         return {"deleted": card_id}
+
+
+# --- capture sharing --------------------------------------------------------
+
+@app.post("/api/captures/{card_id}/share")
+@app.post("/api/cards/{card_id}/share")
+def share_capture(card_id: int, user: User = Depends(current_user)):
+    with get_session() as session:
+        card = session.get(Card, card_id)
+        if not card or card.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Capture not found")
+        if not card.share_token:
+            card.share_token = uuid.uuid4().hex[:12]
+        card.is_public = True
+        session.add(card)
+        session.commit()
+        session.refresh(card)
+        return {
+            "is_public": True,
+            "share_token": card.share_token,
+            "share_url": f"/shared/capture/{card.share_token}",
+        }
+
+
+@app.post("/api/captures/{card_id}/unshare")
+@app.post("/api/cards/{card_id}/unshare")
+def unshare_capture(card_id: int, user: User = Depends(current_user)):
+    with get_session() as session:
+        card = session.get(Card, card_id)
+        if not card or card.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Capture not found")
+        card.is_public = False
+        card.share_token = None
+        session.add(card)
+        session.commit()
+        return {"is_public": False}
+
+
+@app.get("/api/public/captures/{share_token}")
+def get_public_capture(share_token: str):
+    """Public endpoint to view a shared capture cleanly without authentication.
+    Strictly shields user account details, emails, internal IDs, and subscription data."""
+    with get_session() as session:
+        card = session.exec(select(Card).where(Card.share_token == share_token, Card.is_public == True)).first()
+        if not card:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Capture not found or share link has been revoked.")
+        return {
+            "kind": card.kind,
+            "title": getattr(card, "title", "") or "",
+            "raw": card.raw,
+            "summary": card.summary,
+            "tags": card.tags,
+            "created_at": card.created_at,
+            "source_url": card.source_url,
+        }
 
 
 @app.patch("/api/cards/{card_id}")

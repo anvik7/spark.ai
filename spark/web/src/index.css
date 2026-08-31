@@ -320,6 +320,19 @@ html, body {
   z-index: 80;
 }
 
+.topbar-mobile {
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 80;
+}
+
 .cmd-search-trigger {
   display: flex;
   align-items: center;
@@ -357,19 +370,17 @@ html, body {
     margin-left: 0;
   }
   .topbar-desktop {
-    padding: 0 16px;
-  }
-  .cmd-search-trigger {
-    width: auto;
-    flex: 1;
-    max-width: 220px;
+    display: none !important;
   }
   .workspace-container {
-    padding: 16px 16px calc(var(--nav-h) + 24px);
+    padding: 16px 16px calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
 
 @media (min-width: 768px) {
+  .topbar-mobile {
+    display: none !important;
+  }
   nav.nav {
     display: none !important;
   }

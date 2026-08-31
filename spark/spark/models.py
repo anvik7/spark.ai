@@ -53,6 +53,8 @@ class Card(SQLModel, table=True):
     interval_days: int = 0
     reps: int = 0
     due_on: date = Field(default_factory=date.today, index=True)
+    is_public: bool = False
+    share_token: Optional[str] = Field(default=None, index=True)
 
 
 class UsageDay(SQLModel, table=True):
@@ -261,15 +263,18 @@ def _migrate() -> None:
                     # Fill any legacy NULL created_at rows
                     conn.execute(_sql("UPDATE circlemessage SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
 
-            # 6. UserCareerProfile table schema sync
-            if inspector.has_table("usercareerprofile"):
-                profile_cols = {c["name"] for c in inspector.get_columns("usercareerprofile")}
-                if "created_at" not in profile_cols:
-                    print("[migrate] Adding created_at column to 'usercareerprofile' table...")
+            # 7. Card table schema sync
+            if inspector.has_table("card"):
+                card_cols = {c["name"] for c in inspector.get_columns("card")}
+                if "is_public" not in card_cols:
+                    print("[migrate] Adding is_public column to 'card' table...")
                     if engine.dialect.name == "postgresql":
-                        conn.execute(_sql("ALTER TABLE usercareerprofile ADD COLUMN created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"))
+                        conn.execute(_sql("ALTER TABLE card ADD COLUMN is_public BOOLEAN DEFAULT FALSE"))
                     else:
-                        conn.execute(_sql("ALTER TABLE usercareerprofile ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"))
+                        conn.execute(_sql("ALTER TABLE card ADD COLUMN is_public BOOLEAN DEFAULT 0"))
+                if "share_token" not in card_cols:
+                    print("[migrate] Adding share_token column to 'card' table...")
+                    conn.execute(_sql("ALTER TABLE card ADD COLUMN share_token VARCHAR DEFAULT NULL"))
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
 

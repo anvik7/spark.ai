@@ -33,16 +33,25 @@ const Svg = ({ d, cls = "ico" }) => (
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>{d}</svg>
 );
 
+import SharedCapture from "./SharedCapture.jsx";
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
-  const [tab, setTab] = useState("capture"); // CAPTURE IS MAIN WORKSPACE
+  const [tab, setTab] = useState("capture");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
+
+  // Check public shared capture URL route
+  const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+  if (currentPath.startsWith("/shared/capture/")) {
+    const shareToken = currentPath.replace("/shared/capture/", "").trim();
+    return <SharedCapture shareToken={shareToken} />;
+  }
 
   useEffect(() => {
     if (!hasToken()) { setBooting(false); return; }
@@ -173,7 +182,52 @@ export default function App() {
 
       {/* Main Content Workspace */}
       <main className="app-main">
-        {/* Top Header Bar */}
+        {/* Mobile Header (< 768px) */}
+        <header className="topbar-mobile">
+          <div onClick={() => handleNav("capture")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <Chakra size={20} />
+            <span className="logo-mark" style={{ fontSize: 18 }}>Spark</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              onClick={() => setShowCmdMenu(true)}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                cursor: "pointer",
+                color: "var(--ink-soft)",
+              }}
+              title="Search (⌘K)"
+            >
+              🔍
+            </button>
+
+            <button
+              className={`plan-chip ${user.plan === "pro" || user.plan === "plus" ? "pro" : ""}`}
+              onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
+              style={{ fontSize: 11, padding: "3px 8px" }}
+            >
+              {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : "Free"}
+            </button>
+
+            <button
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
+            >
+              <Avatar src={user?.avatar_url} name={user?.name || "User"} size={28} />
+            </button>
+          </div>
+        </header>
+
+        {/* Desktop Header (>= 768px) */}
         <header className="topbar-desktop">
           <div className="cmd-search-trigger" onClick={() => setShowCmdMenu(true)}>
             <span>🔍</span>

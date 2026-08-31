@@ -423,8 +423,80 @@ export default function Capture() {
               </a>
             )}
 
-            <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 8 }}>
-              {new Date(c.created_at || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>
+                {new Date(c.created_at || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {c.is_public && c.share_token ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        const url = `${window.location.origin}/shared/capture/${c.share_token}`;
+                        await navigator.clipboard?.writeText(url);
+                        alert("Public link copied to clipboard:\n" + url);
+                      }}
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid var(--marigold)",
+                        background: "var(--marigold-light)",
+                        color: "var(--marigold-dark)",
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      📋 Copy Link
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await api.unshareCapture(c.id);
+                        setCaptures((prev) =>
+                          prev.map((item) => (item.id === c.id ? { ...item, is_public: false, share_token: null } : item))
+                        );
+                      }}
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid var(--line)",
+                        background: "var(--surface-2)",
+                        color: "var(--ink-soft)",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const res = await api.shareCapture(c.id);
+                      setCaptures((prev) =>
+                        prev.map((item) => (item.id === c.id ? { ...item, is_public: true, share_token: res.share_token } : item))
+                      );
+                      const url = `${window.location.origin}${res.share_url}`;
+                      await navigator.clipboard?.writeText(url);
+                      alert("Public share link created & copied:\n" + url);
+                    }}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--line)",
+                      background: "var(--surface-2)",
+                      color: "var(--ink)",
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🔗 Share
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}

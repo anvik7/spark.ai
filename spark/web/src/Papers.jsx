@@ -2,32 +2,20 @@ import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
-const CATEGORIES = [
-  "All",
-  "Engineering",
-  "Medical",
-  "Management",
-  "Law",
-  "Government",
-  "School",
-  "University",
-  "Professional",
-  "Other",
-];
-
 function fmtSize(bytes) {
+  if (!bytes) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function fmtDate(iso) {
+  if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 export default function Papers() {
   const [papers, setPapers] = useState(null);
-  const [filterCategory, setFilterCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [err, setErr] = useState("");
@@ -61,22 +49,10 @@ export default function Papers() {
 
   const filteredPapers = (papers || []).filter((p) => {
     const q = searchQuery.trim().toLowerCase();
-    const matchesSearch = !q ||
+    return !q ||
       (p.title && p.title.toLowerCase().includes(q)) ||
       (p.examTag && p.examTag.toLowerCase().includes(q)) ||
       (p.subject && p.subject.toLowerCase().includes(q));
-
-    if (!matchesSearch) return false;
-
-    if (filterCategory === "All") return true;
-    if (filterCategory === "Engineering") return p.examTag?.toLowerCase().includes("engineering") || p.examTag?.toLowerCase().includes("jee") || p.examTag?.toLowerCase().includes("gate");
-    if (filterCategory === "Medical") return p.examTag?.toLowerCase().includes("medical") || p.examTag?.toLowerCase().includes("neet") || p.examTag?.toLowerCase().includes("usmle");
-    if (filterCategory === "Management") return p.examTag?.toLowerCase().includes("management") || p.examTag?.toLowerCase().includes("cat") || p.examTag?.toLowerCase().includes("gmat");
-    if (filterCategory === "Law") return p.examTag?.toLowerCase().includes("law") || p.examTag?.toLowerCase().includes("clat");
-    if (filterCategory === "Government") return p.examTag?.toLowerCase().includes("government") || p.examTag?.toLowerCase().includes("upsc") || p.examTag?.toLowerCase().includes("ssc");
-    if (filterCategory === "School") return p.examTag?.toLowerCase().includes("school") || p.examTag?.toLowerCase().includes("cbse") || p.examTag?.toLowerCase().includes("sat");
-    if (filterCategory === "University") return p.examTag?.toLowerCase().includes("university") || p.examTag?.toLowerCase().includes("du") || p.examTag?.toLowerCase().includes("bsc");
-    return true;
   });
 
   return (
@@ -95,34 +71,10 @@ export default function Papers() {
 
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Paper Vault</h1>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Papers</h1>
         <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Keep your exam and study documents organized.
+          Keep your documents and learning materials organized in Spark.
         </p>
-      </div>
-
-      {/* Category Pills */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 12 }}>
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            className="tag"
-            style={{
-              padding: "4px 12px",
-              borderRadius: 14,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              background: filterCategory === cat ? "var(--ink)" : "var(--surface-2)",
-              color: filterCategory === cat ? "#ffffff" : "var(--ink-soft)",
-              border: "1px solid var(--line)",
-            }}
-            onClick={() => setFilterCategory(cat)}
-          >
-            {cat}
-          </button>
-        ))}
       </div>
 
       {/* Search & Upload Controls */}
@@ -130,7 +82,7 @@ export default function Papers() {
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by title, subject, or exam tag…"
+          placeholder="Search by title or subject…"
           style={{
             flex: 1,
             padding: "8px 12px",
@@ -146,7 +98,7 @@ export default function Papers() {
           style={{
             padding: "8px 16px",
             borderRadius: 8,
-            background: "var(--marigold)",
+            background: "var(--p-gradient)",
             color: "#ffffff",
             border: "none",
             fontSize: 13,
@@ -154,11 +106,11 @@ export default function Papers() {
             cursor: "pointer",
           }}
         >
-          {showUpload ? "Cancel" : "+ Upload Paper"}
+          {showUpload ? "Cancel" : "＋ Upload Document"}
         </button>
       </div>
 
-      {/* Upload form */}
+      {/* Upload Form */}
       {showUpload && (
         <UploadForm
           onUploaded={(paper) => {
@@ -176,7 +128,7 @@ export default function Papers() {
         </div>
       )}
 
-      {/* Paper list */}
+      {/* Paper List */}
       {!papers && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[1, 2, 3].map((i) => (
@@ -187,9 +139,9 @@ export default function Papers() {
 
       {papers && filteredPapers.length === 0 && (
         <div style={{ textAlign: "center", padding: "36px 16px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Your Paper Vault is empty</div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>
-            Upload past exam papers, university tests, or practice materials to keep your workspace organized.
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>No papers uploaded yet.</div>
+          <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+            Upload your documents to keep them organized in Spark.
           </div>
         </div>
       )}
@@ -203,12 +155,10 @@ export default function Papers() {
   );
 }
 
-/* ---------- Extensible Upload Form ---------- */
+/* ---------- Upload Form Component ---------- */
 function UploadForm({ onUploaded, onError }) {
   const [title, setTitle] = useState("");
-  const [examTag, setExamTag] = useState("");
   const [subject, setSubject] = useState("");
-  const [year, setYear] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef();
@@ -218,7 +168,7 @@ function UploadForm({ onUploaded, onError }) {
     if (!file || !title.trim()) return;
     setBusy(true);
     try {
-      const paper = await api.uploadPaper(file, title.trim(), examTag.trim(), subject.trim(), year ? parseInt(year, 10) : null);
+      const paper = await api.uploadPaper(file, title.trim(), "", subject.trim(), null);
       onUploaded(paper);
     } catch (err) {
       onError(err.message);
@@ -232,11 +182,11 @@ function UploadForm({ onUploaded, onError }) {
       background: "var(--surface)", borderRadius: 10, padding: 16,
       marginBottom: 16, border: "1.5px solid var(--line)", boxShadow: "var(--sh-sm)",
     }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Upload Paper or Practice Set</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Upload Learning Document</div>
 
       <input
         value={title} onChange={(e) => setTitle(e.target.value)}
-        placeholder="Paper title (e.g. Delhi University BSc Maths 2024 or SAT Practice 1)"
+        placeholder="Document title (e.g. Constitutional Law Notes, Financial Accounting 2024)"
         required
         style={{
           width: "100%", padding: "8px 12px", borderRadius: 8,
@@ -244,53 +194,48 @@ function UploadForm({ onUploaded, onError }) {
         }}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 8, marginBottom: 12 }}>
-        <input
-          value={examTag} onChange={(e) => setExamTag(e.target.value)}
-          placeholder="Exam / Board (e.g. JEE, SAT, UPSC, CBSE)"
-          style={{
-            padding: "8px 10px", borderRadius: 8,
-            border: "1px solid var(--line)", fontSize: 13, background: "var(--surface)",
-          }}
-        />
-
-        <input
-          value={subject} onChange={(e) => setSubject(e.target.value)}
-          placeholder="Subject (e.g. Calculus, Physics)"
-          style={{
-            padding: "8px 10px", borderRadius: 8,
-            border: "1px solid var(--line)", fontSize: 13,
-          }}
-        />
-
-        <input
-          type="number" value={year} onChange={(e) => setYear(e.target.value)}
-          placeholder="Year"
-          min="1990" max="2099"
-          style={{
-            padding: "8px 10px", borderRadius: 8,
-            border: "1px solid var(--line)", fontSize: 13,
-          }}
-        />
-      </div>
+      <input
+        value={subject} onChange={(e) => setSubject(e.target.value)}
+        placeholder="Subject or Category (Optional)"
+        style={{
+          width: "100%", padding: "8px 12px", borderRadius: 8,
+          border: "1px solid var(--line)", fontSize: 13.5, marginBottom: 12,
+        }}
+      />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => fileRef.current?.click()}
-          style={{ background: "var(--surface-2)", color: "var(--ink)", border: "1px solid var(--line)", fontSize: 12.5 }}
-        >
-          {file ? file.name.slice(0, 26) : "📁 Choose File"}
-        </button>
         <input
-          ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.png"
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
           style={{ display: "none" }}
         />
-        {file && <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{fmtSize(file.size)}</span>}
 
-        <button className="btn" type="submit" disabled={busy || !file || !title.trim()} style={{ marginLeft: "auto", background: "var(--p-gradient)", color: "#fff", border: "none", padding: "8px 18px", borderRadius: 8, fontWeight: 700 }}>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          style={{
+            padding: "8px 14px", borderRadius: 8,
+            border: "1px solid var(--line)", background: "var(--surface-2)",
+            fontSize: 13, cursor: "pointer", fontWeight: 600, color: "var(--ink)",
+          }}
+        >
+          {file ? `📄 ${file.name}` : "📁 Select File"}
+        </button>
+
+        <div style={{ flex: 1 }} />
+
+        <button
+          type="submit"
+          disabled={busy || !file || !title.trim()}
+          style={{
+            padding: "8px 18px", borderRadius: 8,
+            border: "none", background: busy || !file || !title.trim() ? "var(--line)" : "var(--p-gradient)",
+            color: "#ffffff", fontSize: 13.5, fontWeight: 700,
+            cursor: busy || !file || !title.trim() ? "not-allowed" : "pointer",
+          }}
+        >
           {busy ? "Uploading…" : "Upload"}
         </button>
       </div>
@@ -298,45 +243,47 @@ function UploadForm({ onUploaded, onError }) {
   );
 }
 
-/* ---------- Paper Card ---------- */
+/* ---------- Paper Card Component ---------- */
 function PaperCard({ paper, onDelete }) {
-  const p = paper;
-
-  const handleDownload = () => {
-    window.open(api.downloadPaperUrl(p.id), "_blank");
-  };
-
   return (
-    <article className="card" style={{ marginBottom: 0, padding: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", marginBottom: 4 }}>
-            {p.examTag || "Paper"}{p.subject ? ` · ${p.subject}` : ""}{p.year ? ` · ${p.year}` : ""}
+    <div style={{
+      background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10,
+      padding: 14, boxShadow: "var(--sh-sm)", display: "flex", justifyContent: "space-between", alignItems: "center",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 24 }}>📄</span>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{paper.title}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+            {paper.subject || "Document"} · {fmtSize(paper.fileSize)} · {fmtDate(paper.uploadedAt)}
           </div>
-          <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: "var(--ink)" }}>{p.title}</p>
         </div>
       </div>
 
-      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-        <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--ink-soft)" }}>
-          <span>{fmtSize(p.fileSize)}</span>
-          <span>{p.downloadCount} {p.downloadCount === 1 ? "download" : "downloads"}</span>
-          <span>{fmtDate(p.createdAt)}</span>
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            className="btn"
-            onClick={handleDownload}
-            style={{
-              fontSize: 12, padding: "4px 12px",
-              background: "var(--marigold)", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600,
-            }}
-          >
-            ↓ Download
-          </button>
-          <button className="del" onClick={() => onDelete(p.id)} aria-label="Delete" style={{ fontSize: 12, padding: "4px 8px" }}>✕</button>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <a
+          href={api.downloadPaperUrl(paper.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            padding: "6px 12px", borderRadius: 6,
+            background: "var(--marigold-light)", color: "var(--marigold-dark)",
+            fontSize: 12.5, fontWeight: 700, textDecoration: "none",
+          }}
+        >
+          Download
+        </a>
+
+        <button
+          onClick={() => onDelete(paper.id)}
+          style={{
+            background: "none", border: "none", color: "var(--ink-faint)",
+            cursor: "pointer", fontSize: 16, padding: "4px 8px",
+          }}
+        >
+          ✕
+        </button>
       </div>
-    </article>
+    </div>
   );
 }
