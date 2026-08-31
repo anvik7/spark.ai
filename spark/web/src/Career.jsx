@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "./api";
+import ConfirmationDialog from "./components/ui/ConfirmationDialog";
+import EmptyState from "./components/ui/EmptyState";
 
 const scoreColor = (s) =>
   s >= 75 ? "#10B981" : s >= 50 ? "var(--marigold)" : "#EF4444";
@@ -57,17 +59,26 @@ export default function Career({ onNavigate, user }) {
   const [resumeFilename, setResumeFilename] = useState("");
   const [github, setGithub] = useState("");
 
+  // Upload & Async States
+  const [uploadState, setUploadState] = useState("idle"); // "idle" | "uploading" | "extracting" | "complete" | "error"
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [err, setErr] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [toastMsg, setToastMsg] = useState("");
   const [analysis, setAnalysis] = useState(null);
+
+  // Destructive Confirmation Modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Cover Letter state
   const [clBusy, setClBusy] = useState(false);
   const [clErr, setClErr] = useState("");
   const [clLetter, setClLetter] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // Drag & drop state
+  const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef();
 
@@ -92,46 +103,65 @@ export default function Career({ onNavigate, user }) {
 
   const handleFileUpload = async (file) => {
     if (!file) return;
+
+    // File validation
+    const allowedExts = [".pdf", ".docx", ".doc", ".txt"];
+    const ext = "." + file.name.split(".").pop().toLowerCase();
+    if (!allowedExts.includes(ext)) {
+      setErr("Invalid file type. Please upload a PDF, DOCX, DOC, or TXT file.");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErr("File size exceeds 10MB limit. Please upload a smaller document.");
+      return;
+    }
+
+    setUploadState("uploading");
     setBusy(true);
     setErr("");
-    setSuccessMsg("");
+    setToastMsg("");
+
     try {
+      setUploadState("extracting");
       const res = await api.uploadResume(file, targetRole, jobDescription);
       if (res.resume_filename) setResumeFilename(res.resume_filename);
       if (res.resume_text) setResumeText(res.resume_text);
       if (res.analysis) setAnalysis(res.analysis);
-      setSuccessMsg(`Uploaded and parsed "${file.filename || file.name}".`);
-      setTimeout(() => setSuccessMsg(""), 3000);
+      setUploadState("complete");
+      setToastMsg(`Uploaded and parsed "${file.name}".`);
+      setTimeout(() => setToastMsg(""), 3500);
     } catch (e) {
-      setErr(e.message || "Failed to parse resume file.");
+      setUploadState("error");
+      setErr(e.message || "Failed to parse uploaded resume.");
     } finally {
       setBusy(false);
     }
   };
 
-  const handleClearResume = async () => {
-    if (!resumeFilename && !resumeText.trim()) return;
-    setBusy(true);
+  const handleConfirmClearResume = async () => {
+    setIsDeleting(true);
     setErr("");
-    setSuccessMsg("");
     try {
       await api.clearResume();
       setResumeFilename("");
       setResumeText("");
       setAnalysis(null);
+      setUploadState("idle");
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setSuccessMsg("Resume removed from profile.");
-      setTimeout(() => setSuccessMsg(""), 3000);
+      setShowDeleteModal(false);
+      setToastMsg("Resume removed from workspace.");
+      setTimeout(() => setToastMsg(""), 3500);
     } catch (e) {
       setErr(e.message || "Failed to remove resume.");
     } finally {
-      setBusy(false);
+      setIsDeleting(false);
     }
   };
 
   const runAnalysis = async () => {
     if (!resumeText.trim() && !resumeFilename) {
-      setErr("Please paste your resume text or upload a PDF/Doc resume.");
+      setErr("Please upload a resume file or paste your resume text to begin analysis.");
       return;
     }
     setBusy(true);
@@ -179,15 +209,46 @@ export default function Career({ onNavigate, user }) {
     });
   };
 
+  // Drag and drop handlers
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
   return (
     <div className="screen">
+      {/* Confirmation Modal */}
+      <ConfirmationDialog
+        isOpen={showDeleteModal}
+        title="Remove resume?"
+        description="This will remove this resume document and your text profile from your Career workspace. Your previous analysis will be reset."
+        confirmLabel="Remove resume"
+        cancelLabel="Cancel"
+        isDanger={true}
+        busy={isDeleting}
+        onConfirm={handleConfirmClearResume}
+        onCancel={() => setShowDeleteModal(false)}
+      />
+
       <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Career Intelligence Engine</div>
       <h1 className="title" style={{ fontSize: 26, margin: 0 }}>Career & Resume OS</h1>
       <p className="sub" style={{ margin: "4px 0 20px", fontSize: 14 }}>
-        Upload your PDF resume or paste your text. Spark AI scores your readiness against target roles, analyzes ATS compatibility, and tells you the exact next steps to land your dream job.
+        Improve your resume and prepare for your next role. Spark AI scores your readiness against target roles, analyzes ATS compatibility, and gives actionable recommendations.
       </p>
 
-      {/* Target Role & Job Context Section */}
+      {/* Target Opportunity Section */}
       <div
         style={{
           background: "var(--surface)",
@@ -198,7 +259,7 @@ export default function Career({ onNavigate, user }) {
           boxShadow: "var(--sh-sm)",
         }}
       >
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 12px", color: "var(--ink)" }}>1. Target Role & Opportunity</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 12px", color: "var(--ink)" }}>1. Target Opportunity</h2>
         
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <div className="field">
@@ -244,7 +305,7 @@ export default function Career({ onNavigate, user }) {
         </div>
       </div>
 
-      {/* Resume Input Section */}
+      {/* Resume Document Management Section */}
       <div
         style={{
           background: "var(--surface)",
@@ -255,94 +316,169 @@ export default function Career({ onNavigate, user }) {
           boxShadow: "var(--sh-sm)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>2. Resume & Qualifications</h2>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {resumeFilename && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#059669", background: "#ECFDF5", padding: "3px 10px", borderRadius: 12, border: "1px solid #A7F3D0" }}>
-                📄 {resumeFilename}
-              </span>
-            )}
-            {(resumeFilename || resumeText.trim()) && (
-              <button
-                type="button"
-                onClick={handleClearResume}
-                disabled={busy}
-                style={{
-                  padding: "3px 10px",
-                  borderRadius: 12,
-                  border: "1px solid #FECACA",
-                  background: "#FEF2F2",
-                  color: "#DC2626",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span>🗑️ Remove Resume</span>
-              </button>
-            )}
-          </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>2. Resume Document</h2>
+          {(resumeFilename || resumeText.trim()) && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={busy || isDeleting}
+              style={{
+                padding: "4px 12px",
+                borderRadius: 12,
+                border: "1px solid #FECACA",
+                background: "#FEF2F2",
+                color: "#DC2626",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: busy || isDeleting ? "not-allowed" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <span>🗑️ Remove Resume</span>
+            </button>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
+        {/* Existing Resume File Card */}
+        {resumeFilename ? (
+          <div
             style={{
-              padding: "9px 16px",
-              borderRadius: 8,
-              border: "1px solid var(--line)",
-              background: "var(--surface-2)",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              cursor: busy ? "not-allowed" : "pointer",
-              display: "inline-flex",
+              display: "flex",
+              justifyContent: "space-between",
               alignItems: "center",
-              gap: 6,
+              padding: "14px 16px",
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              marginBottom: 16,
             }}
           >
-            <span>📁 Upload PDF / DOCX Resume</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,.txt"
-            style={{ display: "none" }}
-            onChange={(e) => handleFileUpload(e.target.files?.[0])}
-          />
-          <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>or paste resume text below</span>
-        </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontSize: 24 }}>📄</div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+                  {resumeFilename}
+                </div>
+                <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginTop: 2 }}>
+                  ✓ Parsed & Ready for AI Audit
+                </div>
+              </div>
+            </div>
 
-        <textarea
-          value={resumeText}
-          onChange={(e) => setResumeText(e.target.value)}
-          rows={6}
-          placeholder="Paste your resume text here (education, technical skills, projects, employment history, certifications)..."
-          style={{
-            width: "100%",
-            padding: "12px 14px",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            background: "var(--surface)",
-            fontSize: 13.5,
-            lineHeight: 1.6,
-            fontFamily: "var(--sans)",
-            resize: "vertical",
-            color: "var(--ink)",
-          }}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={busy}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                Replace File
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(true)}
+                disabled={busy}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #FECACA",
+                  background: "#FEF2F2",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "#DC2626",
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* SaaS Drag & Drop Upload Zone */
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: "24px 16px",
+              textAlign: "center",
+              border: isDragging ? "2px dashed var(--marigold)" : "1.5px dashed var(--line)",
+              background: isDragging ? "var(--marigold-light)" : "var(--surface-2)",
+              borderRadius: 10,
+              cursor: busy ? "not-allowed" : "pointer",
+              marginBottom: 16,
+              transition: "all .15s ease",
+            }}
+          >
+            <div style={{ fontSize: 32, marginBottom: 6 }}>📁</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+              {uploadState === "uploading" ? "Uploading resume document…" :
+               uploadState === "extracting" ? "Extracting text & analyzing structure…" :
+               "Click to browse or drop your resume here"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 4 }}>
+              Supports PDF, DOCX, DOC, or TXT · Max size 10MB
+            </div>
+
+            {busy && (
+              <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: "var(--marigold-dark)" }}>
+                <span className="spin" style={{ display: "inline-block", marginRight: 6 }} /> Processing resume…
+              </div>
+            )}
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.txt"
+          style={{ display: "none" }}
+          onChange={(e) => handleFileUpload(e.target.files?.[0])}
         />
+
+        {/* Text Area Input */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
+            Resume Content Text (Extracted from file or pasted directly)
+          </label>
+          <textarea
+            value={resumeText}
+            onChange={(e) => setResumeText(e.target.value)}
+            rows={6}
+            placeholder="Paste your resume text here (education, technical skills, projects, employment history, certifications)..."
+            style={{
+              width: "100%",
+              padding: "12px 14px",
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              background: "var(--surface)",
+              fontSize: 13.5,
+              lineHeight: 1.6,
+              fontFamily: "var(--sans)",
+              resize: "vertical",
+              color: "var(--ink)",
+            }}
+          />
+        </div>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 16 }}>⚠️ {err}</div>}
-      {successMsg && (
+      {toastMsg && (
         <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#059669", padding: "10px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
-          ✅ {successMsg}
+          ✅ {toastMsg}
         </div>
       )}
 

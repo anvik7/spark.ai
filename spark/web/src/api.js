@@ -49,8 +49,10 @@ async function req(path, { method = "GET", body, form } = {}) {
       setToken("");
       window.dispatchEvent(new Event("spark:unauthorized"));
     }
-    const err = new Error(data.message || data.detail || res.statusText || `Request failed with status ${res.status}`);
+    const errMsg = data.error?.message || data.message || data.detail || (typeof data === "string" ? data : `Request failed (${res.status})`);
+    const err = new Error(errMsg);
     err.status = res.status;
+    err.code = data.error?.code || "API_ERROR";
     throw err;
   }
 

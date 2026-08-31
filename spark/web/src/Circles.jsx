@@ -569,15 +569,18 @@ function CircleChat({ circleId, isOwner, onError }) {
   const [replyTo, setReplyTo] = useState(null);
   const [editingMsg, setEditingMsg] = useState(null);
   const [sending, setSending] = useState(false);
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const bottomRef = useRef(null);
 
   const fetchMessages = async (isInitial = false) => {
     try {
       const res = await api.getCircleMessages(circleId, 100, 0);
       setMessages(res.messages || []);
+      setConsecutiveErrors(0);
     } catch (e) {
+      setConsecutiveErrors((prev) => prev + 1);
       if (isInitial) {
-        onError(e.message);
+        onError(e.message || "Could not load circle messages.");
       }
     } finally {
       if (isInitial) setLoading(false);
@@ -586,10 +589,15 @@ function CircleChat({ circleId, isOwner, onError }) {
 
   useEffect(() => {
     setLoading(true);
+    setConsecutiveErrors(0);
     fetchMessages(true);
-    const timer = setInterval(() => fetchMessages(false), 3000);
-    return () => clearInterval(timer);
   }, [circleId]);
+
+  useEffect(() => {
+    if (consecutiveErrors >= 3) return; // Stop polling on repeated errors
+    const timer = setInterval(() => fetchMessages(false), 4000);
+    return () => clearInterval(timer);
+  }, [circleId, consecutiveErrors]);
 
   useEffect(() => {
     if (!loading && messages.length > 0) {

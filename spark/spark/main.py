@@ -58,23 +58,50 @@ app.add_middleware(
 )
 
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("spark")
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle FastAPI HTTPExceptions with clean JSON error structure."""
+    if request.url.path.startswith("/api"):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "code": f"HTTP_{exc.status_code}",
+                    "message": str(exc.detail),
+                }
+            },
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc.detail)},
+    )
+
+
 @app.exception_handler(Exception)
 async def global_api_exception_handler(request: Request, exc: Exception):
-    """Ensure every API route error returns valid structured JSON, never HTML."""
+    """Shield production API errors: log traceback server-side and return safe JSON."""
+    logger.exception(f"Unhandled server error on {request.method} {request.url.path}")
     if request.url.path.startswith("/api"):
         parts = request.url.path.split("/")
         domain = parts[2].upper() if len(parts) > 2 and parts[2] else "API"
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
-                "error": True,
-                "message": f"{domain} API Error: {str(exc)}",
-                "code": f"{domain}_API_ERROR",
+                "error": {
+                    "code": f"{domain}_SERVER_ERROR",
+                    "message": "We couldn't process your request right now. Please try again.",
+                }
             },
         )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": str(exc)},
+        content={"detail": "Internal server error"},
     )
 
 
