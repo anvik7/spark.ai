@@ -116,7 +116,7 @@ export default function Capture({ onSaved }) {
 
   const loadCaptures = useCallback(() => {
     setLoadingCaptures(true);
-    api.getCards()
+    api.getCaptures()
       .then((items) => {
         setCaptures(items || []);
       })

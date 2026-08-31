@@ -72,6 +72,7 @@ export const api = {
   },
   deleteAvatar: () => req("/me/avatar", { method: "DELETE" }),
   cards: () => req("/captures"),
+  getCards: () => req("/captures"),
   getCaptures: () => req("/captures"),
   createCapture: (kind, raw, source_url = "") =>
     req("/captures", { method: "POST", body: { kind, raw, source_url } }),

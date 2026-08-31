@@ -26,7 +26,7 @@ export default function CommandMenu({ isOpen, onClose, onNavigate }) {
     if (!isOpen) return;
     setLoading(true);
     Promise.all([
-      api.getCards().catch(() => []),
+      api.getCaptures().catch(() => []),
       api.getTasks().catch(() => []),
     ]).then(([cardsData, tasksData]) => {
       setCaptures(cardsData || []);
