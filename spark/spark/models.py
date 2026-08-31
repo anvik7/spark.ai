@@ -69,7 +69,8 @@ class StudySession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True, foreign_key="user.id")
     card_id: Optional[int] = Field(default=None, foreign_key="card.id")
-    subject: str = ""
+    subject: str = "General"
+    material: str = ""
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None
     duration_seconds: int = 0

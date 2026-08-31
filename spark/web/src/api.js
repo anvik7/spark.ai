@@ -93,6 +93,16 @@ export const api = {
   getGoal: () => req("/goals"),
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
   updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
+
+  // Study API
+  getStudySessions: () => req("/study/sessions"),
+  createStudySession: (subject, material = "", minutes = 0, seconds = 0, date = null) =>
+    req("/study/sessions", { method: "POST", body: { subject, material, minutes, seconds, date } }),
+  getTodayStudyStats: () => req("/study/logs/today"),
+  getWeeklyGoal: () => req("/study/weekly-goal"),
+  setWeeklyGoal: (targetHours) => req("/study/weekly-goal", { method: "POST", body: { target_hours: Number(targetHours) } }),
+  getStudyFeed: () => req("/study/feed"),
+  getStudySubjectBreakdown: () => req("/study/analytics/subjects"),
   getTasks: () => req("/tasks"),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
   uploadTaskFile: (file, prompt = "", subject_hint = "") => {
