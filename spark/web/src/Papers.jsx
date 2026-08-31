@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
+import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
 const EXAMS = ["JEE", "NEET", "GATE", "UPSC", "CAT", "CLAT", "Other"];
 
@@ -20,6 +21,9 @@ export default function Papers() {
   const [showUpload, setShowUpload] = useState(false);
   const [err, setErr] = useState("");
 
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const load = () => {
     const params = {};
     if (filterExam) params.exam_tag = filterExam;
@@ -29,18 +33,34 @@ export default function Papers() {
 
   useEffect(() => { load(); }, [filterExam, filterSubject]);
 
-  const handleDelete = async (id) => {
-    if (!confirm("Delete this paper? This cannot be undone.")) return;
+  const confirmDeletePaper = async () => {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await api.deletePaper(id);
-      setPapers((ps) => ps.filter((p) => p.id !== id));
+      await api.deletePaper(deleteTargetId);
+      setPapers((ps) => ps?.filter((p) => p.id !== deleteTargetId) || []);
+      setDeleteTargetId(null);
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="screen">
+      <ConfirmationDialog
+        isOpen={Boolean(deleteTargetId)}
+        title="Delete paper?"
+        description="This will remove this document from your Paper Vault. This action cannot be undone."
+        confirmLabel="Delete paper"
+        cancelLabel="Cancel"
+        isDanger={true}
+        busy={isDeleting}
+        onConfirm={confirmDeletePaper}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
       <div style={{ marginBottom: 20 }}>
         <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Paper Vault</h1>
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
@@ -120,7 +140,7 @@ export default function Papers() {
       )}
 
       {papers && papers.map((p) => (
-        <PaperCard key={p.id} paper={p} onDelete={handleDelete} />
+        <PaperCard key={p.id} paper={p} onDelete={(id) => setDeleteTargetId(id)} />
       ))}
     </div>
   );

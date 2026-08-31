@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
 import Career from "./Career.jsx";
 import Interview from "./Interview.jsx";
-import Heatmap from "./Heatmap.jsx";
 import Landing from "./Landing.jsx";
 import Capture from "./Capture.jsx";
 import Tasks from "./Tasks.jsx";
@@ -26,6 +25,7 @@ const Ico = {
   circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
+  more: <><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></>,
 };
 
 const Svg = ({ d, cls = "ico" }) => (
@@ -33,35 +33,16 @@ const Svg = ({ d, cls = "ico" }) => (
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>{d}</svg>
 );
 
-export function relativeTime(isoOrDate) {
-  if (!isoOrDate) return "Just now";
-  const d = new Date(isoOrDate);
-  if (isNaN(d.getTime())) return "Just now";
-  const now = new Date();
-  const diffSec = Math.floor((now - d) / 1000);
-  if (diffSec < 45) return "Just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} min ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} hours ago`;
-  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)} days ago`;
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
-export function fmtDate(s) {
-  if (!s) return "";
-  const d = new Date(s);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
   const [tab, setTab] = useState("capture");
-  const [toast, setToast] = useState("");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
+  const [showMobileMore, setShowMobileMore] = useState(false);
 
   useEffect(() => {
     if (!hasToken()) { setBooting(false); return; }
@@ -87,6 +68,7 @@ export default function App() {
   const handleNav = (targetTab) => {
     setShowUpgrade(false);
     setShowAccount(false);
+    setShowMobileMore(false);
     setTab(targetTab);
   };
 
@@ -115,6 +97,8 @@ export default function App() {
     { id: "career", label: "Career OS", icon: Ico.career },
     { id: "coach", label: "Interview Coach", icon: Ico.coach },
   ];
+
+  const moreTabActive = ["papers", "circles", "coach"].includes(tab);
 
   return (
     <div className="app-layout">
@@ -236,16 +220,72 @@ export default function App() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation (<768px) */}
+      {/* Mobile Bottom Navigation (<768px, 5 primary tabs) */}
       <nav className="nav">
-        <NavBtn id="capture" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.capture} label="Capture" />
-        <NavBtn id="tasks" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.tasks} label="Tasks" />
-        <NavBtn id="study" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
-        <NavBtn id="papers" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.papers} label="Papers" />
-        <NavBtn id="circles" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.circles} label="Circles" />
-        <NavBtn id="career" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
-        <NavBtn id="coach" tab={showAccount || showUpgrade ? null : tab} set={handleNav} icon={Ico.coach} label="Coach" />
+        <NavBtn id="capture" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.capture} label="Capture" />
+        <NavBtn id="tasks" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.tasks} label="Tasks" />
+        <NavBtn id="study" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
+        <NavBtn id="career" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
+        <button
+          className={`nav-btn ${moreTabActive || showMobileMore ? "active" : ""}`}
+          onClick={() => setShowMobileMore((m) => !m)}
+        >
+          <Svg d={Ico.more} />
+          <span>More</span>
+          <span className="dot" />
+        </button>
       </nav>
+
+      {/* Mobile "More" Drawer Modal */}
+      {showMobileMore && (
+        <div className="modal-overlay" onClick={() => setShowMobileMore(false)}>
+          <div
+            className="modal-dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 360, padding: 18, marginBottom: 70 }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 12 }}>
+              More Workspace Modules
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                className={`sidebar-link ${tab === "papers" ? "active" : ""}`}
+                onClick={() => handleNav("papers")}
+              >
+                <Svg d={Ico.papers} />
+                <span>Paper Vault</span>
+              </button>
+
+              <button
+                className={`sidebar-link ${tab === "circles" ? "active" : ""}`}
+                onClick={() => handleNav("circles")}
+              >
+                <Svg d={Ico.circles} />
+                <span>Study Circles</span>
+              </button>
+
+              <button
+                className={`sidebar-link ${tab === "coach" ? "active" : ""}`}
+                onClick={() => handleNav("coach")}
+              >
+                <Svg d={Ico.coach} />
+                <span>Interview Coach</span>
+              </button>
+
+              <hr style={{ margin: "8px 0" }} />
+
+              <button
+                className="sidebar-link"
+                onClick={() => { setShowAccount(true); setShowMobileMore(false); }}
+              >
+                <Avatar src={user?.avatar_url} name={user?.name || "User"} size={20} />
+                <span>Account Settings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

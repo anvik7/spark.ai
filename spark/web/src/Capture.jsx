@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "./api.js";
 
+import ConfirmationDialog from "./components/ui/ConfirmationDialog";
+
 // ── Voice: Web Speech API & MediaRecorder ──────────
 const SPEECH_OK =
   typeof window !== "undefined" &&
@@ -225,18 +227,38 @@ export default function Capture({ onSaved }) {
     }
   };
 
-  const handleDeleteCapture = async (id) => {
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDeleteCapture = async () => {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await api.deleteCapture(id);
-      setCaptures((prev) => prev.filter((c) => c.id !== id));
+      await api.deleteCapture(deleteTargetId);
+      setCaptures((prev) => prev.filter((c) => c.id !== deleteTargetId));
+      setDeleteTargetId(null);
     } catch (error) {
       console.error("Failed to delete capture:", error);
       setErr(error.message || "Failed to delete capture.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="screen">
+      <ConfirmationDialog
+        isOpen={Boolean(deleteTargetId)}
+        title="Delete capture?"
+        description="This will permanently delete this item from your workspace. This action cannot be undone."
+        confirmLabel="Delete item"
+        cancelLabel="Cancel"
+        isDanger={true}
+        busy={isDeleting}
+        onConfirm={confirmDeleteCapture}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
       {/* Knowledge Saver Header */}
       <div style={{ marginBottom: 20 }}>
         <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Capture Workspace</h1>
@@ -506,7 +528,7 @@ export default function Capture({ onSaved }) {
                     </span>
 
                     <button
-                      onClick={() => handleDeleteCapture(item.id)}
+                      onClick={() => setDeleteTargetId(item.id)}
                       title="Delete capture from database"
                       style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14, padding: 4 }}
                     >
