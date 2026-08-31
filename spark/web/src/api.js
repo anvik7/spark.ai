@@ -26,13 +26,21 @@ async function req(path, { method = "GET", body, form } = {}) {
 
   const res = await fetch(BASE + path, { method, headers, body: payload });
   const text = await res.text();
+  const contentType = res.headers.get("content-type") || "";
 
   let data = {};
   if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { detail: text };
+    if (contentType.includes("application/json")) {
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        data = { detail: "Invalid JSON response from server." };
+      }
+    } else {
+      const cleanMessage = text.startsWith("<!DOCTYPE") || text.includes("<html")
+        ? `Server error (${res.status} ${res.statusText}). Please try again.`
+        : text;
+      data = { detail: cleanMessage };
     }
   }
 
@@ -41,7 +49,7 @@ async function req(path, { method = "GET", body, form } = {}) {
       setToken("");
       window.dispatchEvent(new Event("spark:unauthorized"));
     }
-    const err = new Error(data.detail || res.statusText || `Request failed with status ${res.status}`);
+    const err = new Error(data.message || data.detail || res.statusText || `Request failed with status ${res.status}`);
     err.status = res.status;
     throw err;
   }
@@ -96,13 +104,17 @@ export const api = {
 
   // Study API
   getStudySessions: () => req("/study/sessions"),
+  getStudyLogs: () => req("/study/logs"),
   createStudySession: (subject, material = "", minutes = 0, seconds = 0, date = null) =>
     req("/study/sessions", { method: "POST", body: { subject, material, minutes, seconds, date } }),
   getTodayStudyStats: () => req("/study/logs/today"),
   getWeeklyGoal: () => req("/study/weekly-goal"),
+  getStudyGoals: () => req("/study/goals"),
   setWeeklyGoal: (targetHours) => req("/study/weekly-goal", { method: "POST", body: { target_hours: Number(targetHours) } }),
   getStudyFeed: () => req("/study/feed"),
+  getStudyAnalyticsSummary: () => req("/study/analytics/summary"),
   getStudySubjectBreakdown: () => req("/study/analytics/subjects"),
+  getStudyWeakspots: () => req("/study/analytics/weakspots"),
   getTasks: () => req("/tasks"),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
   uploadTaskFile: (file, prompt = "", subject_hint = "") => {

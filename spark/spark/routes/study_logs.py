@@ -243,6 +243,58 @@ def weekly_stats(user: User = Depends(current_user)):
         return [{"date": d, "minutes": by_day[d]} for d in days]
 
 
+@router.get("/analytics/summary")
+def analytics_summary(user: User = Depends(current_user)):
+    """Summary analytics: today's time, weekly time, session count, and overall hours."""
+    today = date_type.today()
+    start_of_week = today - timedelta(days=today.weekday())
+
+    with get_session() as session:
+        logs = session.exec(
+            select(StudySession).where(StudySession.user_id == user.id)
+        ).all()
+
+        total_seconds = sum(l.duration_seconds or 0 for l in logs)
+        today_seconds = sum(l.duration_seconds or 0 for l in logs if _as_utc(l.started_at).date() == today)
+        weekly_seconds = sum(l.duration_seconds or 0 for l in logs if _as_utc(l.started_at).date() >= start_of_week)
+
+        return {
+            "total_hours": round(total_seconds / 3600, 1),
+            "today_minutes": round(today_seconds / 60),
+            "today_formatted": _fmt_duration(today_seconds),
+            "weekly_minutes": round(weekly_seconds / 60),
+            "weekly_formatted": _fmt_duration(weekly_seconds),
+            "total_sessions": len(logs),
+            "today_sessions": len([l for l in logs if _as_utc(l.started_at).date() == today]),
+        }
+
+
+@router.get("/analytics/weakspots")
+def analytics_weakspots(user: User = Depends(current_user)):
+    """Subjects not studied in >= 2 days."""
+    with get_session() as session:
+        logs = session.exec(
+            select(StudySession).where(StudySession.user_id == user.id)
+        ).all()
+        by_subject: dict[str, datetime] = {}
+        for l in logs:
+            subj = l.subject.strip() or "General Academic"
+            dt = _as_utc(l.started_at)
+            if subj not in by_subject or dt > by_subject[subj]:
+                by_subject[subj] = dt
+        now = datetime.now(timezone.utc)
+        weakspots = []
+        for subj, last_dt in by_subject.items():
+            days_ago = (now - last_dt).days
+            if days_ago >= 2:
+                weakspots.append({
+                    "subject": subj,
+                    "daysAgo": days_ago,
+                    "lastDate": last_dt.date().isoformat()
+                })
+        return weakspots
+
+
 @router.get("/analytics/subjects")
 def analytics_subjects(user: User = Depends(current_user)):
     """Breakdown of study time per subject."""

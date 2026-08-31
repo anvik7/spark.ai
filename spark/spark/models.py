@@ -219,6 +219,13 @@ def _migrate() -> None:
                         conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT TRUE"))
                     else:
                         conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT 1"))
+
+            # 4. StudySession table schema sync
+            if inspector.has_table("studysession"):
+                session_cols = {c["name"] for c in inspector.get_columns("studysession")}
+                if "material" not in session_cols:
+                    print("[migrate] Adding material column to 'studysession' table...")
+                    conn.execute(_sql("ALTER TABLE studysession ADD COLUMN material VARCHAR DEFAULT ''"))
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
 

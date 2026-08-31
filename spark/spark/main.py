@@ -58,6 +58,24 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def study_exception_handler(request: Request, exc: Exception):
+    """Ensure every Study API error returns valid structured JSON, never HTML."""
+    if request.url.path.startswith("/api/study"):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": True,
+                "message": f"Study API Error: {str(exc)}",
+                "code": "STUDY_API_ERROR",
+            },
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": str(exc)},
+    )
+
+
 # --- schemas ----------------------------------------------------------------
 
 class SignupIn(BaseModel):
