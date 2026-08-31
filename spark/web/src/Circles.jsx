@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import Avatar from "./components/Avatar.jsx";
+import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
 const EXAMS = ["JEE", "NEET", "GATE", "UPSC", "CAT", "CLAT", "Other"];
 
@@ -389,28 +390,40 @@ function CircleDetail({ circle, onBack, onError }) {
     }
   };
 
-  const handleLeave = async () => {
-    if (!confirm("Leave this circle?")) return;
-    try {
-      await api.leaveCircle(info.id);
-      onBack();
-    } catch (e) {
-      onError(e.message);
-    }
-  };
+  const [confirmAction, setConfirmAction] = useState(null); // "leave" | "delete" | null
+  const [busyAction, setBusyAction] = useState(false);
 
-  const handleDelete = async () => {
-    if (!confirm("Delete this circle? All members will be removed. This cannot be undone.")) return;
+  const handleConfirmAction = async () => {
+    setBusyAction(true);
     try {
-      await api.deleteCircle(info.id);
-      onBack();
+      if (confirmAction === "leave") {
+        await api.leaveCircle(info.id);
+        onBack();
+      } else if (confirmAction === "delete") {
+        await api.deleteCircle(info.id);
+        onBack();
+      }
     } catch (e) {
       onError(e.message);
+    } finally {
+      setBusyAction(false);
+      setConfirmAction(null);
     }
   };
 
   return (
     <>
+      <ConfirmationDialog
+        isOpen={Boolean(confirmAction)}
+        title={confirmAction === "delete" ? "Delete circle?" : "Leave circle?"}
+        description={confirmAction === "delete" ? "This will permanently delete this circle and remove all members. This action cannot be undone." : "Are you sure you want to leave this circle?"}
+        confirmLabel={confirmAction === "delete" ? "Delete circle" : "Leave circle"}
+        cancelLabel="Cancel"
+        isDanger={true}
+        busy={busyAction}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
       <button
         onClick={onBack}
         style={{
@@ -462,12 +475,12 @@ function CircleDetail({ circle, onBack, onError }) {
         {isMember && (
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             {info.myRole === "owner" ? (
-              <button className="del" onClick={handleDelete} style={{ fontSize: 12, padding: "4px 12px" }}>
+              <button className="del" onClick={() => setConfirmAction("delete")} style={{ fontSize: 12, padding: "4px 12px" }}>
                 Delete circle
               </button>
             ) : (
               <button
-                onClick={handleLeave}
+                onClick={() => setConfirmAction("leave")}
                 style={{
                   fontSize: 12, padding: "4px 12px", borderRadius: 8,
                   background: "none", border: "1px solid var(--line)", cursor: "pointer",

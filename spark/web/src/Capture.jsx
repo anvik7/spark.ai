@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "./api.js";
-
 import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
 // ── Voice: Web Speech API & MediaRecorder ──────────
@@ -68,28 +67,28 @@ function useVoiceCapture({ onTranscript, onError }) {
           mr.onstop = () => {
             const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
             setRecordedAudioBlob(blob);
-            stream.getTracks().forEach((track) => track.stop());
+            stream.getTracks().forEach((t) => t.stop());
           };
           mr.start();
+          setListening(true);
         })
-        .catch((err) => console.warn("Mic MediaRecorder error:", err));
+        .catch((err) => {
+          console.warn("getUserMedia error:", err);
+          if (!SPEECH_OK) onError("Microphone permission denied or unsupported.");
+        });
     }
 
-    setListening(true);
     return true;
-  }, [onTranscript]);
+  }, [onTranscript, onError]);
 
   const stop = useCallback(() => {
-    try { recRef.current?.stop(); } catch {}
-    recRef.current = null;
-
-    try {
-      if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
-        mediaRecRef.current.stop();
-      }
-    } catch {}
-    mediaRecRef.current = null;
-
+    if (recRef.current) {
+      try { recRef.current.stop(); } catch {}
+      recRef.current = null;
+    }
+    if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
+      try { mediaRecRef.current.stop(); } catch {}
+    }
     setListening(false);
     setInterim("");
   }, []);
@@ -97,38 +96,33 @@ function useVoiceCapture({ onTranscript, onError }) {
   return { listening, interim, recordedAudioBlob, setRecordedAudioBlob, start, stop };
 }
 
-const CAPTURE_MODES = [
-  { label: "Short Note", icon: "📝", kind: "note" },
-  { label: "Thought", icon: "💡", kind: "idea" },
-  { label: "Web Link", icon: "🔗", kind: "link" },
-  { label: "Photo / Diagram", icon: "🖼️", kind: "image" },
-  { label: "PDF / Doc", icon: "📄", kind: "pdf" },
-  { label: "Voice Note", icon: "🎙️", kind: "voice" },
-];
-
 export default function Capture({ onSaved }) {
   const [text, setText] = useState("");
-  const [activeKind, setActiveKind] = useState("note");
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [loadingCaptures, setLoadingCaptures] = useState(true);
-  const [err, setErr] = useState("");
   const [justSaved, setSaved] = useState(false);
+  const [err, setErr] = useState("");
 
-  // Real Database Captures for authenticated user
+  // Feed list & search state
   const [captures, setCaptures] = useState([]);
+  const [loadingCaptures, setLoadingCaptures] = useState(true);
+  const [searchFilter, setSearchFilter] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all"); // "all" | "notes" | "links" | "files" | "voice"
 
-  // Fetch real captures from backend DB on mount
+  // Deletion Modal state
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const loadCaptures = useCallback(() => {
     setLoadingCaptures(true);
-    api.getCaptures()
-      .then((data) => {
-        setCaptures(Array.isArray(data) ? data : []);
+    api.getCards()
+      .then((items) => {
+        setCaptures(items || []);
       })
       .catch((e) => {
-        console.error("Failed to load user captures from DB:", e);
-        setErr("Could not connect to database to load saved captures.");
+        console.error("Failed to load captures:", e);
+        setErr(e.message || "Failed to load saved captures.");
       })
       .finally(() => setLoadingCaptures(false));
   }, []);
@@ -185,7 +179,7 @@ export default function Capture({ onSaved }) {
     e?.preventDefault();
     const rawText = text.trim();
     if (!rawText && !selectedFile && !recordedAudioBlob) {
-      setErr("Please type a note, paste a link, or select a file to save.");
+      setErr("Please type a note, paste a link, or attach a file to save.");
       return;
     }
 
@@ -195,19 +189,14 @@ export default function Capture({ onSaved }) {
     try {
       let savedItem;
 
-      // 1. Voice audio recording blob save
       if (recordedAudioBlob) {
         savedItem = await api.uploadCaptureVoice(recordedAudioBlob);
-      }
-      // 2. File / Image / PDF save
-      else if (selectedFile) {
+      } else if (selectedFile) {
         savedItem = await api.uploadCaptureFile(selectedFile);
-      }
-      // 3. Text / Link note save
-      else {
+      } else {
         const isUrl = /^https?:\/\//i.test(rawText);
-        const kind = isUrl ? "link" : activeKind;
-        savedItem = await api.createCapture(kind, rawText, isUrl ? rawText : "");
+        const autoKind = isUrl ? "link" : "text";
+        savedItem = await api.createCapture(autoKind, rawText, isUrl ? rawText : "");
       }
 
       if (savedItem) {
@@ -221,14 +210,11 @@ export default function Capture({ onSaved }) {
       }
     } catch (error) {
       console.error("Save capture error:", error);
-      setErr(error.message || "Failed to save capture to database.");
+      setErr(error.message || "Failed to save capture.");
     } finally {
       setBusy(false);
     }
   };
-
-  const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const confirmDeleteCapture = async () => {
     if (!deleteTargetId) return;
@@ -245,6 +231,21 @@ export default function Capture({ onSaved }) {
     }
   };
 
+  const filteredCaptures = captures.filter((c) => {
+    const matchesSearch = !searchFilter.trim() ||
+      (c.title && c.title.toLowerCase().includes(searchFilter.toLowerCase())) ||
+      (c.raw && c.raw.toLowerCase().includes(searchFilter.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (activeFilter === "all") return true;
+    if (activeFilter === "links") return c.kind === "link" || c.source_url?.startsWith("http");
+    if (activeFilter === "files") return c.kind === "pdf" || c.kind === "image" || (c.source_url && !c.source_url.startsWith("http"));
+    if (activeFilter === "voice") return c.kind === "voice";
+    if (activeFilter === "notes") return c.kind === "text" || c.kind === "note" || c.kind === "idea" || !c.kind;
+    return true;
+  });
+
   return (
     <div className="screen">
       <ConfirmationDialog
@@ -259,48 +260,15 @@ export default function Capture({ onSaved }) {
         onCancel={() => setDeleteTargetId(null)}
       />
 
-      {/* Knowledge Saver Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Capture Workspace</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Save notes, thoughts, web links, files, or voice ideas directly to your workspace.
+      {/* Action Header */}
+      <div style={{ marginBottom: 16 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Capture</h1>
+        <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Save anything you want to remember.
         </p>
       </div>
 
-      {/* Mode Chips */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {CAPTURE_MODES.map((m) => {
-            const isSelected = activeKind === m.kind;
-            return (
-              <button
-                key={m.kind}
-                onClick={() => setActiveKind(m.kind)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  border: isSelected ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                  background: isSelected ? "var(--marigold-light)" : "var(--surface)",
-                  color: isSelected ? "var(--marigold-dark)" : "var(--ink)",
-                  cursor: "pointer",
-                  transition: "all .15s ease",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-                }}
-              >
-                <span>{m.icon}</span>
-                <span>{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Composer Form */}
+      {/* Universal Friction-Free Composer */}
       <form
         onSubmit={handleSaveCapture}
         style={{
@@ -308,22 +276,22 @@ export default function Capture({ onSaved }) {
           border: "1.5px solid var(--line)",
           borderRadius: "var(--r)",
           padding: 16,
-          boxShadow: "var(--sh)",
-          marginBottom: 24,
+          boxShadow: "var(--sh-sm)",
+          marginBottom: 20,
         }}
       >
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Capture anything you're learning, thinking about, or want to remember..."
+          placeholder="What's on your mind? Paste a link, write a note, or record an idea..."
           rows={3}
           style={{
             width: "100%",
             border: "none",
             outline: "none",
             fontSize: 15,
-            lineHeight: 1.6,
+            lineHeight: 1.5,
             fontFamily: "var(--sans)",
             background: "transparent",
             resize: "vertical",
@@ -384,34 +352,34 @@ export default function Capture({ onSaved }) {
           </div>
         )}
 
-        {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>{err}</div>}
+        {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>⚠️ {err}</div>}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Attach photo or PDF document"
+              title="Attach image or file document"
               style={{
                 padding: "6px 12px",
-                borderRadius: 16,
+                borderRadius: 8,
                 border: "1px solid var(--line)",
                 background: "var(--surface-2)",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                color: "var(--ink-soft)",
+                color: "var(--ink)",
               }}
             >
-              🖼️ Photo / PDF
+              📁 Add image or file
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept="image/*,.pdf,.doc,.docx,.txt"
               style={{ display: "none" }}
               onChange={(e) => handleSelectFile(e.target.files?.[0])}
             />
@@ -422,20 +390,20 @@ export default function Capture({ onSaved }) {
               title={listening ? "Stop recording" : "Record voice note"}
               style={{
                 padding: "6px 12px",
-                borderRadius: 16,
+                borderRadius: 8,
                 border: listening ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
                 background: listening ? "var(--marigold-light)" : "var(--surface-2)",
                 fontSize: 13,
-                fontWeight: listening ? 700 : 500,
+                fontWeight: 600,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                color: listening ? "var(--marigold-dark)" : "var(--ink-soft)",
+                color: listening ? "var(--marigold-dark)" : "var(--ink)",
               }}
             >
               <span>🎙️</span>
-              <span>{listening ? "Stop Recording" : "Voice"}</span>
+              <span>{listening ? "Stop" : "Voice"}</span>
             </button>
           </div>
 
@@ -443,53 +411,65 @@ export default function Capture({ onSaved }) {
             type="submit"
             disabled={busy || (!text.trim() && !selectedFile && !recordedAudioBlob)}
             style={{
-              padding: "9px 20px",
-              borderRadius: "var(--r-s)",
+              padding: "8px 18px",
+              borderRadius: 8,
               border: "none",
               background: busy || (!text.trim() && !selectedFile && !recordedAudioBlob) ? "var(--line)" : "var(--p-gradient)",
               color: "#FFFFFF",
-              fontSize: 14,
+              fontSize: 13.5,
               fontWeight: 700,
               cursor: busy || (!text.trim() && !selectedFile && !recordedAudioBlob) ? "not-allowed" : "pointer",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-              transition: "all .15s ease",
             }}
           >
-            {busy ? "Saving to DB…" : justSaved ? "Saved! ✓" : "Save Knowledge →"}
+            {busy ? "Saving…" : justSaved ? "✓ Saved!" : "Save"}
           </button>
         </div>
       </form>
 
-      {/* Recent Captures / Saved Knowledge Stream */}
+      {/* Recent Captures Inbox / Feed */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Captures</h2>
-            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your authenticated user saved notes, media, and web links</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Captures</h2>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["all", "notes", "links", "files", "voice"].map((f) => (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 12,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textTransform: "capitalize",
+                  border: activeFilter === f ? "1px solid var(--marigold)" : "1px solid var(--line)",
+                  background: activeFilter === f ? "var(--marigold-light)" : "var(--surface-2)",
+                  color: activeFilter === f ? "var(--marigold-dark)" : "var(--ink-soft)",
+                  cursor: "pointer",
+                }}
+              >
+                {f}
+              </button>
+            ))}
           </div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "3px 10px", borderRadius: 12 }}>
-            {captures.length} saved
-          </span>
         </div>
 
         {loadingCaptures && (
-          <div style={{ textAlign: "center", padding: 30, color: "var(--ink-soft)", fontSize: 14 }}>
-            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading your saved captures from database…
+          <div style={{ textAlign: "center", padding: 30, color: "var(--ink-soft)", fontSize: 13.5 }}>
+            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading saved captures…
           </div>
         )}
 
-        {!loadingCaptures && captures.length === 0 && (
-          <div className="empty" style={{ padding: 40, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📝</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No saved captures yet</div>
-            <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-              Type a note, paste a link, upload a photo/PDF, or record a voice note above to save your first piece of knowledge.
+        {!loadingCaptures && filteredCaptures.length === 0 && (
+          <div style={{ textAlign: "center", padding: "32px 16px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Nothing saved yet</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>
+              Capture something above to start building your knowledge inbox.
             </div>
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {captures.map((item) => {
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {filteredCaptures.map((item) => {
             const isVoice = item.kind === "voice" || (item.source_url && (item.source_url.endsWith(".webm") || item.source_url.endsWith(".wav") || item.source_url.endsWith(".mp3")));
             const isImage = item.kind === "image" || (item.source_url && /\.(png|jpg|jpeg|webp|gif)$/i.test(item.source_url));
             const isPdf = item.kind === "pdf" || (item.source_url && item.source_url.endsWith(".pdf"));
@@ -500,9 +480,9 @@ export default function Capture({ onSaved }) {
                 key={item.id}
                 style={{
                   background: "var(--surface)",
-                  border: "1.5px solid var(--line)",
-                  borderRadius: "var(--r)",
-                  padding: 16,
+                  border: "1px solid var(--line)",
+                  borderRadius: 10,
+                  padding: 14,
                   boxShadow: "var(--sh-sm)",
                 }}
               >
@@ -516,7 +496,7 @@ export default function Capture({ onSaved }) {
                       color: "var(--marigold-dark)",
                       background: "var(--marigold-light)",
                       padding: "2px 8px",
-                      borderRadius: 10,
+                      borderRadius: 8,
                     }}
                   >
                     {item.kind || "note"}
@@ -529,8 +509,8 @@ export default function Capture({ onSaved }) {
 
                     <button
                       onClick={() => setDeleteTargetId(item.id)}
-                      title="Delete capture from database"
-                      style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14, padding: 4 }}
+                      title="Delete capture"
+                      style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14, padding: 2 }}
                     >
                       ✕
                     </button>
@@ -538,20 +518,19 @@ export default function Capture({ onSaved }) {
                 </div>
 
                 {item.title && (
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                     {item.title}
                   </div>
                 )}
 
                 {item.raw && item.raw !== item.title && !isVoice && (
-                  <div style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                  <div style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
                     {item.raw}
                   </div>
                 )}
 
-                {/* Web Link Preview */}
                 {isLink && (item.source_url || item.raw) && (
-                  <div style={{ marginTop: 8 }}>
+                  <div style={{ marginTop: 6 }}>
                     <a
                       href={item.source_url || item.raw}
                       target="_blank"
@@ -563,32 +542,29 @@ export default function Capture({ onSaved }) {
                   </div>
                 )}
 
-                {/* Photo / Diagram Display */}
                 {isImage && item.source_url && (
-                  <div style={{ marginTop: 10, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
+                  <div style={{ marginTop: 8, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
                     <img
                       src={item.source_url}
                       alt={item.title || "Saved image"}
-                      style={{ maxHeight: 240, width: "100%", objectFit: "cover", display: "block" }}
+                      style={{ maxHeight: 200, width: "100%", objectFit: "cover", display: "block" }}
                     />
                   </div>
                 )}
 
-                {/* PDF / Document Display */}
                 {isPdf && item.source_url && (
-                  <div style={{ marginTop: 8, padding: 10, background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>📄 {item.title || "PDF Document"}</span>
+                  <div style={{ marginTop: 8, padding: 8, background: "var(--surface-2)", borderRadius: 6, border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>📄 {item.title || "PDF Document"}</span>
                     <a href={item.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--marigold-dark)", fontWeight: 700, textDecoration: "underline" }}>
-                      View PDF →
+                      View →
                     </a>
                   </div>
                 )}
 
-                {/* Voice Player Display */}
                 {isVoice && item.source_url && (
-                  <div style={{ marginTop: 10, padding: 10, background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", marginBottom: 6 }}>🎙️ Voice Note Recording</div>
-                    <audio controls src={item.source_url} style={{ width: "100%", height: 36 }} />
+                  <div style={{ marginTop: 8, padding: 8, background: "var(--surface-2)", borderRadius: 6, border: "1px solid var(--line)" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--marigold-dark)", marginBottom: 4 }}>🎙️ Voice Recording</div>
+                    <audio controls src={item.source_url} style={{ width: "100%", height: 32 }} />
                   </div>
                 )}
               </div>
