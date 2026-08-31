@@ -1,26 +1,28 @@
 import React, { useEffect, useState } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
+import Home from "./Home.jsx";
+import Study from "./Study.jsx";
+import Practice from "./Practice.jsx";
+import Tasks from "./Tasks.jsx";
 import Career from "./Career.jsx";
 import Interview from "./Interview.jsx";
 import Landing from "./Landing.jsx";
-import Capture from "./Capture.jsx";
-import Tasks from "./Tasks.jsx";
 import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import Account from "./Account.jsx";
 import Papers from "./Papers.jsx";
 import Circles from "./Circles.jsx";
-import StudyTracker from "./components/StudyTracker";
 import Avatar from "./components/Avatar.jsx";
 import CommandMenu from "./components/ui/CommandMenu.jsx";
 
 /* ---------- SVG Navigation Icons ---------- */
 const Ico = {
-  capture: <path d="M4 20h4L18 10l-4-4L4 16v4Z M14 6l4 4" />,
-  tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
+  home: <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10" />,
   study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
+  practice: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
   papers: <path d="M14 3v5h5 M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" />,
   circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
@@ -38,7 +40,7 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
-  const [tab, setTab] = useState("capture");
+  const [tab, setTab] = useState("home");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
@@ -89,16 +91,17 @@ export default function App() {
   }
 
   const navItems = [
-    { id: "capture", label: "Capture", icon: Ico.capture },
-    { id: "tasks", label: "Tasks", icon: Ico.tasks },
-    { id: "study", label: "Study", icon: Ico.study },
+    { id: "home", label: "Home", icon: Ico.home },
+    { id: "study", label: "Study Space", icon: Ico.study },
+    { id: "practice", label: "Practice & Solver", icon: Ico.practice },
+    { id: "tasks", label: "Study Tasks", icon: Ico.tasks },
     { id: "papers", label: "Paper Vault", icon: Ico.papers },
-    { id: "circles", label: "Circles", icon: Ico.circles },
+    { id: "circles", label: "Study Circles", icon: Ico.circles },
     { id: "career", label: "Career OS", icon: Ico.career },
     { id: "coach", label: "Interview Coach", icon: Ico.coach },
   ];
 
-  const moreTabActive = ["papers", "circles", "coach"].includes(tab);
+  const moreTabActive = ["papers", "circles", "career", "coach"].includes(tab);
 
   return (
     <div className="app-layout">
@@ -111,7 +114,7 @@ export default function App() {
 
       {/* Desktop Persistent Sidebar */}
       <aside className="app-sidebar">
-        <div className="sidebar-header" onClick={() => handleNav("capture")} style={{ cursor: "pointer" }}>
+        <div className="sidebar-header" onClick={() => handleNav("home")} style={{ cursor: "pointer" }}>
           <Chakra size={24} />
           <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
         </div>
@@ -119,7 +122,7 @@ export default function App() {
         <div className="sidebar-workspace">
           <span>⚡</span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Personal Workspace
+            Personal Study Space
           </span>
         </div>
 
@@ -176,7 +179,7 @@ export default function App() {
         <header className="topbar-desktop">
           <div className="cmd-search-trigger" onClick={() => setShowCmdMenu(true)}>
             <span>🔍</span>
-            <span style={{ flex: 1 }}>Search captures, tasks...</span>
+            <span style={{ flex: 1 }}>Search study topics, tasks, papers...</span>
             <kbd style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 4, padding: "1px 5px", fontSize: 11 }}>⌘K</kbd>
           </div>
 
@@ -208,9 +211,10 @@ export default function App() {
             <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
           ) : (
             <>
-              {tab === "capture" && <Capture onSaved={refreshUser} />}
+              {tab === "home" && <Home user={user} onNavigate={handleNav} />}
+              {tab === "study" && <Study />}
+              {tab === "practice" && <Practice />}
               {tab === "tasks" && <Tasks />}
-              {tab === "study" && <StudyTracker />}
               {tab === "papers" && <Papers />}
               {tab === "circles" && <Circles />}
               {tab === "career" && <Career onNavigate={handleNav} user={user} />}
@@ -222,10 +226,10 @@ export default function App() {
 
       {/* Mobile Bottom Navigation (<768px, 5 primary tabs) */}
       <nav className="nav">
-        <NavBtn id="capture" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.capture} label="Capture" />
-        <NavBtn id="tasks" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.tasks} label="Tasks" />
+        <NavBtn id="home" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.home} label="Home" />
         <NavBtn id="study" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
-        <NavBtn id="career" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
+        <NavBtn id="practice" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.practice} label="Practice" />
+        <NavBtn id="tasks" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.tasks} label="Tasks" />
         <button
           className={`nav-btn ${moreTabActive || showMobileMore ? "active" : ""}`}
           onClick={() => setShowMobileMore((m) => !m)}
@@ -245,7 +249,7 @@ export default function App() {
             style={{ maxWidth: 360, padding: 18, marginBottom: 70 }}
           >
             <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 12 }}>
-              More Workspace Modules
+              More Platform Modules
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -263,6 +267,14 @@ export default function App() {
               >
                 <Svg d={Ico.circles} />
                 <span>Study Circles</span>
+              </button>
+
+              <button
+                className={`sidebar-link ${tab === "career" ? "active" : ""}`}
+                onClick={() => handleNav("career")}
+              >
+                <Svg d={Ico.career} />
+                <span>Career OS</span>
               </button>
 
               <button
