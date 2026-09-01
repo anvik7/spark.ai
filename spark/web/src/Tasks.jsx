@@ -73,12 +73,49 @@ const SUBJECT_PILLS = [
   { label: "Math", icon: "🧮", hint: "Mathematics" },
   { label: "Physics", icon: "🔬", hint: "Physics" },
   { label: "Chemistry", icon: "🧪", hint: "Chemistry" },
-  { label: "Coding", icon: "💻", hint: "Computer Science" },
+  { label: "Coding", icon: "💻", hint: "Computer Science & Programming" },
   { label: "Writing", icon: "✍️", hint: "Writing & Literature" },
   { label: "Economics", icon: "📊", hint: "Economics" },
   { label: "Research", icon: "📚", hint: "Research" },
   { label: "General", icon: "❓", hint: "General Academic" },
 ];
+
+function renderStepWithCode(text) {
+  if (!text) return null;
+  if (!text.includes("```")) {
+    return <span>{text}</span>;
+  }
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return (
+    <div style={{ width: "100%" }}>
+      {parts.map((part, idx) => {
+        if (part.startsWith("```") && part.endsWith("```")) {
+          const firstLineEnd = part.indexOf("\n");
+          const lang = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : "code";
+          const codeContent = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3).trim() : part.slice(3, -3).trim();
+          return (
+            <div key={idx} style={{ margin: "8px 0", borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)", background: "#0F172A" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#1E293B", color: "#94A3B8", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
+                <span>{lang || "code"}</span>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(codeContent)}
+                  style={{ background: "none", border: "none", color: "#94A3B8", fontSize: 11, cursor: "pointer", fontWeight: 600 }}
+                >
+                  📋 Copy Code
+                </button>
+              </div>
+              <pre style={{ margin: 0, padding: 12, overflowX: "auto", fontSize: 13, color: "#F8FAFC", fontFamily: "monospace", lineHeight: 1.55 }}>
+                <code>{codeContent}</code>
+              </pre>
+            </div>
+          );
+        }
+        return <span key={idx}>{part}</span>;
+      })}
+    </div>
+  );
+}
 
 export default function Tasks() {
   const [promptText, setPromptText] = useState("");
@@ -598,13 +635,13 @@ export default function Tasks() {
                       </div>
                     )}
 
-                    {/* Direct AI Answer */}
+                    {/* Direct AI Answer / Code Solution */}
                     <div style={{ background: "var(--surface-2)", padding: 12, borderRadius: 10, marginBottom: 12 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 2 }}>
-                        AI Direct Answer
+                        AI Solution & Code Output
                       </span>
                       <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--marigold-dark)", lineHeight: 1.5 }}>
-                        {task.solution}
+                        {renderStepWithCode(task.solution)}
                       </div>
                     </div>
 
@@ -612,13 +649,13 @@ export default function Tasks() {
                     {task.steps && task.steps.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
-                          Step-by-Step Reasoning
+                          Step-by-Step Reasoning & Explanation
                         </span>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {task.steps.map((step, idx) => (
                             <div key={idx} style={{ display: "flex", gap: 8, fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5 }}>
                               <span style={{ fontWeight: 700, color: "var(--marigold)", minWidth: 20 }}>{idx + 1}.</span>
-                              <span>{step}</span>
+                              <div style={{ flex: 1 }}>{renderStepWithCode(step)}</div>
                             </div>
                           ))}
                         </div>

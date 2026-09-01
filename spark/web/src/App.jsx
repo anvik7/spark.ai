@@ -270,14 +270,14 @@ export default function App() {
 
             // Only trigger if horizontal movement is dominant and > 50px
             if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
-              const primaryTabs = ["capture", "tasks", "study", "career"];
+              const primaryTabs = ["capture", "tasks", "study", "career", "papers", "circles", "coach"];
               const currentIdx = primaryTabs.indexOf(tab);
               if (currentIdx !== -1) {
                 if (dx < 0 && currentIdx < primaryTabs.length - 1) {
-                  // Swipe Left -> Next tab
+                  // Swipe Left -> Next module
                   handleNav(primaryTabs[currentIdx + 1]);
                 } else if (dx > 0 && currentIdx > 0) {
-                  // Swipe Right -> Prev tab
+                  // Swipe Right -> Prev module
                   handleNav(primaryTabs[currentIdx - 1]);
                 }
               }

@@ -278,6 +278,7 @@ export default function Capture() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
           <div style={{ display: "flex", gap: 8 }}>
             <label
+              title="Upload image, document, or audio file"
               style={{
                 padding: "6px 12px",
                 borderRadius: 8,
@@ -287,9 +288,13 @@ export default function Capture() {
                 fontWeight: 600,
                 cursor: "pointer",
                 color: "var(--ink)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
-              ＋ Add image or file
+              <span>📁</span>
+              <span>Upload File / Image</span>
               <input
                 type="file"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
@@ -299,6 +304,7 @@ export default function Capture() {
 
             <button
               type="button"
+              title="Record voice note"
               onClick={voice.listening ? voice.stop : voice.start}
               style={{
                 padding: "6px 12px",
@@ -309,9 +315,13 @@ export default function Capture() {
                 fontSize: 12.5,
                 fontWeight: 600,
                 cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
-              {voice.listening ? "⏹ Stop Voice" : "🎙 Voice"}
+              <span>{voice.listening ? "⏹️" : "🎙️"}</span>
+              <span>{voice.listening ? "Stop Recording" : "Voice Note"}</span>
             </button>
           </div>
 
