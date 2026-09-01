@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
 import Capture from "./Capture.jsx";
@@ -45,6 +45,7 @@ export default function App() {
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
+  const touchStartRef = useRef(null);
 
   // Check public shared capture URL route
   const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
@@ -251,8 +252,38 @@ export default function App() {
           </div>
         </header>
 
-        {/* Page Content Container */}
-        <div className="workspace-container">
+        {/* Page Content Container with Mobile Swipe Navigation */}
+        <div
+          className="workspace-container"
+          onTouchStart={(e) => {
+            if (typeof window !== "undefined" && window.innerWidth >= 768) return;
+            const touch = e.touches[0];
+            touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          }}
+          onTouchEnd={(e) => {
+            if (typeof window !== "undefined" && window.innerWidth >= 768) return;
+            if (!touchStartRef.current) return;
+            const touch = e.changedTouches[0];
+            const dx = touch.clientX - touchStartRef.current.x;
+            const dy = touch.clientY - touchStartRef.current.y;
+            touchStartRef.current = null;
+
+            // Only trigger if horizontal movement is dominant and > 50px
+            if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
+              const primaryTabs = ["capture", "tasks", "study", "career"];
+              const currentIdx = primaryTabs.indexOf(tab);
+              if (currentIdx !== -1) {
+                if (dx < 0 && currentIdx < primaryTabs.length - 1) {
+                  // Swipe Left -> Next tab
+                  handleNav(primaryTabs[currentIdx + 1]);
+                } else if (dx > 0 && currentIdx > 0) {
+                  // Swipe Right -> Prev tab
+                  handleNav(primaryTabs[currentIdx - 1]);
+                }
+              }
+            }
+          }}
+        >
           {showAccount ? (
             <Account
               user={user}

@@ -728,12 +728,20 @@ nav button span, .nav-label {
 
 .logo-icon {
   display: inline-block;
-  animation: spin 6s linear infinite;
+  animation: spinChakra 24s linear infinite;
   transform-origin: center;
+  will-change: transform;
 }
-@keyframes spin {
+
+@keyframes spinChakra {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-icon {
+    animation: none !important;
+  }
 }
 
 /* ── SAAS MODALS & DIALOGS ─────────────────────────── */
