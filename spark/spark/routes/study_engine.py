@@ -52,24 +52,145 @@ class ProgressUpdateIn(BaseModel):
     current_time_seconds: float = 0.0
 
 
+import re
+from youtube_transcript_api import YouTubeTranscriptApi
+
+
+def extract_youtube_id(url_or_id: str) -> str:
+    """Extract 11-character YouTube video ID from various URL formats."""
+    if not url_or_id:
+        return ""
+    url_or_id = url_or_id.strip()
+    if len(url_or_id) == 11 and re.match(r"^[A-Za-z0-9_-]{11}$", url_or_id):
+        return url_or_id
+    patterns = [
+        r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/e\/|watch\?.*v=)([A-Za-z0-9_-]{11})",
+        r"([A-Za-z0-9_-]{11})",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, url_or_id)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def fetch_youtube_transcript_real(url_or_id: str) -> dict:
+    """Real YouTube transcript extractor. Obtains video captions/transcript using YouTubeTranscriptApi."""
+    vid = extract_youtube_id(url_or_id)
+    if not vid:
+        raise ValueError("Spark couldn't access the lecture content. Please provide a valid YouTube URL.")
+
+    api_inst = YouTubeTranscriptApi()
+    snippets = None
+    try:
+        ts = api_inst.fetch(vid)
+        snippets = getattr(ts, "snippets", None) or (ts if isinstance(ts, list) else None)
+    except Exception as e:
+        try:
+            tl = api_inst.list(vid)
+            t_obj = None
+            try:
+                t_obj = tl.find_transcript(["en", "en-US", "en-GB", "hi", "es", "fr"])
+            except Exception:
+                for t in tl:
+                    t_obj = t
+                    break
+            if t_obj:
+                fetched = t_obj.fetch()
+                snippets = getattr(fetched, "snippets", None) or (fetched if isinstance(fetched, list) else None)
+            else:
+                raise e
+        except Exception:
+            raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
+
+    if not snippets or len(snippets) == 0:
+        raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
+
+    lines = []
+    total_duration = 0.0
+    for snip in snippets:
+        start_sec = getattr(snip, "start", 0.0)
+        text = getattr(snip, "text", "").strip()
+        duration = getattr(snip, "duration", 0.0)
+        if start_sec + duration > total_duration:
+            total_duration = start_sec + duration
+
+        mins = int(start_sec // 60)
+        secs = int(start_sec % 60)
+        time_str = f"[{mins:02d}:{secs:02d}]"
+        if text:
+            lines.append(f"{time_str} {text}")
+
+    full_transcript = "\n".join(lines)
+    return {
+        "video_id": vid,
+        "transcript": full_transcript,
+        "duration_seconds": int(total_duration),
+        "snippet_count": len(snippets),
+    }
+
+
 # --- Pipeline Helper ---------------------------------------------------------
 
 def _run_processing_pipeline(session, source: StudyMediaSource, active_session: StudyActiveSession):
     """Execute real AI concept chaptering, question generation, and mind map creation."""
     try:
         source.status = "PROCESSING"
+        source.error_message = None
         source.updated_at = datetime.now(timezone.utc)
         session.add(source)
         session.commit()
 
-        # Step 1: Extract/Parse Content Transcript
-        text_content = source.transcript_text or ""
-        if not text_content:
-            if source.url:
-                text_content = f"Video lecture on {source.title or 'Subject'}. Explains core principles, system mechanisms, and practical applications."
+        # Step 1: Extract Real Content Transcript
+        text_content = (source.transcript_text or "").strip()
+
+        if source.source_type == "youtube_url" or (source.url and "youtu" in source.url.lower()):
+            yt_id = extract_youtube_id(source.url or source.title)
+            # Check DB cache for existing transcript with same video ID
+            cached_src = session.exec(
+                select(StudyMediaSource)
+                .where(StudyMediaSource.url.contains(yt_id))
+                .where(col(StudyMediaSource.transcript_text) != "")
+            ).first() if yt_id else None
+
+            if cached_src and cached_src.transcript_text and len(cached_src.transcript_text) > 50:
+                text_content = cached_src.transcript_text
+                source.transcript_text = text_content
+                source.duration_seconds = cached_src.duration_seconds
+                source.source_type = "youtube_url"
+                print(f"[study_engine] CACHE HIT for youtube_id = {yt_id} ({len(text_content)} chars)")
             else:
-                text_content = f"Learning material for {source.title or 'Subject'}. Covers key concepts, definitions, and problem-solving steps."
-            source.transcript_text = text_content
+                yt_res = fetch_youtube_transcript_real(source.url or source.title)
+                text_content = yt_res["transcript"]
+                source.transcript_text = text_content
+                source.duration_seconds = yt_res["duration_seconds"]
+                source.source_type = "youtube_url"
+                print(f"[study_engine] SOURCE TYPE = youtube_transcript")
+                print(f"[study_engine] SOURCE CONTENT LENGTH = {len(text_content)}")
+
+        elif source.source_type == "paper_id":
+            if source.file_path and source.file_path.isdigit():
+                paper_obj = session.get(QuestionPaper, int(source.file_path))
+                if paper_obj and (paper_obj.extracted_ocr_text or paper_obj.title):
+                    text_content = f"{paper_obj.title}\n\n{paper_obj.extracted_ocr_text or paper_obj.subject or ''}"
+                    source.transcript_text = text_content
+            if not text_content:
+                raise ValueError("Spark couldn't access Paper Vault content. Please try a different resource.")
+
+        elif not text_content:
+            # Check file path for text
+            if source.file_path and os.path.exists(source.file_path):
+                try:
+                    with open(source.file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_txt = f.read().strip()
+                        if len(file_txt) > 20:
+                            text_content = file_txt
+                            source.transcript_text = text_content
+                except Exception:
+                    pass
+
+        if not text_content or len(text_content.strip()) < 20:
+            raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
 
         source.status = "ANALYZING"
         session.add(source)
@@ -80,12 +201,14 @@ def _run_processing_pipeline(session, source: StudyMediaSource, active_session: 
         session.add(source)
         session.commit()
 
-        res = llm.generate_concept_chapters(text_content, source.title or "Active Study Session")
+        res = llm.generate_concept_chapters(text_content, source.title or active_session.title or "Active Study Session")
         chapters_data = res.get("chapters", [])
         mindmap_nodes_data = res.get("mindmap_nodes", [])
-        subject_detected = res.get("subject") or "General Academic"
+        subject_detected = res.get("subject") or active_session.subject or "General Academic"
 
         active_session.subject = subject_detected
+        print(f"[study_engine] CHAPTER COUNT = {len(chapters_data)}")
+        print(f"[study_engine] AI INPUT = transcript/content ({len(text_content)} chars)")
 
         # Step 3: Clear old chapters & create new concept chapters
         old_chapters = session.exec(select(StudyChapter).where(StudyChapter.session_id == active_session.id)).all()
@@ -413,6 +536,7 @@ def get_active_session_details(session_id: int, user: User = Depends(current_use
             "subject": active_session.subject,
             "status": active_session.status,
             "processingStatus": source.status if source else "READY",
+            "processingError": source.error_message if source else None,
             "currentChapterIndex": active_session.current_chapter_index,
             "currentTimeSeconds": active_session.current_time_seconds,
             "completedChaptersCount": active_session.completed_chapters_count,

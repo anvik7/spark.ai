@@ -404,7 +404,7 @@ export default function Interview({ onNavigate, user }) {
                 checked={voiceEnabled}
                 onChange={(e) => setVoiceEnabled(e.target.checked)}
               />
-              <span>🔊 Enable Natural Web Speech Voice Playback</span>
+              <span>🔊 Enable Audio Voice Playback</span>
             </label>
 
             <button

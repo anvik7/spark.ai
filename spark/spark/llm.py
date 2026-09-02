@@ -615,30 +615,32 @@ def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict]
 
 _CHAPTERING_PROMPT = (
     "You are Spark AI Active Learning Engine. "
-    "Analyze the following study transcript/content for topic: \"{title}\".\n\n"
-    "CONTENT TRANSCRIPT:\n\"{transcript}\"\n\n"
+    "You are processing an ACTUAL LECTURE TRANSCRIPT for topic: \"{title}\".\n"
+    "STRICT ANTI-HALLUCINATION REQUIREMENT: Use ONLY information contained in the provided transcript text below. "
+    "Do NOT infer concepts or lessons merely from the video title. Do NOT invent concepts, examples, facts, or explanations that are not supported by the source transcript content.\n\n"
+    "ACTUAL CONTENT TRANSCRIPT:\n\"{transcript}\"\n\n"
     "TASK:\n"
-    "1. Detect natural concept topic boundaries (DO NOT cut at fixed 3 or 5 minutes blindly; group by logical concept topic boundaries).\n"
-    "2. Divide into 2 to 6 natural concept micro-chapters (target 3-7 mins per concept topic where possible).\n"
+    "1. Detect natural concept topic boundaries directly from the transcript (target 3-7 minutes per concept chapter).\n"
+    "2. Divide into 2 to 6 natural concept micro-chapters based on actual content covered in the transcript.\n"
     "3. For EACH chapter generate:\n"
-    "   - \"title\": concise topic name\n"
-    "   - \"start_time\": integer start seconds\n"
-    "   - \"end_time\": integer end seconds\n"
+    "   - \"title\": concise concept topic name\n"
+    "   - \"start_time\": integer start seconds from transcript timestamp\n"
+    "   - \"end_time\": integer end seconds from transcript timestamp\n"
     "   - \"transcript_segment\": actual transcript text for this chapter\n"
-    "   - \"short_explanation\": 2-3 sentence core summary of the concept\n"
-    "   - \"key_concepts\": array of 2-4 string concept keywords\n"
-    "   - \"learning_objective\": clear objective statement\n"
+    "   - \"short_explanation\": 2-3 sentence core summary of the actual concept taught\n"
+    "   - \"key_concepts\": array of 2-4 string concept keywords directly from transcript\n"
+    "   - \"learning_objective\": clear objective statement grounded in transcript\n"
     "   - \"difficulty\": \"Beginner\", \"Medium\", or \"Advanced\"\n"
-    "   - \"recall_prompt\": active-recall prompt asking learner to explain in their own words before proceeding\n"
-    "   - \"quiz\": array of 2-4 questions (each with: \"question_type\": \"mcq\", \"question_text\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correct_answer\", \"explanation\", \"concept_tag\")\n"
-    "4. Generate \"mindmap_nodes\": array of concepts for graph visualization (each with: \"node_key\", \"label\", \"parent_key\", \"concept_tag\", \"depth\").\n\n"
+    "   - \"recall_prompt\": active-recall prompt asking learner to explain concept in their own words\n"
+    "   - \"quiz\": array of 2-4 questions grounded ONLY in this chapter's actual content (each with: \"question_type\": \"mcq\", \"question_text\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correct_answer\", \"explanation\", \"concept_tag\")\n"
+    "4. Generate \"mindmap_nodes\": array of concepts extracted directly from transcript for graph visualization (each with: \"node_key\", \"label\", \"parent_key\", \"concept_tag\", \"depth\").\n\n"
     "Return STRICT JSON with keys: \"subject\", \"chapters\", \"mindmap_nodes\"."
 )
 
 
 def generate_concept_chapters(transcript_text: str, title: str = "Active Study Session") -> dict:
     """Analyze learning transcript and generate natural concept-based micro-chapters, quizzes, and mindmap."""
-    p_text = _CHAPTERING_PROMPT.format(title=title[:200], transcript=(transcript_text or "")[:12000])
+    p_text = _CHAPTERING_PROMPT.format(title=title[:200], transcript=(transcript_text or "")[:25000])
     try:
         raw_text = _complete_text(p_text)
         parsed = _extract_json(raw_text)
@@ -654,7 +656,13 @@ def generate_concept_chapters(transcript_text: str, title: str = "Active Study S
     est_duration = max(300, int(total_words / 2.5))  # ~150 words/min
 
     # Extract distinct non-trivial key terms from text
-    stop_words = {"the", "a", "an", "in", "on", "of", "and", "or", "to", "is", "are", "was", "were", "for", "with", "this", "that", "from", "by", "at", "it", "as", "be", "an", "has", "have", "had"}
+    stop_words = {
+        "the", "a", "an", "in", "on", "of", "and", "or", "to", "is", "are", "was", "were", "for", "with", "this", "that", "from", "by", "at", "it", "as", "be", "has", "have", "had",
+        "going", "just", "like", "want", "here", "there", "you", "your", "we", "our", "us", "they", "them", "their", "what", "which", "who", "whom", "where", "when", "why", "how",
+        "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "can", "will", "just",
+        "don't", "it's", "that's", "i'm", "we're", "you're", "they're", "there's", "here's", "know", "think", "mean", "right", "well", "look", "see", "get", "got", "make", "take",
+        "thing", "things", "way", "lot", "kind", "sort", "basically", "actually", "literally", "yeah", "okay", "alright", "hello", "welcome", "today", "now", "also", "into", "about"
+    }
     clean_words = [w.strip(".,!?:;\"'()[]{}").capitalize() for w in words if len(w.strip(".,!?:;\"'()[]{}")) > 3 and w.lower() not in stop_words]
     freq = {}
     for w in clean_words:

@@ -194,6 +194,25 @@ export const api = {
   },
   deletePaper: (id) => req(`/papers/${id}`, { method: "DELETE" }),
 
+  // TTS Voice Synthesis
+  generateTTS: async (text) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    headers["Content-Type"] = "application/json";
+    const res = await fetch(BASE + "/tts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("audio/")) {
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    }
+    return null;
+  },
+
   // Circles
   myCircles: () => req("/circles"),
   discoverCircles: (examTag) => {

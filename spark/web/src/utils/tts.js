@@ -1,4 +1,6 @@
-// Natural Web Speech Synthesis (TTS) Manager
+import { api } from "../api.js";
+
+// Natural Voice TTS Manager (Server-Side Audio + Web Speech Fallback)
 export function createTTSManager({
   preferredLang = "en-US",
   rate = 0.93,
@@ -11,6 +13,7 @@ export function createTTSManager({
 
   const state = {
     currentUtterance: null,
+    currentAudio: null,
     isSpeaking: false,
     isPaused: false,
     lastSpokenText: "",
@@ -45,7 +48,6 @@ export function createTTSManager({
     // Split on sentence-ending punctuation followed by whitespace
     const parts = cleaned.split(/(?<=[.!?])\s+/g).map((s) => s.trim()).filter(Boolean);
 
-    // Fall back to smaller length chunks if text lacks punctuation
     if (parts.length <= 1 && cleaned.length > 180) {
       const chunks = [];
       for (let i = 0; i < cleaned.length; i += 160) {
@@ -54,7 +56,6 @@ export function createTTSManager({
       return chunks;
     }
 
-    // Sub-split very long clauses (>220 chars) for natural cadence
     const final = [];
     for (const p of parts) {
       if (p.length <= 220) {
@@ -151,26 +152,15 @@ export function createTTSManager({
     });
   }
 
-  async function speakAdaptive(text, { onStart, onEnd, onError } = {}) {
-    const t = String(text || "");
-    const cleaned = cleanForSpeech(t);
-    if (!cleaned) return;
-
+  async function speakBrowserSpeech(cleaned, { onStart, onEnd, onError }) {
     if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       onError?.(new Error("SpeechSynthesis not supported in this browser."));
       return;
     }
 
-    // Cancel any ongoing speech to prevent overlapping voices
     try {
       window.speechSynthesis.cancel();
     } catch (e) {}
-
-    state.lastSpokenText = cleaned;
-    state.isPaused = false;
-    state.isSpeaking = true;
-
-    onStart?.();
 
     await ensureVoicesLoaded();
     const voice = pickBestVoice();
@@ -179,9 +169,7 @@ export function createTTSManager({
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      if (!chunk) continue;
-
-      if (!state.isSpeaking) break;
+      if (!chunk || !state.isSpeaking) break;
 
       const utter = new SpeechSynthesisUtterance(chunk);
       state.currentUtterance = utter;
@@ -195,7 +183,7 @@ export function createTTSManager({
 
       const chunkDone = await new Promise((resolveChunk) => {
         utter.onend = () => resolveChunk(true);
-        utter.onerror = (event) => resolveChunk(false);
+        utter.onerror = () => resolveChunk(false);
         try {
           window.speechSynthesis.speak(utter);
         } catch (err) {
@@ -216,9 +204,57 @@ export function createTTSManager({
     onEnd?.();
   }
 
+  async function speakAdaptive(text, { onStart, onEnd, onError } = {}) {
+    const t = String(text || "");
+    const cleaned = cleanForSpeech(t);
+    if (!cleaned) return;
+
+    stop();
+
+    state.lastSpokenText = cleaned;
+    state.isPaused = false;
+    state.isSpeaking = true;
+
+    // Try primary server-side TTS (100% reliable cross-platform MP3 playback for iOS / Android)
+    try {
+      const audioUrl = await api.generateTTS(cleaned).catch(() => null);
+      if (audioUrl && state.isSpeaking) {
+        onStart?.();
+        const audio = new Audio(audioUrl);
+        state.currentAudio = audio;
+        audio.onended = () => {
+          state.isSpeaking = false;
+          state.currentAudio = null;
+          URL.revokeObjectURL(audioUrl);
+          onEnd?.();
+        };
+        audio.onerror = () => {
+          state.currentAudio = null;
+          URL.revokeObjectURL(audioUrl);
+          speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+        };
+        await audio.play();
+        return;
+      }
+    } catch (e) {
+      console.warn("Server TTS playback error, falling back to Web Speech:", e);
+    }
+
+    // Fallback: Browser SpeechSynthesis
+    onStart?.();
+    speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+  }
+
   function stop() {
     state.isSpeaking = false;
     state.isPaused = false;
+    if (state.currentAudio) {
+      try {
+        state.currentAudio.pause();
+        state.currentAudio.currentTime = 0;
+      } catch (e) {}
+      state.currentAudio = null;
+    }
     try {
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();

@@ -129,14 +129,17 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
     );
   }
 
-  if (err || !sessionData) {
+  if (err || !sessionData || sessionData.processingStatus === "FAILED") {
     return (
       <div className="screen" style={{ padding: 20 }}>
         <button onClick={onBack} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", cursor: "pointer", marginBottom: 16 }}>
-          ← Back to Study
+          ← Back to Sessions
         </button>
-        <div className="err" style={{ padding: 16 }}>
-          ⚠️ {err || "Could not load active study session."}
+        <div className="err" style={{ padding: 18, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, color: "#991B1B", lineHeight: 1.5 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>⚠️ Unable to Process Lecture</div>
+          <div style={{ fontSize: 13.5 }}>
+            {sessionData?.processingError || err || "Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file."}
+          </div>
         </div>
       </div>
     );
