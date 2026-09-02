@@ -14,33 +14,16 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-const CATEGORIES = [
-  "All",
-  "Civil Services",
-  "GATE",
-  "Engineering",
-  "Medical",
-  "Management",
-  "School",
-  "University",
-  "Professional",
-  "General",
-];
-
-const RESOURCE_TYPES = [
-  { id: "All", label: "All Types", icon: "📚" },
+// Exact 4 Content Categories Only
+const CORE_CATEGORIES = [
+  { id: "govt_exams", label: "Indian Government Competitive Exams", icon: "🏛️" },
   { id: "handwritten_notes", label: "Handwritten Notes", icon: "📝" },
-  { id: "study_material", label: "Study Material", icon: "📄" },
-  { id: "practice_set", label: "Practice Set", icon: "📑" },
-  { id: "official_guide", label: "Official Guide", icon: "🏛️" },
-  { id: "syllabus", label: "Syllabus", icon: "📋" },
   { id: "lecture_notes", label: "Lecture Notes", icon: "🎓" },
+  { id: "practice_sets", label: "Practice Sets", icon: "📑" },
 ];
 
 export default function Papers({ onOpenUpgrade, onNavigate }) {
-  const [activeTab, setActiveTab] = useState("recommended");
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedType, setSelectedType] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState("govt_exams");
   const [searchQuery, setSearchQuery] = useState("");
   
   const [papers, setPapers] = useState(null);
@@ -57,20 +40,25 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
 
   const loadPapers = () => {
     setLoading(true);
+    let mappedType = "";
+    if (selectedCategory === "handwritten_notes") mappedType = "handwritten_notes";
+    else if (selectedCategory === "lecture_notes") mappedType = "lecture_notes";
+    else if (selectedCategory === "practice_sets") mappedType = "practice_set";
+
     api.listPapers({
-      tab: activeTab,
-      category: selectedCategory !== "All" ? selectedCategory : "",
-      resource_type: selectedType !== "All" ? selectedType : "",
+      tab: selectedCategory === "govt_exams" ? "all" : "",
+      category: selectedCategory === "govt_exams" ? "Govt Exam" : "",
+      resource_type: mappedType,
       query: searchQuery.trim(),
     })
       .then((data) => setPapers(Array.isArray(data) ? data : []))
-      .catch((e) => setErr(e.message || "Failed to load study resources."))
+      .catch((e) => setErr(e.message || "Failed to load examination resources."))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     loadPapers();
-  }, [activeTab, selectedCategory, selectedType]);
+  }, [selectedCategory]);
 
   const handleSearchSubmit = (e) => {
     e?.preventDefault();
@@ -109,8 +97,9 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
     } catch (error) {
       if (error.message?.includes("402") || error.message?.toLowerCase().includes("quota") || error.message?.toLowerCase().includes("limit")) {
         onOpenUpgrade?.();
+      } else {
+        setErr(error.message || "Failed to download paper.");
       }
-      setErr(error.message || "Download limit reached.");
     } finally {
       setDownloadingId(null);
     }
@@ -121,11 +110,11 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
     setIsDeleting(true);
     try {
       await api.deletePaper(deleteTargetId);
-      setPapers((ps) => ps?.filter((p) => p.id !== deleteTargetId) || []);
-      if (previewPaper && previewPaper.id === deleteTargetId) setPreviewPaper(null);
+      setPapers((prev) => (prev || []).filter((p) => p.id !== deleteTargetId));
       setDeleteTargetId(null);
+      if (previewPaper && previewPaper.id === deleteTargetId) setPreviewPaper(null);
     } catch (e) {
-      setErr(e.message || "Failed to delete resource.");
+      setErr(e.message || "Failed to delete paper.");
     } finally {
       setIsDeleting(false);
     }
@@ -136,7 +125,7 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
       <ConfirmationDialog
         isOpen={Boolean(deleteTargetId)}
         title="Delete resource?"
-        description="This will permanently delete this study resource from Spark. This action cannot be undone."
+        description="This will permanently delete this resource. This action cannot be undone."
         confirmLabel="Delete resource"
         cancelLabel="Cancel"
         isDanger={true}
@@ -174,7 +163,7 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
           }}
         >
           <span>＋</span>
-          <span>Upload Material</span>
+          <span>Upload</span>
         </button>
       </div>
 
@@ -185,12 +174,12 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
         </div>
       )}
 
-      {/* Search & Discovery Filter Bar */}
+      {/* Search Bar */}
       <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by subject, topic, exam tag, or handwritten notes text…"
+          placeholder="Search question papers, notes, or exams..."
           style={{
             flex: 1,
             padding: "9px 14px",
@@ -199,6 +188,7 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
             fontSize: 13.5,
             background: "var(--surface)",
             color: "var(--ink)",
+            boxSizing: "border-box",
           }}
         />
         <button
@@ -218,151 +208,158 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
         </button>
       </form>
 
-      {/* Community Discovery Tabs */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 14, borderBottom: "1px solid var(--line)" }}>
-        {[
-          { id: "recommended", label: "Recommended", icon: "⭐" },
-          { id: "recent", label: "Recent", icon: "✨" },
-          { id: "popular", label: "Popular", icon: "🔥" },
-          { id: "handwritten", label: "Handwritten Notes", icon: "📝" },
-          { id: "saved", label: "Saved", icon: "🔖" },
-          { id: "my_uploads", label: "My Uploads", icon: "👤" },
-        ].map((t) => {
-          const isActive = activeTab === t.id;
+      {/* Exact 4 Core Category Chips */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+        {CORE_CATEGORIES.map((cat) => {
+          const isSelected = selectedCategory === cat.id;
           return (
             <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id)}
               style={{
-                padding: "6px 12px",
+                padding: "8px 14px",
                 borderRadius: 20,
-                border: isActive ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                background: isActive ? "var(--marigold-light)" : "var(--surface)",
-                color: isActive ? "var(--marigold-dark)" : "var(--ink-soft)",
-                fontSize: 12.5,
-                fontWeight: isActive ? 700 : 600,
-                whiteSpace: "nowrap",
+                border: isSelected ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+                background: isSelected ? "var(--marigold-light)" : "var(--surface)",
+                color: isSelected ? "var(--marigold-dark)" : "var(--ink)",
+                fontSize: 13,
+                fontWeight: isSelected ? 700 : 600,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                transition: "all .15s ease",
               }}
             >
-              <span>{t.icon}</span>
-              <span>{t.label}</span>
+              <span>{cat.icon}</span>
+              <span>{cat.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Resource Type Filter Pills */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-        {RESOURCE_TYPES.map((rt) => {
-          const isSelected = selectedType === rt.id;
-          return (
-            <button
-              key={rt.id}
-              onClick={() => setSelectedType(rt.id)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 14,
-                border: isSelected ? "1px solid var(--ink)" : "1px solid var(--line)",
-                background: isSelected ? "var(--surface-3)" : "var(--surface-2)",
-                color: "var(--ink)",
-                fontSize: 12,
-                fontWeight: isSelected ? 700 : 500,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <span>{rt.icon}</span>
-              <span>{rt.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Resource Grid Stream */}
+      {/* Material Grid */}
       {loading && (
-        <div style={{ textAlign: "center", padding: "40px 16px", color: "var(--ink-soft)", fontSize: 14 }}>
-          <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading community resources…
+        <div style={{ textAlign: "center", padding: 40, color: "var(--ink-soft)", fontSize: 14 }}>
+          <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading examination materials…
         </div>
       )}
 
-      {!loading && papers && papers.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--surface-2)", borderRadius: 12, border: "1px dashed var(--line)" }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>No study resources found</div>
+      {!loading && (!papers || papers.length === 0) && (
+        <div style={{ padding: 40, textAlign: "center", background: "var(--surface-2)", borderRadius: 12, border: "1px dashed var(--line)" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📑</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No materials found</div>
           <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-            Be the first to share handwritten notes or study materials for this topic!
+            Try searching for a different topic or upload handwritten notes to share with fellow learners.
           </div>
-          <button
-            onClick={() => setShowUpload(true)}
-            style={{
-              marginTop: 14,
-              padding: "8px 16px",
-              borderRadius: 8,
-              background: "var(--p-gradient)",
-              color: "#ffffff",
-              border: "none",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            ＋ Upload Study Resource
-          </button>
         </div>
       )}
 
       {!loading && papers && papers.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
           {papers.map((p) => (
-            <PaperCard
+            <div
               key={p.id}
-              paper={p}
-              onPreview={() => setPreviewPaper(p)}
-              onToggleSave={(e) => handleToggleSave(e, p)}
-              onDownload={(e) => handleDownload(e, p)}
-              isDownloading={downloadingId === p.id}
-              onDelete={() => setDeleteTargetId(p.id)}
-            />
+              onClick={() => setPreviewPaper(p)}
+              style={{
+                background: "var(--surface)",
+                border: "1.5px solid var(--line)",
+                borderRadius: 12,
+                padding: 16,
+                boxShadow: "var(--sh-sm)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                cursor: "pointer",
+                transition: "all .2s ease",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: 12,
+                      background: p.resource_type === "handwritten_notes" ? "var(--marigold-light)" : "var(--surface-2)",
+                      color: p.resource_type === "handwritten_notes" ? "var(--marigold-dark)" : "var(--ink-soft)",
+                      border: "1px solid var(--line)",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {p.resource_type ? p.resource_type.replace("_", " ") : "Paper"}
+                  </span>
+
+                  <button
+                    onClick={(e) => handleToggleSave(e, p)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}
+                    title={p.isSaved ? "Saved" : "Save resource"}
+                  >
+                    {p.isSaved ? "🔖" : "🏷️"}
+                  </button>
+                </div>
+
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 6px", color: "var(--ink)", lineHeight: 1.4 }}>
+                  {p.title}
+                </h3>
+
+                <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {p.subject && <span>{p.subject}</span>}
+                  {p.examTag && <span> · {p.examTag}</span>}
+                </div>
+              </div>
+
+              <div style={{ paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
+                  {fmtSize(p.file_size)} · {fmtDate(p.created_at)}
+                </span>
+
+                <button
+                  onClick={(e) => handleDownload(e, p)}
+                  disabled={downloadingId === p.id}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-2)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--ink)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {downloadingId === p.id ? "…" : "Download"}
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Upload Resource Drawer */}
+      {/* Upload Resource Modal */}
       {showUpload && (
         <UploadModal
           onClose={() => setShowUpload(false)}
-          onUploaded={(newPaper) => {
-            setPapers((prev) => [newPaper, ...(prev || [])]);
+          onUploaded={() => {
             setShowUpload(false);
+            loadPapers();
           }}
           onError={setErr}
         />
       )}
 
-      {/* Resource Inspection & Preview Modal */}
+      {/* Resource Detail & Preview Drawer Modal */}
       {previewPaper && (
         <PreviewModal
           paper={previewPaper}
           onClose={() => setPreviewPaper(null)}
-          onToggleSave={(e) => handleToggleSave(e, previewPaper)}
           onDownload={(e) => handleDownload(e, previewPaper)}
-          onStartStudy={async () => {
-            try {
-              await api.createStudyFromPaper(previewPaper.id);
-              setPreviewPaper(null);
-              onNavigate?.("study");
-            } catch (err) {
-              setErr(err.message || "Failed to start study session from paper.");
-            }
-          }}
+          onBookmark={(e) => handleToggleSave(e, previewPaper)}
           onReport={() => setReportPaperTarget(previewPaper)}
-          onDelete={() => setDeleteTargetId(previewPaper.id)}
+          onDelete={(id) => setDeleteTargetId(id)}
+          onNavigate={onNavigate}
         />
       )}
 
@@ -371,9 +368,9 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
         <ReportModal
           paper={reportPaperTarget}
           onClose={() => setReportPaperTarget(null)}
-          onReported={(msg) => {
-            setErr(msg);
+          onReported={() => {
             setReportPaperTarget(null);
+            setErr("Report submitted. Thank you for keeping Paper Vault safe.");
           }}
         />
       )}
@@ -381,320 +378,109 @@ export default function Papers({ onOpenUpgrade, onNavigate }) {
   );
 }
 
-/* ── Resource Card Component ───────────────────────────── */
-function PaperCard({ paper, onPreview, onToggleSave, onDownload, isDownloading, onDelete }) {
-  const isHandwritten = paper.resourceType === "handwritten_notes";
-  const icon = isHandwritten ? "📝" : paper.resourceType === "practice_set" ? "📑" : "📄";
-
-  return (
-    <div
-      onClick={onPreview}
-      style={{
-        background: "var(--surface)",
-        border: "1.5px solid var(--line)",
-        borderRadius: 12,
-        padding: 16,
-        boxShadow: "var(--sh-sm)",
-        display: "flex",
-        flexDirection: "column",
-        justify: "space-between",
-        cursor: "pointer",
-        transition: "all .15s ease",
-      }}
-    >
-      <div>
-        {/* Top Badges */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                padding: "2px 6px",
-                borderRadius: 6,
-                background: isHandwritten ? "#FEF3C7" : "var(--surface-3)",
-                color: isHandwritten ? "#92400E" : "var(--ink)",
-                border: "1px solid var(--line)",
-                textTransform: "uppercase",
-              }}
-            >
-              {icon} {paper.resourceType?.replace("_", " ") || "Notes"}
-            </span>
-
-            {paper.examTag && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "2px 6px",
-                  borderRadius: 6,
-                  background: "#ECFDF5",
-                  color: "#059669",
-                  border: "1px solid #A7F3D0",
-                }}
-              >
-                {paper.examTag}
-              </span>
-            )}
-          </div>
-
-          <button
-            onClick={onToggleSave}
-            title={paper.isSaved ? "Remove from saved" : "Save resource"}
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: 15,
-              cursor: "pointer",
-              padding: 2,
-              color: paper.isSaved ? "var(--marigold-dark)" : "var(--ink-faint)",
-            }}
-          >
-            {paper.isSaved ? "🔖" : "📑"}
-          </button>
-        </div>
-
-        {/* Title */}
-        <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: "0 0 6px", color: "var(--ink)", lineHeight: 1.4 }}>
-          {paper.title}
-        </h3>
-
-        {/* Subject & Meta */}
-        <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 10 }}>
-          {paper.subject && <span>{paper.subject} · </span>}
-          <span>{paper.pageCount} page(s)</span> · <span>{fmtSize(paper.fileSize)}</span>
-        </div>
-      </div>
-
-      {/* Footer Info & Actions */}
-      <div style={{ paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-          <span>Uploaded by {paper.uploaderName}</span>
-          <div style={{ fontSize: 10, marginTop: 1 }}>{fmtDate(paper.createdAt)}</div>
-        </div>
-
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <button
-            onClick={onDownload}
-            disabled={isDownloading}
-            title="Download study resource"
-            style={{
-              padding: "5px 10px",
-              borderRadius: 6,
-              background: "var(--marigold-light)",
-              color: "var(--marigold-dark)",
-              border: "1px solid var(--line)",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <span>📥</span>
-            <span>{paper.downloadCount || 0}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Upload Modal Component ───────────────────────────── */
+/* ---------- Upload Resource Modal ---------- */
 function UploadModal({ onClose, onUploaded, onError }) {
   const [title, setTitle] = useState("");
+  const [resourceType, setResourceType] = useState("handwritten_notes");
   const [subject, setSubject] = useState("");
   const [examTag, setExamTag] = useState("");
-  const [category, setCategory] = useState("General");
-  const [resourceType, setResourceType] = useState("handwritten_notes");
-  const [language, setLanguage] = useState("English");
-  const [pageCount, setPageCount] = useState(1);
-  const [ocrText, setOcrText] = useState("");
-  const [isPublic, setIsPublic] = useState(true);
-  const [confirmedRights, setConfirmedRights] = useState(true);
-  
-  const [file, setFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [busy, setBusy] = useState(false);
-  const fileRef = useRef();
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file || !title.trim() || !confirmedRights) return;
+    if (!selectedFile || !title.trim()) return;
+
     setBusy(true);
-
-    const f = new FormData();
-    f.append("file", file);
-    f.append("title", title.trim());
-    f.append("subject", subject.trim());
-    f.append("exam_tag", examTag.trim());
-    f.append("category", category);
-    f.append("resource_type", resourceType);
-    f.append("language", language);
-    f.append("page_count", pageCount);
-    f.append("ocr_text", ocrText.trim());
-    f.append("is_public", isPublic);
-
     try {
-      const res = await api.uploadPaper(f);
-      onUploaded(res);
+      const f = new FormData();
+      f.append("file", selectedFile);
+      f.append("title", title.trim());
+      f.append("resource_type", resourceType);
+      f.append("category", "Govt Exam");
+      f.append("subject", subject.trim());
+      f.append("exam_tag", examTag.trim());
+
+      await api.uploadPaper(f);
+      onUploaded();
     } catch (err) {
-      onError(err.message || "Upload failed. Please check permissions and file quota.");
+      onError(err.message || "Failed to upload material.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", padding: 20, boxShadow: "var(--sh-lg)", border: "1px solid var(--line)" }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Upload Study Resource</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--ink-faint)" }}>✕</button>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>Upload Material</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
 
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Resource Title *</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Title *</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Resource Title"
               required
-              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)" }}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", boxSizing: "border-box" }}
             />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Resource Type</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Category</label>
               <select
                 value={resourceType}
                 onChange={(e) => setResourceType(e.target.value)}
                 style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)" }}
               >
                 <option value="handwritten_notes">📝 Handwritten Notes</option>
-                <option value="study_material">📄 Question Paper</option>
+                <option value="govt_exam">🏛️ Question Paper</option>
+                <option value="lecture_notes">🎓 Lecture Notes</option>
+                <option value="practice_set">📑 Practice Set</option>
               </select>
             </div>
 
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Category / Domain</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)" }}
-              >
-                {CATEGORIES.filter((c) => c !== "All").map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Subject / Topic</label>
               <input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Subject / Topic"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)" }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Exam Tag / Target (Optional)</label>
-              <input
-                value={examTag}
-                onChange={(e) => setExamTag(e.target.value)}
-                placeholder="Exam Tag"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)" }}
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)", boxSizing: "border-box" }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Extracted Handwritten / OCR Text (Optional for Search)</label>
-            <textarea
-              value={ocrText}
-              onChange={(e) => setOcrText(e.target.value)}
-              placeholder="Paste or write key formulas, headings, or readable text from your handwritten notes..."
-              rows={2}
-              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)" }}
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Exam Tag (Optional)</label>
+            <input
+              value={examTag}
+              onChange={(e) => setExamTag(e.target.value)}
+              placeholder="Exam Tag"
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface-2)", boxSizing: "border-box" }}
             />
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>File Document / Image *</label>
             <input
-              ref={fileRef}
               type="file"
-              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              style={{ display: "none" }}
-            />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: "var(--surface-2)",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {file ? `📄 ${file.name}` : "📁 Select Document or Scanned Image"}
-            </button>
-            {file && <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{fmtSize(file.size)}</span>}
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink)", marginTop: 4 }}>
-            <input
-              type="checkbox"
-              id="is_public_cb"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-            />
-            <label htmlFor="is_public_cb" style={{ cursor: "pointer" }}>
-              Share with Spark Community Library (uncheck for Private Vault)
-            </label>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-soft)" }}>
-            <input
-              type="checkbox"
-              id="rights_cb"
-              checked={confirmedRights}
-              onChange={(e) => setConfirmedRights(e.target.checked)}
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               required
+              style={{ width: "100%", fontSize: 13 }}
             />
-            <label htmlFor="rights_cb" style={{ cursor: "pointer" }}>
-              I confirm I have the right to share this study material and it complies with terms.
-            </label>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
-            <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13 }}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={busy || !file || !title.trim() || !confirmedRights}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 8,
-                border: "none",
-                background: busy || !file || !title.trim() || !confirmedRights ? "var(--line)" : "var(--p-gradient)",
-                color: "#ffffff",
-                fontSize: 13.5,
-                fontWeight: 700,
-                cursor: busy || !file || !title.trim() || !confirmedRights ? "not-allowed" : "pointer",
-              }}
-            >
-              {busy ? "Uploading…" : "Upload Resource"}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={busy || !selectedFile || !title.trim()} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--p-gradient)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+              {busy ? "Uploading…" : "Upload"}
             </button>
           </div>
         </form>
@@ -703,111 +489,62 @@ function UploadModal({ onClose, onUploaded, onError }) {
   );
 }
 
-/* ── Preview Modal Component ─────────────────────────── */
-function PreviewModal({ paper, onClose, onToggleSave, onDownload, onReport, onDelete }) {
+/* ---------- Preview Modal ---------- */
+function PreviewModal({ paper, onClose, onDownload, onBookmark, onReport, onDelete, onNavigate }) {
   return (
-    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 580, maxHeight: "90vh", overflowY: "auto", padding: 20, boxShadow: "var(--sh-lg)", border: "1px solid var(--line)" }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
-              {paper.resourceType?.replace("_", " ")} · {paper.category}
+            <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", letterSpacing: ".05em" }}>
+              {paper.resource_type ? paper.resource_type.replace("_", " ") : "Paper"}
             </span>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: "4px 0 0", color: "var(--ink)" }}>{paper.title}</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: "2px 0 0", color: "var(--ink)" }}>{paper.title}</h2>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--ink-faint)" }}>✕</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
 
-        {/* Visual Preview Box */}
-        <div style={{ background: "#0F172A", color: "#F8FAFC", borderRadius: 10, padding: 20, textAlign: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 42, marginBottom: 6 }}>
-            {paper.resourceType === "handwritten_notes" ? "📝" : "📄"}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{paper.fileName}</div>
-          <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{fmtSize(paper.fileSize)} · {paper.pageCount} page(s)</div>
+        <div style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 14 }}>
+          {paper.subject && <div>Subject: {paper.subject}</div>}
+          {paper.examTag && <div>Exam Tag: {paper.examTag}</div>}
+          <div>File Size: {fmtSize(paper.file_size)}</div>
+          <div>Uploaded: {fmtDate(paper.created_at)}</div>
         </div>
 
-        {/* Extracted OCR Text Preview */}
-        {paper.extractedOcrText && (
-          <div style={{ marginBottom: 16, background: "var(--surface-2)", padding: 12, borderRadius: 8, border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-              Extracted OCR / Key Text Preview
-            </span>
-            <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.5, fontStyle: "italic", whiteSpace: "pre-wrap" }}>
-              "{paper.extractedOcrText}"
-            </div>
+        {paper.extracted_ocr_text && (
+          <div style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, maxHeight: 160, overflowY: "auto", fontSize: 12.5, color: "var(--ink)", marginBottom: 16, border: "1px solid var(--line)" }}>
+            <b>Extracted Text Preview:</b>
+            <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{paper.extracted_ocr_text.slice(0, 500)}...</p>
           </div>
         )}
 
-        {/* Action Controls */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={onToggleSave}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: "var(--surface-2)",
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                color: "var(--ink)",
-              }}
-            >
-              {paper.isSaved ? "🔖 Saved" : "📑 Save Resource"}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onBookmark} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", fontSize: 12.5, cursor: "pointer" }}>
+              {paper.isSaved ? "🔖 Saved" : "🏷️ Save"}
             </button>
-
-            <button
-              onClick={onReport}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: "var(--surface-2)",
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                color: "var(--ink-soft)",
-              }}
-            >
-              🚩 Report
+            <button onClick={onReport} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", fontSize: 12.5, cursor: "pointer" }}>
+              🚨 Report
             </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            {onStartStudy && (
-              <button
-                onClick={onStartStudy}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1.5px solid var(--marigold)",
-                  background: "var(--marigold-light)",
-                  color: "var(--marigold-dark)",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                🚀 Study Material
+            {paper.is_owner && (
+              <button onClick={() => onDelete(paper.id)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #FCA5A5", background: "#FEF2F2", color: "#DC2626", fontSize: 12.5, cursor: "pointer" }}>
+                🗑️ Delete
               </button>
             )}
+          </div>
 
+          <div style={{ display: "flex", gap: 6 }}>
             <button
-              onClick={onDownload}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 8,
-                border: "none",
-                background: "var(--p-gradient)",
-                color: "#ffffff",
-                fontSize: 13.5,
-                fontWeight: 700,
-                cursor: "pointer",
+              onClick={() => {
+                onClose();
+                api.createStudyFromPaper(paper.id).then(() => onNavigate?.("study")).catch(() => {});
               }}
+              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--marigold)", background: "var(--marigold-light)", color: "var(--marigold-dark)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
             >
-              📥 Download ({paper.downloadCount || 0})
+              🚀 Study
+            </button>
+            <button onClick={onDownload} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "var(--p-gradient)", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              Download
             </button>
           </div>
         </div>
@@ -816,54 +553,41 @@ function PreviewModal({ paper, onClose, onToggleSave, onDownload, onReport, onDe
   );
 }
 
-/* ── Report Modal Component ─────────────────────────── */
+/* ---------- Report Modal ---------- */
 function ReportModal({ paper, onClose, onReported }) {
-  const [reason, setReason] = useState("inappropriate");
-  const [details, setDetails] = useState("");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!reason.trim()) return;
     setBusy(true);
     try {
-      const res = await api.reportPaper(paper.id, reason, details.trim());
-      onReported(res.message || "Report submitted successfully.");
-    } catch (err) {
-      onReported("Could not submit report.");
+      await api.reportPaper(paper.id, reason.trim());
+      onReported();
+    } catch {
+      onReported();
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "var(--surface)", borderRadius: 14, width: "100%", maxWidth: 440, padding: 20, boxShadow: "var(--sh-lg)", border: "1px solid var(--line)" }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 10px", color: "var(--ink)" }}>Report Material</h3>
-        <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 12 }}>
-          Help us keep Spark safe. Why are you reporting "{paper.title}"?
-        </p>
-
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }}>
-            <option value="inappropriate">Inappropriate / Offensive Content</option>
-            <option value="copyrighted">Copyrighted / Unauthorized Material</option>
-            <option value="misleading">Misleading or Low-Quality Material</option>
-            <option value="other">Other Concern</option>
-          </select>
-
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 700 }}>Report Resource</h3>
+        <form onSubmit={handleSubmit}>
           <textarea
-            value={details}
-            onChange={(e) => setDetails(e.target.value)}
-            placeholder="Additional details (optional)..."
-            rows={2}
-            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason for reporting..."
+            rows={3}
+            required
+            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
           />
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-            <button type="button" onClick={onClose} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 12.5 }}>Cancel</button>
-            <button type="submit" disabled={busy} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#DC2626", color: "#ffffff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-              {busy ? "Submitting…" : "Submit Report"}
-            </button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "transparent" }}>Cancel</button>
+            <button type="submit" disabled={busy} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#DC2626", color: "#fff", fontWeight: 700 }}>Submit Report</button>
           </div>
         </form>
       </div>
