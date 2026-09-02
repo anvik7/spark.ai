@@ -121,6 +121,25 @@ export const api = {
   getStudyAnalyticsSummary: () => req("/study/analytics/summary"),
   getStudySubjectBreakdown: () => req("/study/analytics/subjects"),
   getStudyWeakspots: () => req("/study/analytics/weakspots"),
+
+  // Active Learning Engine API
+  listActiveStudySessions: () => req("/study/active-sessions"),
+  createActiveStudySessionUpload: (formData) => req("/study/active-sessions", { method: "POST", form: formData }),
+  createActiveStudySessionUrl: (url, title = "", subject = "General Academic") =>
+    req("/study/active-sessions/url", { method: "POST", body: { url, title, subject } }),
+  getActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`),
+  processActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}/process`, { method: "POST" }),
+  getStudyChapter: (chapterId) => req(`/study/active-sessions/chapters/${chapterId}`),
+  submitActiveRecall: (chapterId, userResponse) =>
+    req(`/study/active-sessions/chapters/${chapterId}/recall`, { method: "POST", body: { user_response: userResponse } }),
+  submitQuizAnswer: (questionId, userAnswer, timeTakenSeconds = 0) =>
+    req(`/study/active-sessions/questions/${questionId}/answer`, { method: "POST", body: { user_answer: userAnswer, time_taken_seconds: timeTakenSeconds } }),
+  getStudyMindMap: (sessionId) => req(`/study/active-sessions/${sessionId}/mindmap`),
+  updateStudyProgress: (sessionId, currentChapterIndex, currentTimeSeconds) =>
+    req(`/study/active-sessions/${sessionId}/progress`, { method: "POST", body: { current_chapter_index: currentChapterIndex, current_time_seconds: currentTimeSeconds } }),
+  createStudyFromPaper: (paperId) => req(`/study/active-sessions/from-paper/${paperId}`, { method: "POST" }),
+  createStudyFromCapture: (captureId) => req(`/study/active-sessions/from-capture/${captureId}`, { method: "POST" }),
+
   getTasks: () => req("/tasks"),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
   uploadTaskFile: (file, prompt = "", subject_hint = "") => {
@@ -151,22 +170,28 @@ export const api = {
     req("/interview/evaluate", { method: "POST", body: { session_id: sessionId } }),
   getInterviewHistory: () => req("/interview/history"),
 
-  // Papers
+  // Papers API - Community Resource Library
   listPapers: (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return req("/papers" + (qs ? `?${qs}` : ""));
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") qs.append(k, v);
+    });
+    const str = qs.toString();
+    return req("/papers" + (str ? `?${str}` : ""));
   },
-  uploadPaper: (file, title, examTag = "", subject = "", year = null) => {
-    const f = new FormData();
-    f.append("file", file);
-    f.append("title", title);
-    if (examTag) f.append("exam_tag", examTag);
-    if (subject) f.append("subject", subject);
-    if (year) f.append("year", String(year));
-    return req("/papers", { method: "POST", form: f });
+  uploadPaper: (formData) => {
+    return req("/papers", { method: "POST", form: formData });
   },
   getPaper: (id) => req(`/papers/${id}`),
+  downloadPaper: (id) => req(`/papers/${id}/download`),
   downloadPaperUrl: (id) => `${BASE}/papers/${id}/download`,
+  bookmarkPaper: (id) => req(`/papers/${id}/bookmark`, { method: "POST" }),
+  reportPaper: (id, reason = "inappropriate", details = "") => {
+    const f = new FormData();
+    f.append("reason", reason);
+    f.append("details", details);
+    return req(`/papers/${id}/report`, { method: "POST", form: f });
+  },
   deletePaper: (id) => req(`/papers/${id}`, { method: "DELETE" }),
 
   // Circles

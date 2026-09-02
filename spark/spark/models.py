@@ -84,6 +84,119 @@ class StudySession(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class StudyMediaSource(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    source_type: str = "document"  # "video_file", "audio_file", "youtube_url", "document", "paper_id", "capture_id"
+    title: str = ""
+    description: str = ""
+    file_path: Optional[str] = None
+    url: Optional[str] = None
+    duration_seconds: int = 0
+    transcript_text: str = ""
+    status: str = "UPLOADING"  # "UPLOADING", "PROCESSING", "ANALYZING", "CHAPTERING", "GENERATING_QUESTIONS", "READY", "FAILED"
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StudyActiveSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    source_id: int = Field(index=True, foreign_key="studymediasource.id")
+    title: str = ""
+    subject: str = "General Academic"
+    current_chapter_index: int = 0
+    current_time_seconds: float = 0.0
+    completed_chapters_count: int = 0
+    total_chapters_count: int = 0
+    overall_mastery_percent: float = 0.0
+    status: str = "in_progress"  # "in_progress", "completed"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StudyChapter(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
+    chapter_index: int = 0
+    title: str = ""
+    start_time: float = 0.0
+    end_time: float = 0.0
+    duration_seconds: float = 0.0
+    transcript_segment: str = ""
+    short_explanation: str = ""
+    key_concepts_json: str = "[]"
+    learning_objective: str = ""
+    difficulty: str = "Medium"
+    status: str = "unstarted"  # "locked", "unstarted", "in_progress", "completed"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StudyQuestion(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
+    question_type: str = "mcq"  # "mcq", "true_false", "short_answer"
+    question_text: str = ""
+    options_json: str = "[]"
+    correct_answer: str = ""
+    explanation: str = ""
+    difficulty: str = "Medium"
+    concept_tag: str = "General"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StudyAttempt(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
+    question_id: int = Field(index=True, foreign_key="studyquestion.id")
+    user_answer: str = ""
+    is_correct: bool = False
+    score: float = 0.0
+    time_taken_seconds: int = 0
+    attempt_number: int = 1
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ActiveRecallEvaluation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
+    user_response_text: str = ""
+    understanding_score: int = 0  # 0 to 100
+    understood_concepts_json: str = "[]"
+    missing_concepts_json: str = "[]"
+    misconceptions_json: str = "[]"
+    recommendation: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ConceptMastery(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
+    concept_name: str = ""
+    mastery_score: float = 0.0  # 0 to 100
+    status: str = "Learning"  # "Mastered", "Learning", "Needs Review"
+    attempts_count: int = 0
+    correct_count: int = 0
+    last_evaluated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StudyMindMapNode(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
+    node_key: str = ""
+    label: str = ""
+    parent_key: Optional[str] = None
+    chapter_id: Optional[int] = None
+    concept_tag: str = ""
+    mastery_status: str = "Learning"  # "Mastered", "Learning", "Needs Review"
+    depth: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class UserGoal(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True, foreign_key="user.id")
@@ -100,10 +213,20 @@ class QuestionPaper(SQLModel, table=True):
     subject: str = ""
     year: Optional[int] = None
     uploader_id: int = Field(index=True, foreign_key="user.id")
-    file_path: str = ""          # R2 object key
+    file_path: str = ""          # R2 / Local storage key
     file_name: str = ""
     file_size: int = 0           # bytes
     download_count: int = 0
+    save_count: int = 0
+    reports_count: int = 0
+    resource_type: str = "handwritten_notes" # "handwritten_notes" | "study_material" | "practice_set" | "official_guide" | "syllabus" | "lecture_notes"
+    category: str = "General"                # "Civil Services" | "GATE" | "Engineering" | "Medical" | "Management" | "School" | "University" | "Professional" | "Other"
+    language: str = "English"                # "English" | "Hindi" | "Spanish" | "Other"
+    difficulty: str = "Medium"               # "Beginner" | "Medium" | "Advanced"
+    is_public: bool = True                   # True = Community Resource Library, False = Private Vault
+    page_count: int = 1
+    extracted_ocr_text: str = ""
+    uploader_name: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -112,6 +235,22 @@ class PaperDownloadLog(SQLModel, table=True):
     user_id: int = Field(index=True, foreign_key="user.id")
     paper_id: int = Field(index=True, foreign_key="questionpaper.id")
     downloaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PaperBookmark(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    paper_id: int = Field(index=True, foreign_key="questionpaper.id")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PaperReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    paper_id: int = Field(index=True, foreign_key="questionpaper.id")
+    reason: str = "inappropriate"  # "inappropriate" | "copyrighted" | "misleading" | "other"
+    details: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class StudyCircle(SQLModel, table=True):
@@ -272,9 +411,30 @@ def _migrate() -> None:
                         conn.execute(_sql("ALTER TABLE card ADD COLUMN is_public BOOLEAN DEFAULT FALSE"))
                     else:
                         conn.execute(_sql("ALTER TABLE card ADD COLUMN is_public BOOLEAN DEFAULT 0"))
-                if "share_token" not in card_cols:
-                    print("[migrate] Adding share_token column to 'card' table...")
-                    conn.execute(_sql("ALTER TABLE card ADD COLUMN share_token VARCHAR DEFAULT NULL"))
+            # 8. QuestionPaper table schema sync
+            if inspector.has_table("questionpaper"):
+                paper_cols = {c["name"] for c in inspector.get_columns("questionpaper")}
+                paper_additions = {
+                    "save_count": "INTEGER DEFAULT 0",
+                    "reports_count": "INTEGER DEFAULT 0",
+                    "resource_type": "VARCHAR DEFAULT 'handwritten_notes'",
+                    "category": "VARCHAR DEFAULT 'General'",
+                    "language": "VARCHAR DEFAULT 'English'",
+                    "difficulty": "VARCHAR DEFAULT 'Medium'",
+                    "page_count": "INTEGER DEFAULT 1",
+                    "extracted_ocr_text": "TEXT DEFAULT ''",
+                    "uploader_name": "VARCHAR DEFAULT ''",
+                }
+                for col_name, col_ddl in paper_additions.items():
+                    if col_name not in paper_cols:
+                        print(f"[migrate] Adding {col_name} column to 'questionpaper' table...")
+                        conn.execute(_sql(f'ALTER TABLE questionpaper ADD COLUMN {col_name} {col_ddl}'))
+                if "is_public" not in paper_cols:
+                    print("[migrate] Adding is_public column to 'questionpaper' table...")
+                    if engine.dialect.name == "postgresql":
+                        conn.execute(_sql("ALTER TABLE questionpaper ADD COLUMN is_public BOOLEAN DEFAULT TRUE"))
+                    else:
+                        conn.execute(_sql("ALTER TABLE questionpaper ADD COLUMN is_public BOOLEAN DEFAULT 1"))
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
 

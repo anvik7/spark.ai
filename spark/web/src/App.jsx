@@ -44,7 +44,6 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
-  const [showMobileMore, setShowMobileMore] = useState(false);
   const touchStartRef = useRef(null);
 
   // Check public shared capture URL route
@@ -78,7 +77,6 @@ export default function App() {
   const handleNav = (targetTab) => {
     setShowUpgrade(false);
     setShowAccount(false);
-    setShowMobileMore(false);
     setTab(targetTab);
   };
 
@@ -98,18 +96,16 @@ export default function App() {
     );
   }
 
-  // Exact 5 Primary Tabs Order
+  // Exact 7 Global Modules Sequence
   const navItems = [
-    { id: "capture", label: "Capture", icon: Ico.capture },
-    { id: "tasks", label: "Tasks", icon: Ico.tasks },
-    { id: "study", label: "Study", icon: Ico.study },
-    { id: "career", label: "Career OS", icon: Ico.career },
-    { id: "papers", label: "Paper Vault", icon: Ico.papers },
-    { id: "circles", label: "Study Circles", icon: Ico.circles },
-    { id: "coach", label: "Interview Coach", icon: Ico.coach },
+    { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
+    { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
+    { id: "study", label: "Study", shortLabel: "Study", icon: Ico.study },
+    { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
+    { id: "papers", label: "Paper Vault", shortLabel: "Papers", icon: Ico.papers },
+    { id: "circles", label: "Chat", shortLabel: "Chat", icon: Ico.circles },
+    { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach },
   ];
-
-  const moreTabActive = ["papers", "circles", "coach"].includes(tab);
 
   return (
     <div className="app-layout">
@@ -294,11 +290,11 @@ export default function App() {
             <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
           ) : (
             <>
-              {tab === "capture" && <Capture />}
+              {tab === "capture" && <Capture onNavigate={handleNav} />}
               {tab === "tasks" && <Tasks />}
-              {tab === "study" && <Study />}
+              {tab === "study" && <Study onOpenUpgrade={() => setShowUpgrade(true)} />}
               {tab === "career" && <Career onNavigate={handleNav} user={user} />}
-              {tab === "papers" && <Papers />}
+              {tab === "papers" && <Papers onOpenUpgrade={() => setShowUpgrade(true)} onNavigate={handleNav} />}
               {tab === "circles" && <Circles />}
               {tab === "coach" && <Interview />}
             </>
@@ -306,72 +302,19 @@ export default function App() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation (<768px: CAPTURE | TASKS | STUDY | CAREER | MORE) */}
+      {/* Mobile Bottom Navigation (All 7 Modules Direct Access: CAPTURE | TASKS | STUDY | CAREER | PAPERS | CIRCLES | COACH) */}
       <nav className="nav">
-        <NavBtn id="capture" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.capture} label="Capture" />
-        <NavBtn id="tasks" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.tasks} label="Tasks" />
-        <NavBtn id="study" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.study} label="Study" />
-        <NavBtn id="career" tab={showAccount || showUpgrade || moreTabActive ? null : tab} set={handleNav} icon={Ico.career} label="Career" />
-        <button
-          className={`nav-btn ${moreTabActive || showMobileMore ? "active" : ""}`}
-          onClick={() => setShowMobileMore((m) => !m)}
-        >
-          <Svg d={Ico.more} />
-          <span>More</span>
-          <span className="dot" />
-        </button>
+        {navItems.map((item) => (
+          <NavBtn
+            key={item.id}
+            id={item.id}
+            tab={showAccount || showUpgrade ? null : tab}
+            set={handleNav}
+            icon={item.icon}
+            label={item.shortLabel || item.label}
+          />
+        ))}
       </nav>
-
-      {/* Mobile "More" Drawer Modal */}
-      {showMobileMore && (
-        <div className="modal-overlay" onClick={() => setShowMobileMore(false)}>
-          <div
-            className="modal-dialog"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 360, padding: 18, marginBottom: 70 }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 12 }}>
-              More Workspace Modules
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <button
-                className={`sidebar-link ${tab === "papers" ? "active" : ""}`}
-                onClick={() => handleNav("papers")}
-              >
-                <Svg d={Ico.papers} />
-                <span>Paper Vault</span>
-              </button>
-
-              <button
-                className={`sidebar-link ${tab === "circles" ? "active" : ""}`}
-                onClick={() => handleNav("circles")}
-              >
-                <Svg d={Ico.circles} />
-                <span>Study Circles</span>
-              </button>
-
-              <button
-                className={`sidebar-link ${tab === "coach" ? "active" : ""}`}
-                onClick={() => handleNav("coach")}
-              >
-                <Svg d={Ico.coach} />
-                <span>Interview Coach</span>
-              </button>
-
-              <hr style={{ margin: "8px 0" }} />
-
-              <button
-                className="sidebar-link"
-                onClick={() => { setShowAccount(true); setShowMobileMore(false); }}
-              >
-                <Avatar src={user?.avatar_url} name={user?.name || "User"} size={20} />
-                <span>Account Settings</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -267,7 +267,7 @@ export default function Career({ onNavigate, user }) {
             <input
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
-              placeholder="e.g. AI Engineer, Full Stack Developer, Product Manager"
+              placeholder="Target Role"
               style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 14 }}
             />
           </div>
@@ -277,7 +277,7 @@ export default function Career({ onNavigate, user }) {
             <input
               value={targetCompany}
               onChange={(e) => setTargetCompany(e.target.value)}
-              placeholder="e.g. Google, Razorpay, Microsoft"
+              placeholder="Target Company"
               style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 14 }}
             />
           </div>
@@ -299,7 +299,7 @@ export default function Career({ onNavigate, user }) {
           <input
             value={github}
             onChange={(e) => setGithub(e.target.value)}
-            placeholder="e.g. torvalds"
+            placeholder="GitHub username"
             style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}
           />
         </div>

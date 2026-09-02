@@ -92,7 +92,7 @@ export default function Signup({ onAuthed, goToLogin, onBackToHome }) {
               <input
                 className="field"
                 type="text"
-                placeholder="e.g. Anvik Chenna"
+                placeholder="Full Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={busy}

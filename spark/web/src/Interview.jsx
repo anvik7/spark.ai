@@ -318,7 +318,7 @@ export default function Interview({ onNavigate, user }) {
                 type="text"
                 value={targetRole}
                 onChange={(e) => setTargetRole(e.target.value)}
-                placeholder="e.g. Senior Frontend Engineer, Product Manager"
+                placeholder="Target Role"
                 required
                 style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 14 }}
               />
@@ -331,7 +331,7 @@ export default function Interview({ onNavigate, user }) {
                 type="text"
                 value={targetCompany}
                 onChange={(e) => setTargetCompany(e.target.value)}
-                placeholder="e.g. Google, Stripe, High-growth Startup"
+                placeholder="Target Company"
                 style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 14 }}
               />
             </div>

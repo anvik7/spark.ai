@@ -33,6 +33,7 @@ from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
 from .routes.study_logs import router as study_logs_router
+from .routes.study_engine import router as study_engine_router
 from .routes.papers import router as papers_router
 from .routes.circles import router as circles_router
 settings = get_settings()
@@ -47,6 +48,7 @@ app = FastAPI(title=settings.app_name, lifespan=_lifespan)
 app.include_router(goals_router)
 app.include_router(leaderboard_router)
 app.include_router(study_logs_router)
+app.include_router(study_engine_router)
 app.include_router(papers_router)
 app.include_router(circles_router)
 app.add_middleware(
@@ -725,6 +727,11 @@ async def upload_and_solve_task(
     data = await file.read()
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty.")
+
+    with get_session() as session:
+        ok, msg = subscription.check_upload_quota(session, user, len(data))
+        if not ok:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
 
     ext = Path(file.filename or "file.png").suffix or ".png"
     filename = f"task_{user.id}_{uuid.uuid4().hex[:8]}{ext}"

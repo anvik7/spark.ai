@@ -35,7 +35,7 @@ export default function Circles() {
   return (
     <div className="screen">
       <div style={{ marginBottom: 20 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Study Circles</h1>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Chat</h1>
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
           Collaborate and study together with private groups, invite codes, and real-time chat.
         </p>
@@ -43,7 +43,7 @@ export default function Circles() {
 
       {err && (
         <div className="err" style={{ marginBottom: 12 }}>
-          {err}
+          ⚠️ {err}
           <button onClick={() => setErr("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>✕</button>
         </div>
       )}
@@ -63,7 +63,7 @@ export default function Circles() {
                 border: "1px solid var(--line)",
               }}
             >
-              My Circles
+              My Chats
             </button>
             <button
               className="btn"
@@ -242,7 +242,7 @@ function CreateCircleForm({ onCreated, onCancel, onError }) {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Circle Name (e.g., JEE Advanced 2027)"
+        placeholder="Group / Channel Name"
         required
         style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 8, fontSize: 14 }}
       />
@@ -299,7 +299,7 @@ function JoinCodeForm({ onJoined, onCancel, onError }) {
       <input
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
-        placeholder="Enter 6-character code (e.g. AB12CD)"
+        placeholder="Enter 6-character invite code"
         required
         style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 12, fontSize: 14, letterSpacing: 1 }}
       />

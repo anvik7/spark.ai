@@ -69,17 +69,6 @@ function useVoiceInput({ onTranscript, onError }) {
   return { listening, interim, start, stop };
 }
 
-const SUBJECT_PILLS = [
-  { label: "Math", icon: "🧮", hint: "Mathematics" },
-  { label: "Physics", icon: "🔬", hint: "Physics" },
-  { label: "Chemistry", icon: "🧪", hint: "Chemistry" },
-  { label: "Coding", icon: "💻", hint: "Computer Science & Programming" },
-  { label: "Writing", icon: "✍️", hint: "Writing & Literature" },
-  { label: "Economics", icon: "📊", hint: "Economics" },
-  { label: "Research", icon: "📚", hint: "Research" },
-  { label: "General", icon: "❓", hint: "General Academic" },
-];
-
 function renderStepWithCode(text) {
   if (!text) return null;
   if (!text.includes("```")) {
@@ -100,9 +89,10 @@ function renderStepWithCode(text) {
                 <button
                   type="button"
                   onClick={() => navigator.clipboard?.writeText(codeContent)}
-                  style={{ background: "none", border: "none", color: "#94A3B8", fontSize: 11, cursor: "pointer", fontWeight: 600 }}
+                  style={{ background: "none", border: "none", color: "#94A3B8", fontSize: 11, cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}
                 >
-                  📋 Copy Code
+                  <span>📋</span>
+                  <span>Copy</span>
                 </button>
               </div>
               <pre style={{ margin: 0, padding: 12, overflowX: "auto", fontSize: 13, color: "#F8FAFC", fontFamily: "monospace", lineHeight: 1.55 }}>
@@ -119,7 +109,6 @@ function renderStepWithCode(text) {
 
 export default function Tasks() {
   const [promptText, setPromptText] = useState("");
-  const [activeSubject, setActiveSubject] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -136,7 +125,6 @@ export default function Tasks() {
   const [followupInputs, setFollowupInputs] = useState({});
   const [followupBusy, setFollowupBusy] = useState({});
 
-  // Fetch real user tasks from database on mount
   const loadTasks = useCallback(() => {
     setLoadingTasks(true);
     api.getTasks()
@@ -144,7 +132,7 @@ export default function Tasks() {
         setTasks(Array.isArray(data) ? data : []);
       })
       .catch((e) => {
-        console.error("Failed to load student tasks from DB:", e);
+        console.error("Failed to load tasks from DB:", e);
         setErr("Could not connect to database to load tasks.");
       })
       .finally(() => setLoadingTasks(false));
@@ -202,7 +190,7 @@ export default function Tasks() {
     e?.preventDefault();
     const input = promptText.trim();
     if (!input && !selectedFile) {
-      setErr("Please type a question or select a file to solve.");
+      setErr("Please type a question or attach a file.");
       return;
     }
 
@@ -212,9 +200,9 @@ export default function Tasks() {
     try {
       let createdTask;
       if (selectedFile) {
-        createdTask = await api.uploadTaskFile(selectedFile, input, activeSubject || "");
+        createdTask = await api.uploadTaskFile(selectedFile, input, "");
       } else {
-        createdTask = await api.solveTask(input, activeSubject || "");
+        createdTask = await api.solveTask(input, "");
       }
 
       if (createdTask) {
@@ -222,7 +210,6 @@ export default function Tasks() {
         setExpandedTask(createdTask.id);
         setPromptText("");
         clearFile();
-        setActiveSubject(null);
       }
     } catch (error) {
       console.error("Solve task error:", error);
@@ -247,7 +234,7 @@ export default function Tasks() {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
     } catch (error) {
       console.error("Regenerate error:", error);
-      setErr(error.message || "Failed to regenerate AI solution.");
+      setErr(error.message || "Failed to regenerate solution.");
     } finally {
       setRegeneratingTask(null);
     }
@@ -264,7 +251,7 @@ export default function Tasks() {
     }
   };
 
-  const handlePostFollowup = async (taskId, e) => {
+  const handleFollowupSubmit = async (e, taskId) => {
     e?.preventDefault();
     const followupText = (followupInputs[taskId] || "").trim();
     if (!followupText) return;
@@ -286,57 +273,21 @@ export default function Tasks() {
     <div className="screen">
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Tasks & Problem Solver</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Solve academic problems, debug code, and analyze step-by-step solutions with AI reasoning.
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>Tasks</h1>
+        <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
+          Ask anything and receive clear solutions with step-by-step reasoning.
         </p>
       </div>
 
-      {/* Subject Filter Chips (Optional) */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 8 }}>
-          Select Subject (Optional — AI Auto-detects if unselected)
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {SUBJECT_PILLS.map((sp) => {
-            const isSelected = activeSubject === sp.label;
-            return (
-              <button
-                key={sp.label}
-                onClick={() => setActiveSubject(isSelected ? null : sp.label)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  border: isSelected ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                  background: isSelected ? "var(--marigold-light)" : "var(--surface)",
-                  color: isSelected ? "var(--marigold-dark)" : "var(--ink)",
-                  cursor: "pointer",
-                  transition: "all .15s ease",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-                }}
-              >
-                <span>{sp.icon}</span>
-                <span>{sp.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Universal Task Input Form */}
+      {/* Universal Minimal Composer */}
       <form
         onSubmit={handleSolveTask}
         style={{
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: "var(--r)",
-          padding: 16,
-          boxShadow: "var(--sh)",
+          padding: "14px 16px",
+          boxShadow: "var(--sh-sm)",
           marginBottom: 24,
         }}
       >
@@ -344,24 +295,25 @@ export default function Tasks() {
           ref={textareaRef}
           value={promptText}
           onChange={(e) => setPromptText(e.target.value)}
-          placeholder="Ask anything: e.g. 'Solve this integral ∫ x sin(x) dx', 'Explain quantum entanglement', 'Debug this Python script', or paste a research text..."
+          placeholder="Ask anything"
           rows={3}
           style={{
             width: "100%",
             border: "none",
             outline: "none",
             fontSize: 15,
-            lineHeight: 1.6,
+            lineHeight: 1.5,
             fontFamily: "var(--sans)",
             background: "transparent",
             resize: "vertical",
             color: "var(--ink)",
+            boxSizing: "border-box",
           }}
         />
 
         {listening && (
-          <div style={{ padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 8, fontSize: 13, color: "var(--marigold-dark)", marginBottom: 10 }}>
-            🎙️ Listening to voice: <i>{interim || "speak your question…"}</i>
+          <div style={{ padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 8, fontSize: 12.5, color: "var(--marigold-dark)", marginBottom: 10 }}>
+            🎙️ <i>{interim || "Listening…"}</i>
           </div>
         )}
 
@@ -370,12 +322,12 @@ export default function Tasks() {
             {filePreviewUrl ? (
               <img
                 src={filePreviewUrl}
-                alt="File preview"
-                style={{ maxHeight: 130, borderRadius: 8, border: "1px solid var(--line)", display: "block" }}
+                alt="Attachment preview"
+                style={{ maxHeight: 120, borderRadius: 8, border: "1px solid var(--line)", display: "block" }}
               />
             ) : (
-              <div style={{ padding: "10px 14px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}>
-                📄 {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+              <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)" }}>
+                📄 {selectedFile.name}
               </div>
             )}
             <button
@@ -389,9 +341,9 @@ export default function Tasks() {
                 color: "#fff",
                 border: "none",
                 borderRadius: "50%",
-                width: 22,
-                height: 22,
-                fontSize: 12,
+                width: 20,
+                height: 20,
+                fontSize: 11,
                 fontWeight: 700,
                 cursor: "pointer",
                 display: "flex",
@@ -406,27 +358,30 @@ export default function Tasks() {
 
         {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>{err}</div>}
 
+        {/* Minimal Icon-First Composer Controls */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {/* "+" Icon Attachment Control */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Attach photo or PDF document"
+              title="Attach photo or document"
               style={{
-                padding: "6px 12px",
-                borderRadius: 16,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
                 border: "1px solid var(--line)",
                 background: "var(--surface-2)",
-                fontSize: 13,
-                fontWeight: 500,
+                fontSize: 18,
+                fontWeight: 600,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                color: "var(--ink-soft)",
+                justifyContent: "center",
+                color: "var(--ink)",
               }}
             >
-              🖼️ Photo / PDF
+              +
             </button>
             <input
               ref={fileInputRef}
@@ -436,74 +391,77 @@ export default function Tasks() {
               onChange={(e) => handleSelectFile(e.target.files?.[0])}
             />
 
+            {/* Microphone Icon Control */}
             <button
               type="button"
               onClick={toggleVoice}
-              title={listening ? "Stop recording" : "Speak question"}
+              title={listening ? "Stop voice" : "Voice input"}
               style={{
-                padding: "6px 12px",
-                borderRadius: 16,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
                 border: listening ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
                 background: listening ? "var(--marigold-light)" : "var(--surface-2)",
-                fontSize: 13,
-                fontWeight: listening ? 700 : 500,
+                fontSize: 16,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                color: listening ? "var(--marigold-dark)" : "var(--ink-soft)",
+                justifyContent: "center",
+                color: listening ? "var(--marigold-dark)" : "var(--ink)",
               }}
             >
-              <span>🎙️</span>
-              <span>{listening ? "Recording…" : "Voice"}</span>
+              🎙️
             </button>
           </div>
 
+          {/* Send / Arrow Icon Button */}
           <button
             type="submit"
             disabled={busy || (!promptText.trim() && !selectedFile)}
+            title="Send"
             style={{
-              padding: "9px 20px",
-              borderRadius: "var(--r-s)",
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
               border: "none",
               background: busy || (!promptText.trim() && !selectedFile) ? "var(--line)" : "var(--p-gradient)",
               color: "#FFFFFF",
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: 700,
               cursor: busy || (!promptText.trim() && !selectedFile) ? "not-allowed" : "pointer",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               transition: "all .15s ease",
             }}
           >
-            {busy ? "Solving with AI…" : "Solve Problem →"}
+            {busy ? "…" : "↑"}
           </button>
         </div>
       </form>
 
       {/* Solved Tasks Stream */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Tasks</h2>
-            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Your authenticated user solved questions and step-by-step AI reasoning</span>
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "3px 10px", borderRadius: 12 }}>
-            {tasks.length} saved
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Tasks</h2>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 10 }}>
+            {tasks.length} items
           </span>
         </div>
 
         {loadingTasks && (
-          <div style={{ textAlign: "center", padding: 30, color: "var(--ink-soft)", fontSize: 14 }}>
-            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading your solved tasks from database…
+          <div style={{ textAlign: "center", padding: 30, color: "var(--ink-soft)", fontSize: 13.5 }}>
+            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading tasks…
           </div>
         )}
 
         {!loadingTasks && tasks.length === 0 && (
-          <div className="empty" style={{ padding: 40, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🧮</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No tasks yet</div>
-            <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-              Enter any math problem, physics question, code error, or essay prompt above to generate your first AI solution.
+          <div className="empty" style={{ padding: 36, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>💬</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No tasks yet</div>
+            <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
+              Type a question or attach a file above to get started.
             </div>
           </div>
         )}
@@ -530,9 +488,9 @@ export default function Tasks() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14 }}>{task.icon || "📚"}</span>
+                      <span style={{ fontSize: 14 }}>{task.icon || "💬"}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
-                        {task.subject || "General Academic"}
+                        {task.subject || "General"}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
                         · {new Date(task.created_at || Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
@@ -544,25 +502,11 @@ export default function Tasks() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "3px 8px",
-                        borderRadius: 10,
-                        background: "#ECFDF5",
-                        color: "#059669",
-                        border: "1px solid #A7F3D0",
-                      }}
-                    >
-                      {task.status || "Solved by AI"}
-                    </span>
-
                     <button
                       onClick={() => setExpandedTask(isExpanded ? null : task.id)}
                       style={{
                         padding: "4px 10px",
-                        borderRadius: 12,
+                        borderRadius: 10,
                         border: "1px solid var(--line)",
                         background: "var(--surface-2)",
                         fontSize: 12,
@@ -571,12 +515,12 @@ export default function Tasks() {
                         cursor: "pointer",
                       }}
                     >
-                      {isExpanded ? "Hide Solution" : "View Solution →"}
+                      {isExpanded ? "Hide" : "View Solution →"}
                     </button>
 
                     <button
                       onClick={() => handleDeleteTask(task.id)}
-                      title="Delete task from database"
+                      title="Delete task"
                       style={{
                         background: "none",
                         border: "none",
@@ -591,7 +535,7 @@ export default function Tasks() {
                   </div>
                 </div>
 
-                {/* Step-by-Step AI Solution Drawer */}
+                {/* Step-by-Step Solution Drawer */}
                 {isExpanded && (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                     {/* Action Bar: Copy & Regenerate */}
@@ -606,9 +550,13 @@ export default function Tasks() {
                           background: isCopied ? "#ECFDF5" : "var(--surface-2)",
                           color: isCopied ? "#059669" : "var(--ink-soft)",
                           cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
                         }}
                       >
-                        {isCopied ? "✓ Copied Solution" : "📋 Copy Solution"}
+                        <span>{isCopied ? "✓" : "📋"}</span>
+                        <span>{isCopied ? "Copied" : "Copy"}</span>
                       </button>
 
                       <button
@@ -622,23 +570,27 @@ export default function Tasks() {
                           background: "var(--surface-2)",
                           color: "var(--ink-soft)",
                           cursor: isRegenerating ? "not-allowed" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
                         }}
                       >
-                        {isRegenerating ? "Regenerating…" : "🔄 Regenerate Answer"}
+                        <span>🔄</span>
+                        <span>{isRegenerating ? "Regenerating…" : "Regenerate"}</span>
                       </button>
                     </div>
 
-                    {/* Image / Attachment display */}
+                    {/* Attachment display */}
                     {task.imageUrl && (
                       <div style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
                         <img src={task.imageUrl} alt="Attached problem" style={{ maxHeight: 220, width: "100%", objectFit: "cover" }} />
                       </div>
                     )}
 
-                    {/* Direct AI Answer / Code Solution */}
+                    {/* Direct Solution / Code Output */}
                     <div style={{ background: "var(--surface-2)", padding: 12, borderRadius: 10, marginBottom: 12 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 2 }}>
-                        AI Solution & Code Output
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 4 }}>
+                        Solution
                       </span>
                       <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--marigold-dark)", lineHeight: 1.5 }}>
                         {renderStepWithCode(task.solution)}
@@ -648,161 +600,86 @@ export default function Tasks() {
                     {/* Step by step explanation */}
                     {task.steps && task.steps.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
-                          Step-by-Step Reasoning & Explanation
+                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 6 }}>
+                          Steps & Reasoning
                         </span>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {task.steps.map((step, idx) => (
-                            <div key={idx} style={{ display: "flex", gap: 8, fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5 }}>
-                              <span style={{ fontWeight: 700, color: "var(--marigold)", minWidth: 20 }}>{idx + 1}.</span>
-                              <div style={{ flex: 1 }}>{renderStepWithCode(step)}</div>
+                            <div key={idx} style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5, background: "var(--surface)", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)" }}>
+                              {renderStepWithCode(step)}
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Formulas / Principles */}
+                    {/* Formulas / Metrics */}
                     {task.formulas && task.formulas.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-                          Formulas & Key Principles
+                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 4 }}>
+                          Formulas & Metrics
                         </span>
-                        {task.formulas.map((f, idx) => (
-                          <div key={idx} style={{ fontSize: 12.5, fontFamily: "monospace", background: "var(--surface-3)", padding: "4px 8px", borderRadius: 6, display: "inline-block", marginRight: 6, marginTop: 4 }}>
-                            {f}
-                          </div>
-                        ))}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {task.formulas.map((f, idx) => (
+                            <span key={idx} style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "var(--marigold-light)", color: "var(--marigold-dark)", border: "1px solid var(--line)" }}>
+                              {f}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
 
                     {/* Intuition */}
                     {task.intuition && (
-                      <div style={{ fontSize: 12.5, color: "var(--ink-soft)", fontStyle: "italic", background: "var(--marigold-light)", padding: 10, borderRadius: 8, marginBottom: 12 }}>
+                      <div style={{ marginBottom: 12, fontSize: 13, color: "var(--ink)", background: "var(--surface-2)", padding: 10, borderRadius: 8, border: "1px solid var(--line)" }}>
                         💡 <b>Intuition:</b> {task.intuition}
                       </div>
                     )}
 
-                    {/* Practice Exercises with Copy Question Buttons */}
-                    {task.practice && task.practice.length > 0 && (
-                      <div style={{ marginBottom: 14 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-soft)", display: "block", marginBottom: 6 }}>
-                          Generated Practice Questions
-                        </span>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {task.practice.map((pq, idx) => {
-                            const parts = String(pq).split("|");
-                            const problemPart = parts[0] ? parts[0].replace(/^Problem:\s*/i, "").trim() : pq;
-                            const answerPart = parts[1] ? parts[1].replace(/^Answer:\s*/i, "").trim() : "";
-                            const practiceKey = `${task.id}_p_${idx}`;
-                            const isPqCopied = copiedTask === practiceKey;
-
-                            const handleCopyPq = () => {
-                              navigator.clipboard.writeText(problemPart).then(() => {
-                                setCopiedTask(practiceKey);
-                                setTimeout(() => setCopiedTask(null), 2000);
-                              });
-                            };
-
-                            return (
-                              <div
-                                key={idx}
-                                style={{
-                                  background: "var(--surface-2)",
-                                  border: "1px solid var(--line)",
-                                  padding: "10px 12px",
-                                  borderRadius: 8,
-                                  fontSize: 13,
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "flex-start",
-                                  gap: 10,
-                                }}
-                              >
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontWeight: 600, color: "var(--ink)" }}>
-                                    <span style={{ color: "var(--marigold-dark)", marginRight: 4 }}>Q{idx + 1}:</span>
-                                    {problemPart}
-                                  </div>
-                                  {answerPart && (
-                                    <div style={{ marginTop: 4, fontSize: 12, color: "#059669", background: "#ECFDF5", padding: "2px 8px", borderRadius: 6, display: "inline-block", border: "1px solid #A7F3D0" }}>
-                                      <b>Correct Answer:</b> {answerPart}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={handleCopyPq}
-                                  title="Copy practice question"
-                                  style={{
-                                    fontSize: 11,
-                                    padding: "3px 8px",
-                                    borderRadius: 6,
-                                    border: `1px solid ${isPqCopied ? "#059669" : "var(--line)"}`,
-                                    background: isPqCopied ? "#ECFDF5" : "var(--surface)",
-                                    color: isPqCopied ? "#059669" : "var(--ink-soft)",
-                                    cursor: "pointer",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {isPqCopied ? "✓ Copied Question" : "📋 Copy Question"}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Follow-up Contextual Conversation Thread */}
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--marigold-dark)", display: "block", marginBottom: 8 }}>
-                        💬 Follow-up Conversation
+                    {/* Contextual Follow-up Thread */}
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px dashed var(--line)" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 8 }}>
+                        Follow-up Discussion
                       </span>
 
                       {task.thread && task.thread.length > 0 && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
-                          {task.thread.map((msg, idx) => {
-                            const isUser = msg.role === "user";
-                            return (
-                              <div
-                                key={idx}
-                                style={{
-                                  alignSelf: isUser ? "flex-end" : "flex-start",
-                                  maxWidth: "90%",
-                                  padding: "8px 12px",
-                                  borderRadius: 10,
-                                  fontSize: 13,
-                                  lineHeight: 1.5,
-                                  background: isUser ? "var(--marigold-light)" : "var(--surface-2)",
-                                  color: isUser ? "var(--marigold-dark)" : "var(--ink)",
-                                  border: isUser ? "1px solid var(--line)" : "1px solid var(--line)",
-                                }}
-                              >
-                                <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 2, textTransform: "uppercase", color: "var(--ink-faint)" }}>
-                                  {isUser ? "You" : "Spark AI"}
-                                </div>
-                                {msg.content}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                          {task.thread.map((msg, mIdx) => (
+                            <div
+                              key={mIdx}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                fontSize: 13,
+                                background: msg.role === "user" ? "var(--marigold-light)" : "var(--surface-2)",
+                                color: msg.role === "user" ? "var(--marigold-dark)" : "var(--ink)",
+                                border: "1px solid var(--line)",
+                                alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+                                maxWidth: "90%",
+                              }}
+                            >
+                              <div style={{ fontSize: 10.5, fontWeight: 700, marginBottom: 2, opacity: 0.8 }}>
+                                {msg.role === "user" ? "You" : "Spark"}
                               </div>
-                            );
-                          })}
+                              <div style={{ whiteSpace: "pre-wrap" }}>{renderStepWithCode(msg.content)}</div>
+                            </div>
+                          ))}
                         </div>
                       )}
 
-                      <form onSubmit={(e) => handlePostFollowup(task.id, e)} style={{ display: "flex", gap: 8 }}>
+                      <form onSubmit={(e) => handleFollowupSubmit(e, task.id)} style={{ display: "flex", gap: 8 }}>
                         <input
-                          type="text"
                           value={followupInputs[task.id] || ""}
                           onChange={(e) => setFollowupInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                          placeholder="Ask a follow-up question about this problem..."
+                          placeholder="Ask a follow-up question..."
                           style={{
                             flex: 1,
                             padding: "8px 12px",
                             borderRadius: 8,
                             border: "1px solid var(--line)",
-                            background: "var(--surface)",
                             fontSize: 13,
+                            background: "var(--surface-2)",
+                            color: "var(--ink)",
                           }}
                         />
                         <button
@@ -813,13 +690,13 @@ export default function Tasks() {
                             borderRadius: 8,
                             border: "none",
                             background: followupBusy[task.id] || !(followupInputs[task.id] || "").trim() ? "var(--line)" : "var(--p-gradient)",
-                            color: "#fff",
-                            fontSize: 13,
+                            color: "#ffffff",
+                            fontSize: 12.5,
                             fontWeight: 700,
                             cursor: followupBusy[task.id] || !(followupInputs[task.id] || "").trim() ? "not-allowed" : "pointer",
                           }}
                         >
-                          {followupBusy[task.id] ? "Replying…" : "Send →"}
+                          {followupBusy[task.id] ? "…" : "Reply"}
                         </button>
                       </form>
                     </div>

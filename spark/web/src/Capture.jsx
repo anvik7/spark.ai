@@ -102,7 +102,7 @@ function autoClassifyContent(text, selectedFile, recordedAudioBlob) {
   return "note";
 }
 
-export default function Capture() {
+export default function Capture({ onNavigate }) {
   const [textInput, setTextInput] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -276,25 +276,26 @@ export default function Capture() {
 
         {/* Composer Action Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {/* "+" Icon Attachment Control */}
             <label
-              title="Upload image, document, or audio file"
+              title="Attach image, document, or file"
               style={{
-                padding: "6px 12px",
-                borderRadius: 8,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
                 border: "1px solid var(--line)",
                 background: "var(--surface-2)",
-                fontSize: 12.5,
+                fontSize: 18,
                 fontWeight: 600,
                 cursor: "pointer",
                 color: "var(--ink)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
+                justifyContent: "center",
               }}
             >
-              <span>📁</span>
-              <span>Upload File / Image</span>
+              +
               <input
                 type="file"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
@@ -302,26 +303,26 @@ export default function Capture() {
               />
             </label>
 
+            {/* Microphone Icon Control */}
             <button
               type="button"
-              title="Record voice note"
               onClick={voice.listening ? voice.stop : voice.start}
+              title={voice.listening ? "Stop voice" : "Voice note"}
               style={{
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: voice.listening ? "#FEE2E2" : "var(--surface-2)",
-                color: voice.listening ? "#DC2626" : "var(--ink)",
-                fontSize: 12.5,
-                fontWeight: 600,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
+                border: voice.listening ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+                background: voice.listening ? "var(--marigold-light)" : "var(--surface-2)",
+                fontSize: 16,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
+                justifyContent: "center",
+                color: voice.listening ? "var(--marigold-dark)" : "var(--ink)",
               }}
             >
-              <span>{voice.listening ? "⏹️" : "🎙️"}</span>
-              <span>{voice.listening ? "Stop Recording" : "Voice Note"}</span>
+              🎙️
             </button>
           </div>
 
@@ -329,17 +330,18 @@ export default function Capture() {
             type="submit"
             disabled={saving || (!textInput.trim() && !selectedFile && !voice.recordedAudioBlob)}
             style={{
-              padding: "8px 18px",
-              borderRadius: 8,
+              padding: "9px 20px",
+              borderRadius: "var(--r-s)",
               border: "none",
               background: saving || (!textInput.trim() && !selectedFile && !voice.recordedAudioBlob) ? "var(--line)" : "var(--p-gradient)",
-              color: "#ffffff",
-              fontSize: 13.5,
+              color: "#FFFFFF",
+              fontSize: 14,
               fontWeight: 700,
               cursor: saving || (!textInput.trim() && !selectedFile && !voice.recordedAudioBlob) ? "not-allowed" : "pointer",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
             }}
           >
-            {saving ? "Saving…" : "Save Capture"}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </form>
@@ -506,6 +508,29 @@ export default function Capture() {
                     🔗 Share
                   </button>
                 )}
+
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.createStudyFromCapture(c.id);
+                      onNavigate?.("study");
+                    } catch (err) {
+                      setErr(err.message || "Failed to start study session from capture.");
+                    }
+                  }}
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--marigold)",
+                    background: "var(--marigold-light)",
+                    color: "var(--marigold-dark)",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  🚀 Study Note
+                </button>
               </div>
             </div>
           </div>

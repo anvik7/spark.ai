@@ -131,7 +131,7 @@ export default function StudyTracker() {
   // Timer controls
   const handleStartTimer = () => {
     if (!subject.trim()) {
-      setErr("Please enter a Subject (e.g. Mathematics, Physics, Coding) before starting.");
+      setErr("Please enter a Subject before starting.");
       return;
     }
     setErr("");
@@ -156,7 +156,7 @@ export default function StudyTracker() {
     const mat = material.trim();
 
     if (!subj) {
-      setErr("Please enter a Subject (e.g. Mathematics, Physics, Coding).");
+      setErr("Please enter a Subject.");
       return;
     }
 
@@ -212,7 +212,7 @@ export default function StudyTracker() {
     e?.preventDefault();
     const hrs = parseFloat(targetHoursInput);
     if (isNaN(hrs) || hrs <= 0 || hrs > 168) {
-      setErr("Please enter valid target hours per week (e.g. 7 or 10).");
+      setErr("Please enter valid target hours per week.");
       return;
     }
 
@@ -339,7 +339,7 @@ export default function StudyTracker() {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Mathematics, Physics, Coding, Economics"
+                    placeholder="Subject Name"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     required
@@ -352,7 +352,7 @@ export default function StudyTracker() {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Calculus — Integration, Quantum Mechanics, React Hooks"
+                    placeholder="Material / Topic"
                     value={material}
                     onChange={(e) => setMaterial(e.target.value)}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 14 }}
@@ -436,7 +436,7 @@ export default function StudyTracker() {
                   <input
                     type="number"
                     min="1"
-                    placeholder="e.g. 45"
+                    placeholder="Duration in minutes"
                     value={manualMinutes}
                     onChange={(e) => setManualMinutes(e.target.value)}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 14 }}
@@ -495,7 +495,7 @@ export default function StudyTracker() {
                   max="168"
                   value={targetHoursInput}
                   onChange={(e) => setTargetHoursInput(e.target.value)}
-                  placeholder="Target hours (e.g. 7)"
+                  placeholder="Target hours"
                   style={{ flex: 1, padding: "7px 10px", borderRadius: 6, border: "1px solid var(--line)", fontSize: 13 }}
                 />
                 <button
