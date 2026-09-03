@@ -109,6 +109,9 @@ export default function Capture({ onNavigate }) {
   const [err, setErr] = useState("");
   const [captures, setCaptures] = useState([]);
   const [loadingCaptures, setLoadingCaptures] = useState(true);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    return localStorage.getItem("spark_capture_onboarding_dismissed") === "true";
+  });
 
   // Search & Filters
   const [searchFilter, setSearchFilter] = useState("");
@@ -176,6 +179,8 @@ export default function Capture({ onNavigate }) {
       setTextInput("");
       setSelectedFile(null);
       voice.stop();
+      localStorage.setItem("spark_capture_onboarding_dismissed", "true");
+      setOnboardingDismissed(true);
     } catch (e) {
       console.error("Failed to save capture:", e);
       setErr(e.message || "Failed to save capture. Please try again.");
@@ -390,11 +395,79 @@ export default function Capture({ onNavigate }) {
         </div>
       )}
 
-      {!loadingCaptures && filteredCaptures.length === 0 && (
+      {/* New User Onboarding Introduction Card */}
+      {!loadingCaptures && captures.length === 0 && !onboardingDismissed && (
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1.5px solid var(--line)",
+            borderRadius: 14,
+            padding: "20px 22px",
+            marginBottom: 20,
+            boxShadow: "var(--sh-sm)",
+            position: "relative",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setOnboardingDismissed(true);
+              localStorage.setItem("spark_capture_onboarding_dismissed", "true");
+            }}
+            title="Dismiss onboarding"
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 14,
+              background: "none",
+              border: "none",
+              color: "var(--ink-soft)",
+              fontSize: 14,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            ✕
+          </button>
+
+          <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink)", marginBottom: 16, paddingRight: 16 }}>
+            <div style={{ marginBottom: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ color: "var(--marigold-dark)", fontWeight: 700 }}>•</span>
+              <span>Minimalist note-taking, supports AI-powered speech-to-text conversion.</span>
+            </div>
+            <div style={{ marginBottom: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ color: "var(--marigold-dark)", fontWeight: 700 }}>•</span>
+              <span>AI insights, uncovering the wisdom behind the notes.</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ color: "var(--marigold-dark)", fontWeight: 700 }}>•</span>
+              <span>Daily review allows your notes to continuously generate compound interest.</span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: "12px 16px",
+              background: "var(--marigold-light)",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--marigold-dark)",
+              fontStyle: "italic",
+              lineHeight: 1.5,
+            }}
+          >
+            “Try writing down the inspirations and emotions that come to mind right now, and experience the joy of stress-free recording.”
+          </div>
+        </div>
+      )}
+
+      {!loadingCaptures && captures.length > 0 && filteredCaptures.length === 0 && (
         <div style={{ padding: "28px 16px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", textAlign: "center" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>No captures found</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>No matching captures found</div>
           <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
-            Capture what's on your mind now. Spark keeps it safe to revisit later.
+            Try adjusting your search query or filter.
           </div>
         </div>
       )}

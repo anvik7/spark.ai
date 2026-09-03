@@ -137,7 +137,7 @@ export const api = {
   getStudyMindMap: (sessionId) => req(`/study/active-sessions/${sessionId}/mindmap`),
   updateStudyProgress: (sessionId, currentChapterIndex, currentTimeSeconds) =>
     req(`/study/active-sessions/${sessionId}/progress`, { method: "POST", body: { current_chapter_index: currentChapterIndex, current_time_seconds: currentTimeSeconds } }),
-  createStudyFromPaper: (paperId) => req(`/study/active-sessions/from-paper/${paperId}`, { method: "POST" }),
+  deleteActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`, { method: "DELETE" }),
   createStudyFromCapture: (captureId) => req(`/study/active-sessions/from-capture/${captureId}`, { method: "POST" }),
 
   getTasks: () => req("/tasks"),

@@ -919,3 +919,42 @@ def create_session_from_capture(capture_id: int, user: User = Depends(current_us
             "title": active_session.title,
             "processingStatus": source.status,
         }
+
+
+@router.delete("/{session_id}")
+def delete_active_study_session(session_id: int, user: User = Depends(current_user)):
+    """Permanently delete an active study session and its associated chapters & questions."""
+    assert user.id is not None
+    with get_session() as session:
+        active_session = session.get(StudyActiveSession, session_id)
+        if not active_session:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Study session not found.")
+        if active_session.user_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied to this study session.")
+
+        chapters = session.exec(
+            select(StudyChapter).where(StudyChapter.session_id == session_id)
+        ).all()
+        for ch in chapters:
+            questions = session.exec(
+                select(StudyQuestion).where(StudyQuestion.chapter_id == ch.id)
+            ).all()
+            for q in questions:
+                session.delete(q)
+            session.delete(ch)
+
+        source_id = active_session.source_id
+        session.delete(active_session)
+        session.commit()
+
+        if source_id:
+            other_sessions = session.exec(
+                select(StudyActiveSession).where(StudyActiveSession.source_id == source_id)
+            ).all()
+            if not other_sessions:
+                src = session.get(StudyMediaSource, source_id)
+                if src:
+                    session.delete(src)
+                    session.commit()
+
+        return {"ok": True, "message": "Study session deleted successfully."}

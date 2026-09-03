@@ -5,40 +5,24 @@ import StudyActiveSession from "./StudyActiveSession.jsx";
 export default function Study({ onOpenUpgrade }) {
   const [activeSessions, setActiveSessions] = useState([]);
   const [selectedActiveSessionId, setSelectedActiveSessionId] = useState(null);
-  
-  const [sessions, setSessions] = useState([]);
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // New Active Learning Session Launcher Form
-  const [launcherMode, setLauncherMode] = useState("url"); // "url", "upload"
+  // New Active Session Form State
   const [titleInput, setTitleInput] = useState("");
-  const [urlInput, setUrlInput] = useState("");
-  const [subjectInput, setSubjectInput] = useState("General Academic");
   const [selectedFile, setSelectedFile] = useState(null);
   const [launchingBusy, setLaunchingBusy] = useState(false);
   const [err, setErr] = useState("");
   const fileRef = useRef();
 
-  // Focus Timer State
-  const [timerActive, setTimerActive] = useState(false);
-  const [timerSecs, setTimerSecs] = useState(0);
-  const [focusSubjectInput, setFocusSubjectInput] = useState("");
-  const [focusMaterialInput, setFocusMaterialInput] = useState("");
-  const [saveBusy, setSaveBusy] = useState(false);
+  // Session Deletion Confirmation Modal State
+  const [deletingSessionId, setDeletingSessionId] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const loadData = () => {
     setLoading(true);
-    Promise.all([
-      api.listActiveStudySessions().catch(() => []),
-      api.getStudySessions().catch(() => []),
-      api.getTodayStudyStats().catch(() => null),
-    ])
-      .then(([activeSessData, sessData, statsData]) => {
-        setActiveSessions(activeSessData || []);
-        setSessions(sessData || []);
-        setStats(statsData);
-      })
+    api.listActiveStudySessions()
+      .then((data) => setActiveSessions(data || []))
+      .catch((e) => console.error("Failed to load study sessions:", e))
       .finally(() => setLoading(false));
   };
 
@@ -46,34 +30,33 @@ export default function Study({ onOpenUpgrade }) {
     loadData();
   }, []);
 
-  useEffect(() => {
-    let interval = null;
-    if (timerActive) {
-      interval = setInterval(() => {
-        setTimerSecs((prev) => prev + 1);
-      }, 1000);
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      if (!titleInput.trim()) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, "");
+        setTitleInput(cleanName);
+      }
     }
-    return () => clearInterval(interval);
-  }, [timerActive]);
+  };
 
   const handleLaunchActiveSession = async (e) => {
     e?.preventDefault();
+    if (!selectedFile || !titleInput.trim()) return;
+
     setLaunchingBusy(true);
     setErr("");
     try {
-      let res;
-      if (selectedFile) {
-        const f = new FormData();
-        f.append("file", selectedFile);
-        f.append("title", titleInput.trim() || selectedFile.name);
-        f.append("subject", subjectInput);
-        f.append("source_type", "video_file");
-        res = await api.createActiveStudySessionUpload(f);
-      } else if (urlInput.trim()) {
-        res = await api.createActiveStudySessionUrl(urlInput.trim(), titleInput.trim(), subjectInput);
-      }
+      const f = new FormData();
+      f.append("file", selectedFile);
+      f.append("title", titleInput.trim());
+      f.append("source_type", "document");
 
+      const res = await api.createActiveStudySessionUpload(f);
       if (res && res.id) {
+        setSelectedFile(null);
+        setTitleInput("");
         setSelectedActiveSessionId(res.id);
         loadData();
       }
@@ -87,32 +70,20 @@ export default function Study({ onOpenUpgrade }) {
     }
   };
 
-  const handleSaveFocusSession = async () => {
-    if (!focusSubjectInput.trim()) return;
-    setSaveBusy(true);
+  const handleDeleteSession = async () => {
+    if (!deletingSessionId) return;
+    setDeleteBusy(true);
     try {
-      const minutes = Math.max(1, Math.round(timerSecs / 60));
-      const newSess = await api.createStudySession(
-        focusSubjectInput.trim(),
-        focusMaterialInput.trim() || "Focus Study",
-        minutes,
-        timerSecs % 60
-      );
-      setSessions((prev) => [newSess, ...prev]);
-      setTimerActive(false);
-      setTimerSecs(0);
+      await api.deleteActiveStudySession(deletingSessionId);
+      setActiveSessions((prev) => prev.filter((s) => s.id !== deletingSessionId));
+      setDeletingSessionId(null);
       loadData();
     } catch (e) {
-      console.error("Failed to save focus session:", e);
+      console.error("Failed to delete study session:", e);
+      setErr(e.message || "Failed to delete session.");
     } finally {
-      setSaveBusy(false);
+      setDeleteBusy(false);
     }
-  };
-
-  const fmtTime = (sec) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
   // Render Active Learning Session Player if selected
@@ -130,8 +101,8 @@ export default function Study({ onOpenUpgrade }) {
   }
 
   return (
-    <div className="screen">
-      {/* Page Header */}
+    <div className="screen" style={{ maxWidth: 720, margin: "0 auto" }}>
+      {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>
           Study Engine
@@ -139,8 +110,8 @@ export default function Study({ onOpenUpgrade }) {
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
           Turn learning material into active learning.
         </p>
-        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>
-          Spark breaks your material into focused concepts, tests your recall, and helps you build mastery.
+        <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>
+          Add your material. Spark breaks it into focused concepts, tests your recall, and builds mastery.
         </p>
       </div>
 
@@ -151,7 +122,7 @@ export default function Study({ onOpenUpgrade }) {
         </div>
       )}
 
-      {/* Primary Card: Start New Active AI Learning Session */}
+      {/* Start Session Card */}
       <div
         style={{
           background: "var(--surface)",
@@ -159,135 +130,157 @@ export default function Study({ onOpenUpgrade }) {
           borderRadius: 14,
           padding: 18,
           boxShadow: "var(--sh-sm)",
-          marginBottom: 20,
+          marginBottom: 24,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyBetween: "space-between", marginBottom: 14 }}>
-          <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
-              Start Active AI Learning Session
-            </h2>
-            <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>
-              Add a document, PDF, lecture video, audio, or text to extract micro-chapters & recall quizzes.
-            </span>
-          </div>
-        </div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px", color: "var(--ink)" }}>
+          Start Learning Session
+        </h2>
 
-        {/* Hidden File Picker Input */}
+        {/* Hidden File Input */}
         <input
           ref={fileRef}
           type="file"
-          accept="video/*,audio/*,.pdf,.txt,.doc,.docx"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-              setSelectedFile(file);
-              setLauncherMode("upload");
-              if (!titleInput.trim()) {
-                setTitleInput(file.name.replace(/\.[^/.]+$/, ""));
-              }
-            }
-          }}
+          accept=".pdf,.txt,.doc,.docx,video/*,audio/*"
+          onChange={handleFileChange}
           style={{ display: "none" }}
         />
 
-        {/* Single Primary Action Button */}
-        <div style={{ marginBottom: 14 }}>
+        {/* Primary Action Button */}
+        {!selectedFile ? (
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
             style={{
-              padding: "10px 18px",
-              borderRadius: 8,
-              border: "1.5px solid var(--marigold)",
+              width: "100%",
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: "1.5px dashed var(--marigold)",
               background: "var(--marigold-light)",
               color: "var(--marigold-dark)",
-              fontSize: 13.5,
+              fontSize: 14,
               fontWeight: 700,
               cursor: "pointer",
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: 8,
+              marginBottom: 12,
             }}
           >
-            <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 800 }}>+</span>
+            <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 800 }}>+</span>
             <span>Add Learning Material</span>
           </button>
-        </div>
-
-        {/* Selected File Badge */}
-        {selectedFile && (
-          <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>📄 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)</span>
+        ) : (
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "var(--surface-2)",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              fontSize: 13,
+              color: "var(--ink)",
+              marginBottom: 14,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+              <span style={{ fontSize: 16 }}>📄</span>
+              <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)
+              </span>
+            </div>
             <button
               type="button"
-              onClick={() => setSelectedFile(null)}
-              style={{ border: "none", background: "none", color: "#DC2626", fontWeight: 700, cursor: "pointer" }}
+              onClick={() => {
+                setSelectedFile(null);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+              style={{
+                border: "none",
+                background: "none",
+                color: "#DC2626",
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: "pointer",
+                padding: "2px 8px",
+              }}
             >
-              Change
+              Remove
             </button>
           </div>
         )}
 
-        {/* Active Session Input Form */}
-        <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input
-            value={titleInput}
-            onChange={(e) => setTitleInput(e.target.value)}
-            placeholder="Session Topic / Title (e.g., Machine Learning Basics)"
-            required
-            style={{
-              width: "100%",
-              padding: "9px 14px",
-              borderRadius: 8,
-              border: "1px solid var(--line)",
-              fontSize: 13.5,
-              background: "var(--surface-2)",
-              color: "var(--ink)",
-            }}
-          />
+        {/* Form Inputs */}
+        <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
+              Session Title
+            </label>
+            <input
+              type="text"
+              value={titleInput}
+              onChange={(e) => setTitleInput(e.target.value)}
+              placeholder="Session Title"
+              required
+              style={{
+                width: "100%",
+                padding: "9.5px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--line)",
+                fontSize: 13.5,
+                background: "var(--surface-2)",
+                color: "var(--ink)",
+              }}
+            />
+          </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-            <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-              Extracts grounded concepts, active recall & mind maps
-            </span>
-
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
             <button
               type="submit"
-              disabled={launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim())}
+              disabled={launchingBusy || !selectedFile || !titleInput.trim()}
               style={{
-                padding: "9px 20px",
+                width: "100%",
+                padding: "10px 20px",
                 borderRadius: 8,
                 border: "none",
-                background: launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim()) ? "var(--line)" : "var(--p-gradient)",
+                background: launchingBusy || !selectedFile || !titleInput.trim() ? "var(--line)" : "var(--p-gradient)",
                 color: "#ffffff",
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: 700,
-                cursor: launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim()) ? "not-allowed" : "pointer",
+                cursor: launchingBusy || !selectedFile || !titleInput.trim() ? "not-allowed" : "pointer",
                 boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
               }}
             >
-              {launchingBusy ? "Analyzing & Extracting Concepts…" : "Start Active Session →"}
+              {launchingBusy ? "Processing Material…" : "Start Learning →"}
             </button>
           </div>
         </form>
       </div>
 
-      {/* Continue Learning Active AI Sessions Drawer */}
-      <div style={{ marginBottom: 24 }}>
+      {/* Continue Learning Drawer */}
+      <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
-            Continue Learning (Active Sessions)
+            Continue Learning
           </h2>
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 10 }}>
             {activeSessions.length} sessions
           </span>
         </div>
 
-        {activeSessions.length === 0 && (
+        {loading && (
+          <div style={{ padding: 30, textAlign: "center", color: "var(--ink-soft)" }}>
+            <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading sessions…
+          </div>
+        )}
+
+        {!loading && activeSessions.length === 0 && (
           <div style={{ padding: 28, textAlign: "center", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
             <div style={{ fontSize: 13.5, color: "var(--ink-soft)" }}>
-              Your learning sessions will appear here.
+              No active learning sessions. Add your material above to begin.
             </div>
           </div>
         )}
@@ -295,27 +288,27 @@ export default function Study({ onOpenUpgrade }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {activeSessions.map((as) => {
             const mastery = Math.round(as.overallMasteryPercent || 0);
-            let tierLabel = "Needs Review";
-            let tierColor = "#DC2626";
-            let tierBg = "#FEE2E2";
+            let tierLabel = "Ready";
+            let tierColor = "#0284C7";
+            let tierBg = "#E0F2FE";
+
             if (mastery >= 85) {
               tierLabel = "Mastered";
               tierColor = "#059669";
               tierBg = "#D1FAE5";
-            } else if (mastery >= 70) {
-              tierLabel = "Strong";
-              tierColor = "#0284C7";
-              tierBg = "#E0F2FE";
             } else if (mastery >= 40) {
-              tierLabel = "Developing";
+              tierLabel = "In Progress";
               tierColor = "#D97706";
               tierBg = "#FEF3C7";
+            } else if (as.completedChaptersCount > 0) {
+              tierLabel = "Needs Review";
+              tierColor = "#DC2626";
+              tierBg = "#FEE2E2";
             }
 
             return (
               <div
                 key={as.id}
-                onClick={() => setSelectedActiveSessionId(as.id)}
                 style={{
                   background: "var(--surface)",
                   border: "1.5px solid var(--line)",
@@ -325,47 +318,80 @@ export default function Study({ onOpenUpgrade }) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  cursor: "pointer",
-                  transition: "all .15s ease",
+                  gap: 12,
                 }}
               >
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: tierColor, background: tierBg, padding: "2px 6px", borderRadius: 4 }}>
                       {tierLabel}
                     </span>
-                    <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-                      · {as.completedChaptersCount} of {as.totalChaptersCount} concepts
+                    <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+                      {as.completedChaptersCount || 0} of {as.totalChaptersCount || 0} concepts
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
+                  <h3
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 700,
+                      margin: 0,
+                      color: "var(--ink)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     {as.title}
                   </h3>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 13, fontWeight: 800, color: tierColor }}>
                       {mastery}% Mastery
                     </div>
-                    <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>
-                      {as.processingStatus}
-                    </div>
                   </div>
 
                   <button
+                    type="button"
+                    onClick={() => setSelectedActiveSessionId(as.id)}
                     style={{
-                      padding: "6px 12px",
+                      padding: "7px 14px",
                       borderRadius: 8,
                       background: "var(--marigold-light)",
                       color: "var(--marigold-dark)",
                       border: "none",
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: 700,
+                      cursor: "pointer",
                     }}
                   >
                     Continue →
+                  </button>
+
+                  {/* Unobtrusive Delete Action */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingSessionId(as.id);
+                    }}
+                    title="Delete session"
+                    style={{
+                      padding: "6px 9px",
+                      borderRadius: 8,
+                      background: "transparent",
+                      color: "var(--ink-soft)",
+                      border: "1px solid var(--line)",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    🗑️
                   </button>
                 </div>
               </div>
@@ -373,6 +399,78 @@ export default function Study({ onOpenUpgrade }) {
           })}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingSessionId && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.45)",
+            backdropFilter: "blur(2px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1.5px solid var(--line)",
+              borderRadius: 14,
+              padding: 20,
+              maxWidth: 380,
+              width: "100%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 8px", color: "var(--ink)" }}>
+              Delete Study Session
+            </h3>
+            <p style={{ fontSize: 13.5, color: "var(--ink-soft)", margin: "0 0 18px", lineHeight: 1.4 }}>
+              Delete this study session? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setDeletingSessionId(null)}
+                disabled={deleteBusy}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-2)",
+                  color: "var(--ink)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSession}
+                disabled={deleteBusy}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#DC2626",
+                  color: "#ffffff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: deleteBusy ? "not-allowed" : "pointer",
+                }}
+              >
+                {deleteBusy ? "Deleting…" : "Delete Session"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

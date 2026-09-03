@@ -42,7 +42,9 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
-  const [tab, setTab] = useState("capture");
+  const [tab, setTab] = useState(() => {
+    return localStorage.getItem("spark_active_tab") || "tasks";
+  });
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
@@ -80,13 +82,18 @@ export default function App() {
     setShowUpgrade(false);
     setShowAccount(false);
     setTab(targetTab);
+    localStorage.setItem("spark_active_tab", targetTab);
   };
 
   if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading Spark Workspace…</div>;
   if (!user) {
     return showAuth ? (
       <Auth
-        onAuthed={(u) => setUser(u)}
+        onAuthed={(u) => {
+          setUser(u);
+          setShowAuth(false);
+          handleNav("tasks");
+        }}
         onBackToHome={() => setShowAuth(false)}
         initialMode={authMode}
       />
