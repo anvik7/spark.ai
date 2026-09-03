@@ -406,15 +406,36 @@ export default function Capture({ onNavigate }) {
               borderRadius: 10,
               padding: 14,
               boxShadow: "var(--sh-sm)",
+              width: "100%",
+              boxSizing: "border-box",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 6px", borderRadius: 6 }}>
-                {c.kind || "capture"}
-              </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 6px", borderRadius: 6 }}>
+                  {c.kind || (c.tags && c.tags[0]) || "capture"}
+                </span>
+
+                {c.creator_name && (
+                  <>
+                    <span style={{ fontSize: 11, color: "var(--line)" }}>|</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+                      <span style={{ fontSize: 12 }}>👤</span>
+                      <span>{c.creator_name.startsWith("@") ? c.creator_name : `@${c.creator_name}`}</span>
+                    </span>
+                  </>
+                )}
+
+                <span style={{ fontSize: 11, color: "var(--line)" }}>•</span>
+                <span style={{ fontSize: 11, color: "var(--ink-faint)", fontWeight: 500 }}>
+                  {new Date(c.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+              </div>
+
               <button
                 onClick={() => setDeleteTargetId(c.id)}
-                style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14 }}
+                title="Delete capture"
+                style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", fontSize: 14, padding: "2px 4px" }}
               >
                 ✕
               </button>

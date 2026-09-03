@@ -96,14 +96,14 @@ export default function App() {
     );
   }
 
-  // Exact 7 Global Modules Sequence
+  // Exact 7 Global Modules Sequence (Tasks -> Capture -> Study -> Chat -> Papers -> Career -> Coach)
   const navItems = [
-    { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
     { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
+    { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
     { id: "study", label: "Study", shortLabel: "Study", icon: Ico.study },
-    { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
-    { id: "papers", label: "Paper Vault", shortLabel: "Papers", icon: Ico.papers },
     { id: "circles", label: "Chat", shortLabel: "Chat", icon: Ico.circles },
+    { id: "papers", label: "Paper Vault", shortLabel: "Papers", icon: Ico.papers },
+    { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
     { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach },
   ];
 
@@ -266,7 +266,7 @@ export default function App() {
 
             // Only trigger if horizontal movement is dominant and > 50px
             if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
-              const primaryTabs = ["capture", "tasks", "study", "career", "papers", "circles", "coach"];
+              const primaryTabs = ["tasks", "capture", "study", "circles", "papers", "career", "coach"];
               const currentIdx = primaryTabs.indexOf(tab);
               if (currentIdx !== -1) {
                 if (dx < 0 && currentIdx < primaryTabs.length - 1) {

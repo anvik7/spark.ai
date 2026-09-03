@@ -180,37 +180,91 @@ export default function Study({ onOpenUpgrade }) {
           </div>
         </div>
 
-        {/* Mode Selector Tabs */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
-          {[
-            { id: "url", label: "Video / Web URL", icon: "🔗" },
-            { id: "upload", label: "Upload Video / File", icon: "📁" },
-            { id: "paper", label: "From Paper Vault", icon: "📄" },
-          ].map((m) => {
-            const isActive = launcherMode === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setLauncherMode(m.id)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  border: isActive ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                  background: isActive ? "var(--marigold-light)" : "var(--surface-2)",
-                  color: isActive ? "var(--marigold-dark)" : "var(--ink-soft)",
-                  fontSize: 12.5,
-                  fontWeight: isActive ? 700 : 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span>{m.icon}</span>
-                <span>{m.label}</span>
-              </button>
-            );
-          })}
+        {/* Hidden File Picker Input */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="video/*,audio/*,.pdf,.txt,.doc,.docx"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              setSelectedFile(file);
+              setLauncherMode("upload");
+              if (!titleInput.trim()) {
+                setTitleInput(file.name.replace(/\.[^/.]+$/, ""));
+              }
+            }
+          }}
+          style={{ display: "none" }}
+        />
+
+        {/* Mode Selector Choice Buttons */}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
+          <button
+            type="button"
+            onClick={() => setLauncherMode("url")}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: launcherMode === "url" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+              background: launcherMode === "url" ? "var(--marigold-light)" : "var(--surface-2)",
+              color: launcherMode === "url" ? "var(--marigold-dark)" : "var(--ink-soft)",
+              fontSize: 12.5,
+              fontWeight: launcherMode === "url" ? 700 : 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span>🔗</span>
+            <span>Video / Web URL</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setLauncherMode("paper")}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: launcherMode === "paper" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+              background: launcherMode === "paper" ? "var(--marigold-light)" : "var(--surface-2)",
+              color: launcherMode === "paper" ? "var(--marigold-dark)" : "var(--ink-soft)",
+              fontSize: 12.5,
+              fontWeight: launcherMode === "paper" ? 700 : 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span>📄</span>
+            <span>From Paper Vault</span>
+          </button>
+
+          {/* Simple "+" Icon Button for Adding File / Media Source */}
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            title="Add file or media source"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              border: launcherMode === "upload" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+              background: launcherMode === "upload" ? "var(--marigold-light)" : "var(--surface-2)",
+              color: launcherMode === "upload" ? "var(--marigold-dark)" : "var(--ink)",
+              fontSize: 16,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 1,
+            }}
+          >
+            +
+          </button>
         </div>
 
         {/* Active Session Input Form */}
@@ -251,29 +305,38 @@ export default function Study({ onOpenUpgrade }) {
 
           {launcherMode === "upload" && (
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="video/*,audio/*,.pdf,.txt,.doc,.docx"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                style={{ display: "none" }}
-              />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
+              <div
                 style={{
-                  padding: "8px 14px",
+                  padding: "8px 12px",
                   borderRadius: 8,
                   border: "1px solid var(--line)",
                   background: "var(--surface-2)",
                   fontSize: 13,
                   fontWeight: 600,
-                  cursor: "pointer",
                   color: "var(--ink)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                {selectedFile ? `📄 ${selectedFile.name}` : "📁 Select Video / Audio / Document File"}
-              </button>
+                <span>{selectedFile ? `📄 ${selectedFile.name}` : "No file chosen"}</span>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: "none",
+                    background: "var(--marigold-light)",
+                    color: "var(--marigold-dark)",
+                    borderRadius: 4,
+                    padding: "2px 6px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Change
+                </button>
+              </div>
             </div>
           )}
 

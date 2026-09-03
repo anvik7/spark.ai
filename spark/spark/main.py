@@ -167,11 +167,12 @@ def _public_user(session, user: User) -> dict:
     }
 
 
-def _card_out(c: Card) -> dict:
+def _card_out(c: Card, creator: User | None = None) -> dict:
+    creator_name = creator.name if (creator and creator.name) else (creator.email.split("@")[0] if creator and creator.email else None)
     return {
         "id": c.id, "kind": c.kind, "raw": c.raw,
         "title": getattr(c, "title", ""), "summary": c.summary,
-        "tags": c.tags, "topic": getattr(c, "topic", ""),
+        "tags": c.tags or [], "topic": getattr(c, "topic", ""),
         "difficulty": getattr(c, "difficulty", 0),
         "importance": getattr(c, "importance", 0),
         "source_type": getattr(c, "source_type", c.kind),
@@ -179,7 +180,36 @@ def _card_out(c: Card) -> dict:
         "created_at": c.created_at, "due_on": c.due_on, "reps": c.reps,
         "is_public": getattr(c, "is_public", False),
         "share_token": getattr(c, "share_token", None),
+        "creator_name": creator_name,
+        "creator_avatar": creator.avatar_url if creator else "",
     }
+
+
+@app.get("/api/public/captures/{share_token}")
+def get_public_capture(share_token: str):
+    """Public endpoint to view a shared capture cleanly without authentication.
+    Strictly shields user account details, emails, internal IDs, and subscription data."""
+    with get_session() as session:
+        card = session.exec(select(Card).where(Card.share_token == share_token, Card.is_public == True)).first()
+        if not card:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Capture not found or share link has been revoked.")
+        creator = session.get(User, card.user_id) if card.user_id else None
+        creator_name = creator.name if (creator and creator.name) else (creator.email.split("@")[0] if creator and creator.email else "Spark User")
+        return {
+            "id": card.id,
+            "kind": card.kind,
+            "title": getattr(card, "title", "") or "",
+            "raw": card.raw,
+            "summary": card.summary,
+            "tags": card.tags or [],
+            "topic": getattr(card, "topic", "") or "",
+            "created_at": card.created_at,
+            "source_url": card.source_url,
+            "is_public": card.is_public,
+            "share_token": card.share_token,
+            "creator_name": creator_name,
+            "creator_avatar": creator.avatar_url if creator else "",
+        }
 
 
 # --- auth -------------------------------------------------------------------
@@ -389,7 +419,8 @@ def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
             cards = [c for c in cards
                      if ql in c.raw.lower() or ql in c.summary.lower()
                      or any(ql in t.lower() for t in c.tags)]
-        return [_card_out(c) for c in cards]
+        db_user = session.get(User, user.id)
+        return [_card_out(c, db_user or user) for c in cards]
 
 
 @app.post("/api/captures")
