@@ -162,37 +162,14 @@ export const api = {
     return req("/career/upload-resume", { method: "POST", form: f });
   },
   clearResume: () => req("/career/resume", { method: "DELETE" }),
-  getInterviewSession: () => req("/interview/session"),
+  getInterviewSession: (sessionId = null) =>
+    req("/interview/session" + (sessionId ? `?session_id=${sessionId}` : "")),
   startInterview: (data) => req("/interview/start", { method: "POST", body: data }),
   answerInterview: (sessionId, answerText) =>
     req("/interview/answer", { method: "POST", body: { session_id: sessionId, answer_text: answerText } }),
   evaluateInterview: (sessionId) =>
     req("/interview/evaluate", { method: "POST", body: { session_id: sessionId } }),
   getInterviewHistory: () => req("/interview/history"),
-
-  // Papers API - Community Resource Library
-  listPapers: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== "") qs.append(k, v);
-    });
-    const str = qs.toString();
-    return req("/papers" + (str ? `?${str}` : ""));
-  },
-  uploadPaper: (formData) => {
-    return req("/papers", { method: "POST", form: formData });
-  },
-  getPaper: (id) => req(`/papers/${id}`),
-  downloadPaper: (id) => req(`/papers/${id}/download`),
-  downloadPaperUrl: (id) => `${BASE}/papers/${id}/download`,
-  bookmarkPaper: (id) => req(`/papers/${id}/bookmark`, { method: "POST" }),
-  reportPaper: (id, reason = "inappropriate", details = "") => {
-    const f = new FormData();
-    f.append("reason", reason);
-    f.append("details", details);
-    return req(`/papers/${id}/report`, { method: "POST", form: f });
-  },
-  deletePaper: (id) => req(`/papers/${id}`, { method: "DELETE" }),
 
   // TTS Voice Synthesis
   generateTTS: async (text) => {
@@ -213,14 +190,15 @@ export const api = {
     return null;
   },
 
-  // Circles
+  // Circles & Chat
   myCircles: () => req("/circles"),
-  discoverCircles: (examTag) => {
-    const qs = examTag ? `?exam_tag=${encodeURIComponent(examTag)}` : "";
+  discoverCircles: (category) => {
+    const qs = category ? `?category=${encodeURIComponent(category)}` : "";
     return req("/circles/discover" + qs);
   },
-  createCircle: (name, description = "", examTag = "") =>
-    req("/circles", { method: "POST", body: { name, description, exam_tag: examTag } }),
+  searchUsers: (q) => req(`/circles/users/search?q=${encodeURIComponent(q)}`),
+  createCircle: (data) =>
+    req("/circles", { method: "POST", body: typeof data === "object" ? data : { name: data } }),
   getCircle: (id) => req(`/circles/${id}`),
   circleMembers: (id) => req(`/circles/${id}/members`),
   joinCircle: (inviteCode) =>

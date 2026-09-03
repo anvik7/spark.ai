@@ -11,7 +11,6 @@ import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import Account from "./Account.jsx";
-import Papers from "./Papers.jsx";
 import Circles from "./Circles.jsx";
 import Avatar from "./components/Avatar.jsx";
 import CommandMenu from "./components/ui/CommandMenu.jsx";
@@ -22,7 +21,6 @@ const Ico = {
   tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
   study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
-  papers: <path d="M14 3v5h5 M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" />,
   circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
   more: <><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></>,
@@ -96,13 +94,12 @@ export default function App() {
     );
   }
 
-  // Exact 7 Global Modules Sequence (Tasks -> Capture -> Study -> Chat -> Papers -> Career -> Coach)
+  // Exact 6 Global Modules Sequence (Tasks -> Capture -> Study -> Chat -> Career -> Coach)
   const navItems = [
     { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
     { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
     { id: "study", label: "Study", shortLabel: "Study", icon: Ico.study },
     { id: "circles", label: "Chat", shortLabel: "Chat", icon: Ico.circles },
-    { id: "papers", label: "Paper Vault", shortLabel: "Papers", icon: Ico.papers },
     { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
     { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach },
   ];
@@ -266,7 +263,7 @@ export default function App() {
 
             // Only trigger if horizontal movement is dominant and > 50px
             if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
-              const primaryTabs = ["tasks", "capture", "study", "circles", "papers", "career", "coach"];
+              const primaryTabs = ["tasks", "capture", "study", "circles", "career", "coach"];
               const currentIdx = primaryTabs.indexOf(tab);
               if (currentIdx !== -1) {
                 if (dx < 0 && currentIdx < primaryTabs.length - 1) {
@@ -294,8 +291,7 @@ export default function App() {
               {tab === "tasks" && <Tasks />}
               {tab === "study" && <Study onOpenUpgrade={() => setShowUpgrade(true)} />}
               {tab === "career" && <Career onNavigate={handleNav} user={user} />}
-              {tab === "papers" && <Papers onOpenUpgrade={() => setShowUpgrade(true)} onNavigate={handleNav} />}
-              {tab === "circles" && <Circles />}
+              {tab === "circles" && <Circles onOpenUpgrade={() => setShowUpgrade(true)} user={user} />}
               {tab === "coach" && <Interview />}
             </>
           )}

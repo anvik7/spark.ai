@@ -7,18 +7,54 @@ from sqlmodel import col, func, select
 from ..auth import current_user
 from ..models import CircleMember, CircleMessage, StudyCircle, User, get_session
 
+from ..subscription import is_active_paid, is_trial_active
+
 router = APIRouter(prefix="/api/circles", tags=["circles"])
 
 
-def _circle_out(circle: StudyCircle, member_count: int, role: str | None = None) -> dict:
+def _circle_out(session, circle: StudyCircle, member_count: int, role: str | None = None, current_user_id: int | None = None) -> dict:
+    is_private = getattr(circle, "is_private", False)
+    avatar_icon = getattr(circle, "avatar_icon", "💬") or "💬"
+    display_name = circle.name
+
+    # Handle 1-to-1 private chat naming
+    if is_private and getattr(circle, "target_user_id", None) and current_user_id:
+        partner_id = circle.target_user_id if circle.owner_id == current_user_id else circle.owner_id
+        partner = session.get(User, partner_id)
+        if partner:
+            display_name = partner.name or partner.email or f"User #{partner.id}"
+            avatar_icon = getattr(partner, "avatar_url", "👤") or "👤"
+
+    # Fetch latest message
+    latest_msg = session.exec(
+        select(CircleMessage)
+        .where(CircleMessage.circle_id == circle.id)
+        .order_by(col(CircleMessage.created_at).desc())
+    ).first()
+
+    latest_data = None
+    if latest_msg:
+        sender = session.get(User, latest_msg.user_id)
+        created_dt = getattr(latest_msg, "created_at", None) or datetime.now(timezone.utc)
+        if not created_dt.tzinfo:
+            created_dt = created_dt.replace(tzinfo=timezone.utc)
+        latest_data = {
+            "content": "[Message deleted]" if latest_msg.is_deleted else latest_msg.content,
+            "senderName": sender.name if sender else "Unknown",
+            "createdAt": created_dt.isoformat(),
+        }
+
     out = {
         "id": circle.id,
-        "name": circle.name,
+        "name": display_name,
         "description": circle.description,
         "examTag": circle.exam_tag,
         "inviteCode": circle.invite_code,
         "ownerId": circle.owner_id,
+        "isPrivate": is_private,
+        "avatarIcon": avatar_icon,
         "memberCount": member_count,
+        "latestMessage": latest_data,
         "createdAt": circle.created_at.isoformat(),
     }
     if role is not None:
@@ -36,7 +72,7 @@ def _check_membership(session, circle_id: int, user_id: int) -> CircleMember:
     if not membership:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Access denied: You must be a member of this circle.",
+            "Access denied: You must be a member of this conversation.",
         )
     return membership
 
@@ -73,7 +109,39 @@ def _message_out(session, msg: CircleMessage) -> dict:
     }
 
 
-# ==================== CIRCLE MANAGEMENT ENDPOINTS ====================
+# ==================== USER SEARCH & CHAT ENDPOINTS ====================
+
+@router.get("/users/search")
+def search_users(q: str = "", user: User = Depends(current_user)):
+    """Search registered users for initiating private 1-to-1 chats."""
+    assert user.id is not None
+    q_str = q.strip().lower()
+    if not q_str:
+        return []
+
+    with get_session() as session:
+        users = session.exec(
+            select(User)
+            .where(User.id != user.id)
+            .where(
+                (col(User.name).ilike(f"%{q_str}%")) |
+                (col(User.email).ilike(f"%{q_str}%"))
+            )
+            .limit(20)
+        ).all()
+
+        return [
+            {
+                "id": u.id,
+                "name": u.name or u.email or f"User #{u.id}",
+                "email": u.email,
+                "avatarUrl": getattr(u, "avatar_url", "") or "",
+            }
+            for u in users
+        ]
+
+
+# ==================== CIRCLE / COMMUNITY MANAGEMENT ====================
 
 @router.post("")
 def create_circle(
@@ -82,33 +150,75 @@ def create_circle(
 ):
     assert user.id is not None
     name = (body.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Circle name is required")
+    is_private = bool(body.get("is_private", False))
+    target_user_id = body.get("target_user_id")
+    avatar_icon = (body.get("avatar_icon") or ("🔒" if is_private else "🌐")).strip()
 
-    invite_code = uuid.uuid4().hex[:8]
+    if not name and not target_user_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Name or target user is required")
 
     with get_session() as session:
+        # STRICT BACKEND ENTITLEMENT ENFORCEMENT FOR PRIVATE CHATS/GROUPS
+        if is_private:
+            paid_ok = is_active_paid(user) or is_trial_active(user)
+            if not paid_ok:
+                raise HTTPException(
+                    status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Private Chat is a premium feature. Keep public Spark conversations free. Upgrade to connect privately."
+                )
+
+        if target_user_id:
+            target_user = session.get(User, int(target_user_id))
+            if not target_user:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Target user not found")
+            if not name:
+                name = target_user.name or target_user.email or f"Chat with User #{target_user.id}"
+
+            # Check if 1-to-1 private chat already exists between user and target
+            existing_c = session.exec(
+                select(StudyCircle)
+                .where(StudyCircle.is_private == True)
+                .where(
+                    ((StudyCircle.owner_id == user.id) & (StudyCircle.target_user_id == int(target_user_id))) |
+                    ((StudyCircle.owner_id == int(target_user_id)) & (StudyCircle.target_user_id == user.id))
+                )
+            ).first()
+            if existing_c:
+                count = session.exec(select(func.count()).where(CircleMember.circle_id == existing_c.id)).one()
+                return _circle_out(session, existing_c, member_count=count, role="member", current_user_id=user.id)
+
+        invite_code = uuid.uuid4().hex[:8]
+
         circle = StudyCircle(
             name=name,
             description=(body.get("description") or "").strip(),
-            exam_tag=(body.get("exam_tag") or "").strip(),
+            exam_tag=(body.get("exam_tag") or "General").strip(),
             invite_code=invite_code,
             owner_id=user.id,
+            is_private=is_private,
+            target_user_id=int(target_user_id) if target_user_id else None,
+            avatar_icon=avatar_icon,
         )
         session.add(circle)
         session.commit()
         session.refresh(circle)
 
-        # Auto-add creator as owner member
+        # Auto-add creator
         session.add(CircleMember(circle_id=circle.id, user_id=user.id, role="owner"))
+
+        # If 1-to-1 chat, auto-add target user
+        if target_user_id and int(target_user_id) != user.id:
+            session.add(CircleMember(circle_id=circle.id, user_id=int(target_user_id), role="member"))
+
         session.commit()
 
-        return _circle_out(circle, member_count=1, role="owner")
+        count = session.exec(select(func.count()).where(CircleMember.circle_id == circle.id)).one()
+        return _circle_out(session, circle, member_count=count, role="owner", current_user_id=user.id)
 
 
 @router.get("")
 def list_my_circles(user: User = Depends(current_user)):
-    """List circles the current user belongs to."""
+    """List public communities and private conversations the current user belongs to."""
     assert user.id is not None
     with get_session() as session:
         memberships = session.exec(
@@ -123,18 +233,18 @@ def list_my_circles(user: User = Depends(current_user)):
             count = session.exec(
                 select(func.count()).where(CircleMember.circle_id == circle.id)
             ).one()
-            results.append(_circle_out(circle, member_count=count, role=m.role))
+            results.append(_circle_out(session, circle, member_count=count, role=m.role, current_user_id=user.id))
 
         return results
 
 
 @router.get("/discover")
-def discover_circles(exam_tag: str | None = None, user: User = Depends(current_user)):
-    """Browse all circles (optionally filtered by exam_tag)."""
+def discover_circles(category: str | None = None, user: User = Depends(current_user)):
+    """Browse public communities (is_private == False). FREE for all users."""
     with get_session() as session:
-        q = select(StudyCircle)
-        if exam_tag:
-            q = q.where(StudyCircle.exam_tag == exam_tag)
+        q = select(StudyCircle).where(StudyCircle.is_private == False)
+        if category:
+            q = q.where(StudyCircle.exam_tag == category)
         circles = session.exec(q.order_by(col(StudyCircle.created_at).desc())).all()
 
         results = []
@@ -142,7 +252,7 @@ def discover_circles(exam_tag: str | None = None, user: User = Depends(current_u
             count = session.exec(
                 select(func.count()).where(CircleMember.circle_id == c.id)
             ).one()
-            results.append(_circle_out(c, member_count=count))
+            results.append(_circle_out(session, c, member_count=count, current_user_id=user.id))
         return results
 
 
@@ -162,7 +272,7 @@ def get_circle(circle_id: int, user: User = Depends(current_user)):
                 CircleMember.user_id == user.id,
             )
         ).first()
-        return _circle_out(circle, member_count=count, role=membership.role if membership else None)
+        return _circle_out(session, circle, member_count=count, role=membership.role if membership else None, current_user_id=user.id)
 
 
 @router.get("/{circle_id}/members")
@@ -219,7 +329,7 @@ def join_circle_by_code(body: dict, user: User = Depends(current_user)):
         count = session.exec(
             select(func.count()).where(CircleMember.circle_id == circle.id)
         ).one()
-        return _circle_out(circle, member_count=count, role="member")
+        return _circle_out(session, circle, member_count=count, role="member", current_user_id=user.id)
 
 
 @router.post("/{circle_id}/join")
@@ -245,7 +355,7 @@ def join_circle_by_id(circle_id: int, body: dict = {}, user: User = Depends(curr
         count = session.exec(
             select(func.count()).where(CircleMember.circle_id == circle_id)
         ).one()
-        return _circle_out(circle, member_count=count, role="member")
+        return _circle_out(session, circle, member_count=count, role="member", current_user_id=user.id)
 
 
 @router.post("/{circle_id}/leave")

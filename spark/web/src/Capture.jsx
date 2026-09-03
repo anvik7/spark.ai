@@ -223,6 +223,9 @@ export default function Capture({ onNavigate }) {
         <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
           Save anything you want to remember.
         </p>
+        <div style={{ fontSize: 12, color: "var(--ink-faint)", marginTop: 3, fontWeight: 500 }}>
+          Write it down. Save an idea. Keep a thought for later.
+        </div>
       </div>
 
       {/* Primary Friction-Free Single Composer */}
@@ -240,7 +243,7 @@ export default function Capture({ onNavigate }) {
         <textarea
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
-          placeholder="What's on your mind? Write a note, paste a link, or save an idea..."
+          placeholder="What's on your mind? Write a note, paste a link, or save an idea…"
           rows={3}
           style={{
             width: "100%",
@@ -388,10 +391,10 @@ export default function Capture({ onNavigate }) {
       )}
 
       {!loadingCaptures && filteredCaptures.length === 0 && (
-        <div style={{ padding: "24px 16px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", textAlign: "center" }}>
+        <div style={{ padding: "28px 16px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>No captures found</div>
-          <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
-            Start by saving something you want to remember.
+          <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+            Capture what's on your mind now. Spark keeps it safe to revisit later.
           </div>
         </div>
       )}
@@ -444,6 +447,14 @@ export default function Capture({ onNavigate }) {
             <div style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
               {c.raw || c.title || c.summary || "Untitled Capture"}
             </div>
+
+            {/* Real AI Insight Badge if summary is available and distinct */}
+            {c.summary && c.summary !== c.raw && (
+              <div style={{ marginTop: 8, padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 6, border: "1px solid var(--marigold)", fontSize: 12, color: "var(--marigold-dark)", lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 700 }}>✨ Spark Insight: </span>
+                <span>{c.summary}</span>
+              </div>
+            )}
 
             {c.source_url && (
               <a

@@ -34,7 +34,6 @@ from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
 from .routes.study_logs import router as study_logs_router
 from .routes.study_engine import router as study_engine_router
-from .routes.papers import router as papers_router
 from .routes.circles import router as circles_router
 settings = get_settings()
 
@@ -49,7 +48,6 @@ app.include_router(goals_router)
 app.include_router(leaderboard_router)
 app.include_router(study_logs_router)
 app.include_router(study_engine_router)
-app.include_router(papers_router)
 app.include_router(circles_router)
 app.add_middleware(
     CORSMiddleware,

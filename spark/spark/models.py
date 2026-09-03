@@ -260,6 +260,9 @@ class StudyCircle(SQLModel, table=True):
     exam_tag: str = ""
     invite_code: str = Field(index=True, unique=True)
     owner_id: int = Field(index=True, foreign_key="user.id")
+    is_private: bool = Field(default=False, index=True)
+    target_user_id: Optional[int] = Field(default=None, index=True, foreign_key="user.id")
+    avatar_icon: str = "💬"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -435,6 +438,21 @@ def _migrate() -> None:
                         conn.execute(_sql("ALTER TABLE questionpaper ADD COLUMN is_public BOOLEAN DEFAULT TRUE"))
                     else:
                         conn.execute(_sql("ALTER TABLE questionpaper ADD COLUMN is_public BOOLEAN DEFAULT 1"))
+
+            # Auto-migrate studycircle table
+            if inspector.has_table("studycircle"):
+                circle_cols = {c["name"] for c in inspector.get_columns("studycircle")}
+                if "is_private" not in circle_cols:
+                    print("[migrate] Adding is_private column to 'studycircle' table...")
+                    is_priv_type = "BOOLEAN DEFAULT FALSE" if engine.dialect.name == "postgresql" else "BOOLEAN DEFAULT 0"
+                    conn.execute(_sql(f"ALTER TABLE studycircle ADD COLUMN is_private {is_priv_type}"))
+                if "target_user_id" not in circle_cols:
+                    print("[migrate] Adding target_user_id column to 'studycircle' table...")
+                    conn.execute(_sql("ALTER TABLE studycircle ADD COLUMN target_user_id INTEGER"))
+                if "avatar_icon" not in circle_cols:
+                    print("[migrate] Adding avatar_icon column to 'studycircle' table...")
+                    conn.execute(_sql("ALTER TABLE studycircle ADD COLUMN avatar_icon VARCHAR DEFAULT '💬'"))
+
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
 

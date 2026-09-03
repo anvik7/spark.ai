@@ -43,7 +43,6 @@ export default function CommandMenu({ isOpen, onClose, onNavigate }) {
     { id: "capture", label: "Go to Capture", icon: "✏️", category: "Navigation" },
     { id: "study", label: "Go to Study", icon: "📖", category: "Navigation" },
     { id: "circles", label: "Go to Chat", icon: "👥", category: "Navigation" },
-    { id: "papers", label: "Go to Paper Vault", icon: "📚", category: "Navigation" },
     { id: "career", label: "Go to Career OS", icon: "🎯", category: "Navigation" },
     { id: "coach", label: "Go to Interview Coach", icon: "💬", category: "Navigation" },
   ].filter((item) => !q || item.label.toLowerCase().includes(q));

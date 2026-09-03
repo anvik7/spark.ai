@@ -1,770 +1,883 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { api } from "./api.js";
-import Avatar from "./components/Avatar.jsx";
-import ConfirmationDialog from "./components/ui/ConfirmationDialog";
-
-const EXAMS = ["JEE", "NEET", "GATE", "UPSC", "CAT", "CLAT", "Other"];
 
 function fmtDate(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
-function fmtTime(iso) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-}
-
-export default function Circles() {
-  const [tab, setTab] = useState("my");       // "my" | "discover" | "detail"
-  const [myCircles, setMyCircles] = useState(null);
-  const [discovered, setDiscovered] = useState(null);
-  const [filterExam, setFilterExam] = useState("");
+export default function Circles({ onOpenUpgrade, user }) {
+  const [circles, setCircles] = useState([]);
+  const [discovered, setDiscovered] = useState([]);
   const [selectedCircle, setSelectedCircle] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  const loadMine = () => api.myCircles().then(setMyCircles).catch((e) => setErr(e.message));
-  const loadDiscover = () => api.discoverCircles(filterExam).then(setDiscovered).catch((e) => setErr(e.message));
+  // Action Menu (+ button)
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [activeModal, setActiveModal] = useState(null); // "public_community" | "private_chat" | "private_group"
 
-  useEffect(() => { loadMine(); }, []);
-  useEffect(() => { if (tab === "discover") loadDiscover(); }, [tab, filterExam]);
+  const isPaidUser = Boolean(user?.is_active_paid || user?.trial?.active);
 
-  const openDetail = (circle) => { setSelectedCircle(circle); setTab("detail"); };
-  const goBack = () => { setTab("my"); setSelectedCircle(null); loadMine(); };
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [mine, publicComms] = await Promise.all([
+        api.myCircles().catch(() => []),
+        api.discoverCircles().catch(() => []),
+      ]);
+      setCircles(mine || []);
+      setDiscovered(publicComms || []);
+    } catch (e) {
+      setErr(e.message || "Failed to load chat conversations.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleOpenCircle = (c) => {
+    setSelectedCircle(c);
+  };
+
+  const handleBackToList = () => {
+    setSelectedCircle(null);
+    loadData();
+  };
+
+  // Filter conversations & public communities by search query
+  const q = searchQuery.trim().toLowerCase();
+  
+  const publicCircles = circles.filter((c) => !c.isPrivate);
+  const privateCircles = circles.filter((c) => c.isPrivate);
+
+  const filteredPublicMine = publicCircles.filter((c) =>
+    !q || c.name.toLowerCase().includes(q) || (c.latestMessage?.content && c.latestMessage.content.toLowerCase().includes(q))
+  );
+
+  const unjoinedPublic = discovered.filter(
+    (dc) => !circles.some((mc) => mc.id === dc.id) && (!q || dc.name.toLowerCase().includes(q))
+  );
+
+  const filteredPrivateMine = privateCircles.filter((c) =>
+    !q || c.name.toLowerCase().includes(q) || (c.latestMessage?.content && c.latestMessage.content.toLowerCase().includes(q))
+  );
+
+  if (selectedCircle) {
+    return (
+      <CircleDetail
+        circle={selectedCircle}
+        user={user}
+        onBack={handleBackToList}
+        onError={setErr}
+      />
+    );
+  }
 
   return (
     <div className="screen">
-      <div style={{ marginBottom: 20 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Chat</h1>
-        <p className="sub" style={{ margin: "4px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Collaborate and study together with private groups, invite codes, and real-time chat.
-        </p>
+      {/* Top Header Bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>
+          Chat
+        </h1>
+
+        {/* WeChat-inspired "+" Action Button */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setShowPlusMenu((prev) => !prev)}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1px solid var(--line)",
+              background: "var(--surface)",
+              color: "var(--ink)",
+              fontSize: 20,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 1,
+              boxShadow: "var(--sh-sm)",
+            }}
+          >
+            +
+          </button>
+
+          {/* "+" Action Menu Dropdown */}
+          {showPlusMenu && (
+            <div
+              style={{
+                position: "absolute",
+                right: 0,
+                top: 42,
+                width: 210,
+                background: "var(--surface)",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                zIndex: 100,
+                padding: "6px 0",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowPlusMenu(false);
+                  setActiveModal("public_community");
+                }}
+                style={{
+                  padding: "10px 14px",
+                  background: "none",
+                  border: "none",
+                  textAlign: "left",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>🌐</span>
+                <span>New Public Community</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", background: "#D1FAE5", padding: "1px 5px", borderRadius: 4, marginLeft: "auto" }}>
+                  FREE
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowPlusMenu(false);
+                  if (!isPaidUser) {
+                    onOpenUpgrade?.();
+                  } else {
+                    setActiveModal("private_chat");
+                  }
+                }}
+                style={{
+                  padding: "10px 14px",
+                  background: "none",
+                  border: "none",
+                  textAlign: "left",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>👤</span>
+                <span>New Private Chat</span>
+                <span style={{ fontSize: 11 }}>🔒</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowPlusMenu(false);
+                  if (!isPaidUser) {
+                    onOpenUpgrade?.();
+                  } else {
+                    setActiveModal("private_group");
+                  }
+                }}
+                style={{
+                  padding: "10px 14px",
+                  background: "none",
+                  border: "none",
+                  textAlign: "left",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>🔒</span>
+                <span>New Private Group</span>
+                <span style={{ fontSize: 11 }}>🔒</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {err && (
-        <div className="err" style={{ marginBottom: 12 }}>
-          ⚠️ {err}
-          <button onClick={() => setErr("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>✕</button>
+        <div className="err" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>⚠️ {err}</span>
+          <button onClick={() => setErr("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "inherit" }}>✕</button>
         </div>
       )}
 
-      {tab === "detail" && selectedCircle ? (
-        <CircleDetail circle={selectedCircle} onBack={goBack} onError={setErr} />
-      ) : (
-        <>
-          {/* Tab switcher */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button
-              className="btn"
-              onClick={() => setTab("my")}
-              style={{
-                background: tab === "my" ? "var(--ink)" : "var(--surface-2)",
-                color: tab === "my" ? "#fff" : "var(--ink-soft)",
-                border: "1px solid var(--line)",
-              }}
-            >
-              My Chats
-            </button>
-            <button
-              className="btn"
-              onClick={() => setTab("discover")}
-              style={{
-                background: tab === "discover" ? "var(--ink)" : "var(--surface-2)",
-                color: tab === "discover" ? "#fff" : "var(--ink-soft)",
-                border: "1px solid var(--line)",
-              }}
-            >
-              Discover
-            </button>
+      {/* Search Input Bar */}
+      <div style={{ marginBottom: 16 }}>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="🔍 Search conversations & public communities..."
+          style={{
+            width: "100%",
+            padding: "9px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--line)",
+            fontSize: 13.5,
+            background: "var(--surface-2)",
+            color: "var(--ink)",
+          }}
+        />
+      </div>
+
+      {loading && (
+        <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: "var(--ink-soft)" }}>
+          Loading conversations…
+        </div>
+      )}
+
+      {!loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* SECTION 1: PUBLIC COMMUNITIES (FREE FOR EVERYONE) */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-soft)" }}>
+                Public Communities (Free)
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#059669", background: "#D1FAE5", padding: "2px 8px", borderRadius: 10 }}>
+                {filteredPublicMine.length + unjoinedPublic.length} Available
+              </span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* My Joined Public Communities */}
+              {filteredPublicMine.map((c) => (
+                <ConversationRow
+                  key={c.id}
+                  circle={c}
+                  isJoined={true}
+                  onSelect={() => handleOpenCircle(c)}
+                />
+              ))}
+
+              {/* Discoverable Unjoined Public Communities */}
+              {unjoinedPublic.map((c) => (
+                <ConversationRow
+                  key={c.id}
+                  circle={c}
+                  isJoined={false}
+                  onSelect={async () => {
+                    try {
+                      const joined = await api.joinCircleById(c.id);
+                      loadData();
+                      handleOpenCircle(joined);
+                    } catch (e) {
+                      setErr(e.message || "Failed to join public community.");
+                    }
+                  }}
+                />
+              ))}
+
+              {filteredPublicMine.length === 0 && unjoinedPublic.length === 0 && (
+                <div style={{ padding: "18px 14px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", textAlign: "center", fontSize: 13, color: "var(--ink-soft)" }}>
+                  No public communities found. Tap <b>+</b> to create one for free!
+                </div>
+              )}
+            </div>
           </div>
 
-          {tab === "my" && (
-            <MyCirclesTab
-              circles={myCircles}
-              onOpen={openDetail}
-              onReload={loadMine}
-              onError={setErr}
-            />
-          )}
+          {/* SECTION 2: PRIVATE CONVERSATIONS (PAID) */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-soft)" }}>
+                Private Conversations 🔒
+              </span>
+            </div>
 
-          {tab === "discover" && (
-            <DiscoverTab
-              circles={discovered}
-              filterExam={filterExam}
-              setFilterExam={setFilterExam}
-              onOpen={openDetail}
-              onJoined={() => { loadMine(); loadDiscover(); }}
-              onError={setErr}
-            />
-          )}
-        </>
+            {!isPaidUser ? (
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 12,
+                  background: "var(--surface)",
+                  border: "1.5px solid var(--line)",
+                  boxShadow: "var(--sh-sm)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <span style={{ fontSize: 20 }}>🔒</span>
+                  <div>
+                    <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
+                      Private Chat is a premium feature
+                    </h3>
+                    <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
+                      Keep your public Spark conversations free. Upgrade to connect privately 1-to-1 or create private groups.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                  <button
+                    onClick={onOpenUpgrade}
+                    style={{
+                      padding: "7px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "var(--p-gradient)",
+                      color: "#ffffff",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Upgrade →
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {filteredPrivateMine.map((c) => (
+                  <ConversationRow
+                    key={c.id}
+                    circle={c}
+                    isJoined={true}
+                    onSelect={() => handleOpenCircle(c)}
+                  />
+                ))}
+
+                {filteredPrivateMine.length === 0 && (
+                  <div style={{ padding: "18px 14px", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", textAlign: "center", fontSize: 13, color: "var(--ink-soft)" }}>
+                    No private chats yet. Tap <b>+</b> to start a private chat or group.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Creation Modals */}
+      {activeModal === "public_community" && (
+        <CreatePublicCommunityModal
+          onClose={() => setActiveModal(null)}
+          onCreated={(c) => {
+            setActiveModal(null);
+            loadData();
+            handleOpenCircle(c);
+          }}
+          onError={setErr}
+        />
+      )}
+
+      {activeModal === "private_chat" && (
+        <CreatePrivateChatModal
+          onClose={() => setActiveModal(null)}
+          onCreated={(c) => {
+            setActiveModal(null);
+            loadData();
+            handleOpenCircle(c);
+          }}
+          onError={setErr}
+        />
+      )}
+
+      {activeModal === "private_group" && (
+        <CreatePrivateGroupModal
+          onClose={() => setActiveModal(null)}
+          onCreated={(c) => {
+            setActiveModal(null);
+            loadData();
+            handleOpenCircle(c);
+          }}
+          onError={setErr}
+        />
       )}
     </div>
   );
 }
 
-/* ---------- My Circles Tab ---------- */
-function MyCirclesTab({ circles, onOpen, onReload, onError }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [showJoinCode, setShowJoinCode] = useState(false);
+/* ── WeChat-Style Conversation Row Component ────────────── */
+function ConversationRow({ circle, isJoined, onSelect }) {
+  const latest = circle.latestMessage;
+  const icon = circle.avatarIcon || (circle.isPrivate ? "🔒" : "🌐");
 
   return (
-    <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button
-          className="btn"
-          onClick={() => { setShowCreate(true); setShowJoinCode(false); }}
-          style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }}
-        >
-          + Create Circle
-        </button>
-        <button
-          className="btn"
-          onClick={() => { setShowJoinCode(true); setShowCreate(false); }}
-          style={{ background: "var(--surface-2)", border: "1px solid var(--line)" }}
-        >
-          🔑 Join with Code
-        </button>
+    <div
+      onClick={onSelect}
+      style={{
+        padding: "10px 12px",
+        borderRadius: 10,
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--line)",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        cursor: "pointer",
+        transition: "background .15s ease",
+      }}
+    >
+      {/* Compact Avatar */}
+      <div
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 10,
+          background: circle.isPrivate ? "var(--marigold-light)" : "var(--surface-2)",
+          color: circle.isPrivate ? "var(--marigold-dark)" : "var(--ink)",
+          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          border: "1px solid var(--line)",
+        }}
+      >
+        {icon}
       </div>
 
-      {showCreate && (
-        <CreateCircleForm
-          onCreated={(c) => { setShowCreate(false); onReload(); onOpen(c); }}
-          onCancel={() => setShowCreate(false)}
-          onError={onError}
-        />
-      )}
-
-      {showJoinCode && (
-        <JoinCodeForm
-          onJoined={(c) => { setShowJoinCode(false); onReload(); onOpen(c); }}
-          onCancel={() => setShowJoinCode(false)}
-          onError={onError}
-        />
-      )}
-
-      {!circles && (
-        <>{[1, 2].map((i) => (
-          <div key={i} className="skeleton" style={{ height: 84, marginBottom: 12, borderRadius: "var(--r)" }} />
-        ))}</>
-      )}
-
-      {circles && circles.length === 0 && !showCreate && !showJoinCode && (
-        <div className="empty" style={{ padding: "40px 20px" }}>
-          <span className="empty-icon">👥</span>
-          <h3 className="empty-title">No circles joined yet</h3>
-          <p className="empty-sub">Create your own private group or join one with an invite code.</p>
+      {/* Message Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {circle.name}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--ink-faint)", marginLeft: 6, flexShrink: 0 }}>
+            {latest ? fmtDate(latest.createdAt) : ""}
+          </span>
         </div>
-      )}
 
-      {circles && circles.map((c) => (
-        <CircleCard key={c.id} c={c} onClick={() => onOpen(c)} />
-      ))}
-    </>
-  );
-}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 12.5, color: "var(--ink-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {latest ? `${latest.senderName}: ${latest.content}` : circle.description || "Public community"}
+          </span>
 
-
-/* ---------- Discover Tab ---------- */
-function DiscoverTab({ circles, filterExam, setFilterExam, onOpen, onJoined, onError }) {
-  return (
-    <>
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
-        <button
-          className="tag"
-          style={!filterExam ? { background: "var(--ink)", color: "#fff" } : {}}
-          onClick={() => setFilterExam("")}
-        >
-          All Exams
-        </button>
-        {EXAMS.map((e) => (
-          <button
-            key={e}
-            className="tag"
-            style={filterExam === e ? { background: "var(--ink)", color: "#fff" } : {}}
-            onClick={() => setFilterExam(e)}
-          >
-            {e}
-          </button>
-        ))}
+          {!isJoined && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+              }}
+              style={{
+                marginLeft: 8,
+                padding: "3px 10px",
+                borderRadius: 6,
+                border: "none",
+                background: "var(--marigold-light)",
+                color: "var(--marigold-dark)",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Join
+            </button>
+          )}
+        </div>
       </div>
-
-      {!circles && (
-        <>{[1, 2].map((i) => (
-          <div key={i} className="skeleton" style={{ height: 84, marginBottom: 12, borderRadius: "var(--r)" }} />
-        ))}</>
-      )}
-
-      {circles && circles.length === 0 && (
-        <div className="empty">No circles found for this filter. Be the first to create one!</div>
-      )}
-
-      {circles && circles.map((c) => (
-        <CircleCard
-          key={c.id}
-          c={c}
-          onClick={() => onOpen(c)}
-          showJoin={!c.myRole}
-          onJoin={() => {
-            api.joinCircleById(c.id).then(() => onJoined()).catch((e) => onError(e.message));
-          }}
-        />
-      ))}
-    </>
+    </div>
   );
 }
 
-
-/* ---------- Forms ---------- */
-function CreateCircleForm({ onCreated, onCancel, onError }) {
+/* ── Create Public Community Modal (Free) ────────────── */
+function CreatePublicCommunityModal({ onClose, onCreated, onError }) {
   const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [exam, setExam] = useState("JEE");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("General");
+  const [icon, setIcon] = useState("🌐");
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
     try {
-      const res = await api.createCircle(name.trim(), desc.trim(), exam);
+      const res = await api.createCircle({
+        name: name.trim(),
+        description: description.trim(),
+        exam_tag: category,
+        avatar_icon: icon,
+        is_private: false,
+      });
       onCreated(res);
     } catch (err) {
-      onError(err.message);
+      onError(err.message || "Failed to create public community.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <form onSubmit={submit} className="card" style={{ marginBottom: 16 }}>
-      <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Create Study Circle</p>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Group / Channel Name"
-        required
-        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 8, fontSize: 14 }}
-      />
-      <textarea
-        value={desc}
-        onChange={(e) => setDesc(e.target.value)}
-        placeholder="Short description or goal…"
-        rows={2}
-        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 8, fontSize: 14 }}
-      />
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Exam Tag:</span>
-        <select
-          value={exam}
-          onChange={(e) => setExam(e.target.value)}
-          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, background: "var(--surface)" }}
-        >
-          {EXAMS.map((e) => (
-            <option key={e} value={e}>{e}</option>
-          ))}
-        </select>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, boxShadow: "var(--sh-md)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>New Public Community</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>✕</button>
+        </div>
+
+        <p style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 0, marginBottom: 14 }}>
+          Anyone on Spark can discover and join this community for free.
+        </p>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>Community Icon</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["🌐", "📚", "💻", "🎨", "🔬", "🚀"].map((ic) => (
+                <button
+                  key={ic}
+                  type="button"
+                  onClick={() => setIcon(ic)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    border: icon === ic ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
+                    background: icon === ic ? "var(--marigold-light)" : "var(--surface-2)",
+                    fontSize: 16,
+                    cursor: "pointer",
+                  }}
+                >
+                  {ic}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Community Name (e.g. AI Engineers Club)"
+            required
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", color: "var(--ink)" }}
+          />
+
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Short description..."
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", color: "var(--ink)" }}
+          />
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={busy || !name.trim()} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: busy || !name.trim() ? "var(--line)" : "var(--p-gradient)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{busy ? "Creating…" : "Create Community (Free)"}</button>
+          </div>
+        </form>
       </div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button type="button" className="btn sm" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button type="submit" className="btn sm" style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }} disabled={busy || !name.trim()}>
-          {busy ? "Creating…" : "Create Circle"}
-        </button>
-      </div>
-    </form>
+    </div>
   );
 }
 
-function JoinCodeForm({ onJoined, onCancel, onError }) {
-  const [code, setCode] = useState("");
+/* ── Create Private Chat Modal (Paid User Search) ────────────── */
+function CreatePrivateChatModal({ onClose, onCreated, onError }) {
+  const [query, setQuery] = useState("");
+  const [usersList, setUsersList] = useState([]);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!code.trim()) return;
+  useEffect(() => {
+    if (!query.trim()) {
+      setUsersList([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api.searchUsers(query.trim()).then(setUsersList).catch(() => setUsersList([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleSelectUser = async (targetUser) => {
     setBusy(true);
     try {
-      const res = await api.joinCircle(code.trim());
-      onJoined(res);
+      const res = await api.createCircle({
+        name: targetUser.name,
+        target_user_id: targetUser.id,
+        is_private: true,
+        avatar_icon: "👤",
+      });
+      onCreated(res);
     } catch (err) {
-      onError(err.message);
+      onError(err.message || "Failed to start private chat.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <form onSubmit={submit} className="card" style={{ marginBottom: 16 }}>
-      <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>Join Circle with Code</p>
-      <input
-        value={code}
-        onChange={(e) => setCode(e.target.value.toUpperCase())}
-        placeholder="Enter 6-character invite code"
-        required
-        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", marginBottom: 12, fontSize: 14, letterSpacing: 1 }}
-      />
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button type="button" className="btn sm" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button type="submit" className="btn sm" style={{ background: "var(--marigold)", color: "#fff", border: "none", fontWeight: 600 }} disabled={busy || !code.trim()}>
-          {busy ? "Joining…" : "Join Circle"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function CircleCard({ c, onClick, showJoin, onJoin }) {
-  return (
-    <article
-      className="card"
-      onClick={onClick}
-      style={{ cursor: "pointer", transition: "all .15s ease", marginBottom: 12 }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <span className="eyebrow" style={{ margin: 0 }}>
-            {c.examTag || "General"} · {c.memberCount} {c.memberCount === 1 ? "member" : "members"}
-          </span>
-          <p className="summary" style={{ marginTop: 4, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>{c.name}</p>
-        </div>
-        {showJoin && (
-          <button
-            className="btn"
-            onClick={(e) => { e.stopPropagation(); onJoin?.(); }}
-            style={{ fontSize: 12, padding: "4px 12px", whiteSpace: "nowrap" }}
-          >
-            Join
-          </button>
-        )}
-      </div>
-      {c.description && <p className="raw" style={{ marginTop: 4, fontSize: 13.5, color: "var(--ink-soft)" }}>{c.description}</p>}
-      <div className="meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-        <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>Created {fmtDate(c.createdAt)}</span>
-        {c.myRole && <span className="tag" style={{ fontSize: 11, textTransform: "capitalize" }}>{c.myRole}</span>}
-      </div>
-    </article>
-  );
-}
-
-
-/* ---------- Circle Detail ---------- */
-function CircleDetail({ circle, onBack, onError }) {
-  const [members, setMembers] = useState(null);
-  const [info, setInfo] = useState(circle);
-  const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "members"
-  const [joining, setJoining] = useState(false);
-
-  const isMember = Boolean(info.myRole);
-
-  const reloadCircle = () => {
-    api.circleMembers(circle.id).then(setMembers).catch((e) => onError(e.message));
-    api.getCircle(circle.id).then(setInfo).catch(() => {});
-  };
-
-  useEffect(() => {
-    reloadCircle();
-  }, [circle.id]);
-
-  const copyCode = () => {
-    if (!info.inviteCode) return;
-    navigator.clipboard.writeText(info.inviteCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  const handleJoinDirect = async () => {
-    setJoining(true);
-    try {
-      if (info.inviteCode) {
-        await api.joinCircle(info.inviteCode);
-      } else {
-        await api.joinCircleById(info.id);
-      }
-      reloadCircle();
-    } catch (e) {
-      onError(e.message);
-    } finally {
-      setJoining(false);
-    }
-  };
-
-  const [confirmAction, setConfirmAction] = useState(null); // "leave" | "delete" | null
-  const [busyAction, setBusyAction] = useState(false);
-
-  const handleConfirmAction = async () => {
-    setBusyAction(true);
-    try {
-      if (confirmAction === "leave") {
-        await api.leaveCircle(info.id);
-        onBack();
-      } else if (confirmAction === "delete") {
-        await api.deleteCircle(info.id);
-        onBack();
-      }
-    } catch (e) {
-      onError(e.message);
-    } finally {
-      setBusyAction(false);
-      setConfirmAction(null);
-    }
-  };
-
-  return (
-    <>
-      <ConfirmationDialog
-        isOpen={Boolean(confirmAction)}
-        title={confirmAction === "delete" ? "Delete circle?" : "Leave circle?"}
-        description={confirmAction === "delete" ? "This will permanently delete this circle and remove all members. This action cannot be undone." : "Are you sure you want to leave this circle?"}
-        confirmLabel={confirmAction === "delete" ? "Delete circle" : "Leave circle"}
-        cancelLabel="Cancel"
-        isDanger={true}
-        busy={busyAction}
-        onConfirm={handleConfirmAction}
-        onCancel={() => setConfirmAction(null)}
-      />
-      <button
-        onClick={onBack}
-        style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "var(--ink-soft)", fontSize: 13, marginBottom: 12, padding: 0,
-          display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 500
-        }}
-      >
-        ← Back to circles
-      </button>
-
-      <article className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <span className="eyebrow" style={{ margin: 0 }}>
-              {info.examTag || "Circle"} · {info.memberCount} {info.memberCount === 1 ? "member" : "members"}
-            </span>
-            <p className="summary" style={{ marginTop: 4, fontSize: 18, fontWeight: 700 }}>{info.name}</p>
-          </div>
-          {!isMember && (
-            <button className="btn" onClick={handleJoinDirect} disabled={joining} style={{ fontSize: 13, padding: "6px 14px" }}>
-              {joining ? <span className="spin" /> : "Join Circle"}
-            </button>
-          )}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, boxShadow: "var(--sh-md)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>New Private Chat 🔒</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>✕</button>
         </div>
 
-        {info.description && <p className="raw" style={{ marginTop: 6 }}>{info.description}</p>}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search registered user by name or email..."
+          autoFocus
+          style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", color: "var(--ink)", marginBottom: 12 }}
+        />
 
-        {/* Invite code */}
-        {info.inviteCode && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8, marginTop: 12,
-            background: "var(--surface-2)", borderRadius: 8, padding: "8px 12px",
-            border: "1px solid var(--line)",
-          }}>
-            <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Invite code:</span>
-            <code style={{ fontWeight: 600, letterSpacing: 1, fontSize: 14, flex: 1 }}>{info.inviteCode}</code>
-            <button
-              className="btn"
-              onClick={copyCode}
-              style={{ fontSize: 12, padding: "4px 10px" }}
-            >
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        )}
-
-        {/* Actions */}
-        {isMember && (
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            {info.myRole === "owner" ? (
-              <button className="del" onClick={() => setConfirmAction("delete")} style={{ fontSize: 12, padding: "4px 12px" }}>
-                Delete circle
-              </button>
-            ) : (
-              <button
-                onClick={() => setConfirmAction("leave")}
-                style={{
-                  fontSize: 12, padding: "4px 12px", borderRadius: 8,
-                  background: "none", border: "1px solid var(--line)", cursor: "pointer",
-                  color: "var(--ink-soft)",
-                }}
-              >
-                Leave circle
-              </button>
-            )}
-          </div>
-        )}
-      </article>
-
-      {/* Sub tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button
-          className="btn"
-          onClick={() => setActiveTab("chat")}
-          style={{
-            background: activeTab === "chat" ? "var(--ink)" : "var(--surface-2)",
-            color: activeTab === "chat" ? "#fff" : "var(--ink-soft)",
-            border: "1px solid var(--line)",
-            padding: "5px 14px", fontSize: 13,
-          }}
-        >
-          💬 Circle Chat
-        </button>
-        <button
-          className="btn"
-          onClick={() => setActiveTab("members")}
-          style={{
-            background: activeTab === "members" ? "var(--ink)" : "var(--surface-2)",
-            color: activeTab === "members" ? "#fff" : "var(--ink-soft)",
-            border: "1px solid var(--line)",
-            padding: "5px 14px", fontSize: 13,
-          }}
-        >
-          👥 Members ({info.memberCount || 0})
-        </button>
-      </div>
-
-      {activeTab === "members" && (
-        <>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>Members</div>
-          {!members && (
-            <>{[1, 2].map((i) => (
-              <div key={i} className="skeleton" style={{ height: 44, marginBottom: 8, borderRadius: 8 }} />
-            ))}</>
-          )}
-          {members && members.map((m) => (
+        <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {usersList.map((u) => (
             <div
-              key={m.userId}
+              key={u.id}
+              onClick={() => handleSelectUser(u)}
               style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "10px 14px", background: "var(--surface-2)", borderRadius: 10,
-                marginBottom: 8, border: "1px solid var(--line)",
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                cursor: "pointer",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Avatar src={m.avatarUrl} name={m.name || "Anonymous"} size={34} />
-                <span style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{m.name || "Anonymous"}</span>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--marigold-light)", color: "var(--marigold-dark)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                👤
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span className="tag" style={{ fontSize: 11, textTransform: "capitalize" }}>{m.role}</span>
-                <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>Joined {fmtDate(m.joinedAt)}</span>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{u.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{u.email}</div>
               </div>
             </div>
           ))}
-        </>
-      )}
 
-      {activeTab === "chat" && (
-        isMember ? (
-          <CircleChat circleId={info.id} isOwner={info.myRole === "owner"} onError={onError} />
-        ) : (
-          <div style={{
-            textAlign: "center", padding: "36px 20px", background: "var(--surface-2)",
-            borderRadius: "var(--r)", border: "1px solid var(--line)", margin: "8px 0"
-          }}>
-            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Join this circle to view and send messages</p>
-            <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 16 }}>
-              Chat history and discussion in <strong>{info.name}</strong> are exclusive to circle members.
-            </p>
-            <button className="btn" onClick={handleJoinDirect} disabled={joining} style={{ padding: "8px 20px" }}>
-              {joining ? <span className="spin" /> : "Join Circle Now"}
-            </button>
-          </div>
-        )
-      )}
-    </>
+          {query.trim() && usersList.length === 0 && (
+            <div style={{ padding: 14, textAlign: "center", fontSize: 12.5, color: "var(--ink-soft)" }}>
+              No registered user found matching "{query}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
+/* ── Create Private Group Modal (Paid) ────────────── */
+function CreatePrivateGroupModal({ onClose, onCreated, onError }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
 
-/* ---------- Circle Chat Component ---------- */
-function CircleChat({ circleId, isOwner, onError }) {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [text, setText] = useState("");
-  const [replyTo, setReplyTo] = useState(null);
-  const [editingMsg, setEditingMsg] = useState(null);
-  const [sending, setSending] = useState(false);
-  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
-  const bottomRef = useRef(null);
-
-  const fetchMessages = async (isInitial = false) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
     try {
-      const res = await api.getCircleMessages(circleId, 100, 0);
-      setMessages(res.messages || []);
-      setConsecutiveErrors(0);
-    } catch (e) {
-      setConsecutiveErrors((prev) => prev + 1);
-      if (isInitial) {
-        onError(e.message || "Could not load circle messages.");
-      }
+      const res = await api.createCircle({
+        name: name.trim(),
+        description: description.trim(),
+        is_private: true,
+        avatar_icon: "🔒",
+      });
+      onCreated(res);
+    } catch (err) {
+      onError(err.message || "Failed to create private group.");
     } finally {
-      if (isInitial) setLoading(false);
+      setBusy(false);
     }
   };
 
-  useEffect(() => {
-    setLoading(true);
-    setConsecutiveErrors(0);
-    fetchMessages(true);
-  }, [circleId]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, boxShadow: "var(--sh-md)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>New Private Group 🔒</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>✕</button>
+        </div>
 
-  useEffect(() => {
-    if (consecutiveErrors >= 3) return; // Stop polling on repeated errors
-    const timer = setInterval(() => fetchMessages(false), 4000);
-    return () => clearInterval(timer);
-  }, [circleId, consecutiveErrors]);
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Private Group Name"
+            required
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", color: "var(--ink)" }}
+          />
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Group Purpose / Description..."
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5, background: "var(--surface-2)", color: "var(--ink)" }}
+          />
 
-  useEffect(() => {
-    if (!loading && messages.length > 0) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages.length, loading]);
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={busy || !name.trim()} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: busy || !name.trim() ? "var(--line)" : "var(--p-gradient)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{busy ? "Creating…" : "Create Private Group"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    setSending(true);
+/* ── Conversation Messaging View (CircleDetail) ────────────── */
+function CircleDetail({ circle, user, onBack, onError }) {
+  const [messages, setMessages] = useState([]);
+  const [textInput, setTextInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const bottomRef = useRef(null);
 
+  const loadMessages = useCallback(async () => {
     try {
-      if (editingMsg) {
-        await api.editMessage(circleId, editingMsg.id, text.trim());
-        setEditingMsg(null);
-      } else {
-        await api.sendMessage(circleId, text.trim(), replyTo ? replyTo.id : null);
-        setReplyTo(null);
-      }
-      setText("");
-      await fetchMessages(false);
-    } catch (e) {
-      onError(e.message);
+      const res = await api.getCircleMessages(circle.id);
+      setMessages(res.messages || []);
+    } catch (err) {
+      onError(err.message || "Failed to load messages.");
+    } finally {
+      setLoading(false);
+    }
+  }, [circle.id, onError]);
+
+  useEffect(() => {
+    loadMessages();
+    const interval = setInterval(loadMessages, 4000);
+    return () => clearInterval(interval);
+  }, [loadMessages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    if (!textInput.trim()) return;
+
+    setSending(true);
+    try {
+      const newMsg = await api.sendMessage(circle.id, textInput.trim());
+      setMessages((prev) => [...prev, newMsg]);
+      setTextInput("");
+    } catch (err) {
+      onError(err.message || "Failed to send message.");
     } finally {
       setSending(false);
     }
   };
 
-  const handleEdit = (msg) => {
-    setEditingMsg(msg);
-    setText(msg.content);
-    setReplyTo(null);
-  };
-
-  const handleDelete = async (msgId) => {
-    if (!confirm("Delete this message?")) return;
-    try {
-      await api.deleteMessage(circleId, msgId);
-      await fetchMessages(false);
-    } catch (e) {
-      onError(e.message);
-    }
-  };
-
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", height: 440,
-      border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)",
-      overflow: "hidden"
-    }}>
-      {/* Messages area */}
-      <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        {loading && <div className="empty" style={{ margin: "auto" }}>Loading chat history…</div>}
-        {!loading && messages.length === 0 && (
-          <div className="empty" style={{ margin: "auto" }}>
-            No messages yet.<br />Be the first to say hello! 👋
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 130px)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", boxShadow: "var(--sh-sm)" }}>
+      {/* Header Bar */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyBetween: "space-between", gap: 12 }}>
+        <button
+          onClick={onBack}
+          style={{ background: "none", border: "none", fontSize: 16, fontWeight: 700, color: "var(--ink)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+        >
+          <span>←</span>
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {circle.name}
+          </h2>
+          <span style={{ fontSize: 11, color: circle.isPrivate ? "var(--marigold-dark)" : "#059669", fontWeight: 600 }}>
+            {circle.isPrivate ? "🔒 Private Conversation" : "🌐 Public Community"}
+          </span>
+        </div>
+      </div>
+
+      {/* Messages Scroll Area */}
+      <div style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        {loading && (
+          <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--ink-soft)", paddingTop: 20 }}>
+            Loading messages…
           </div>
         )}
-        {!loading && messages.map((m) => (
-          <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <Avatar src={m.senderAvatar} name={m.senderName || "Unknown"} size={32} />
+
+        {!loading && messages.length === 0 && (
+          <div style={{ textAlign: "center", fontSize: 13, color: "var(--ink-soft)", paddingTop: 40 }}>
+            No messages in this conversation yet. Send the first message!
+          </div>
+        )}
+
+        {messages.map((m) => {
+          const isMe = m.userId === user?.id;
+
+          return (
             <div
+              key={m.id}
               style={{
-                flex: 1,
-                padding: "8px 12px",
-                borderRadius: 12,
-                background: m.isDeleted ? "var(--surface-3)" : "var(--surface-2)",
-                border: "1px solid var(--line)",
-                fontSize: 13.5,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: isMe ? "flex-end" : "flex-start",
               }}
             >
-              {/* Sender and time header */}
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11, color: "var(--ink-soft)" }}>
-                <span style={{ fontWeight: 600, color: "var(--ink)" }}>{m.senderName}</span>
-                <span>
-                  {fmtTime(m.createdAt)} {m.editedAt && !m.isDeleted ? "(edited)" : ""}
-                </span>
+              <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 2 }}>
+                {isMe ? "You" : m.senderName} · {fmtDate(m.createdAt)}
               </div>
 
-              {/* Reply thread header */}
-              {m.replyTo && (
-                <div style={{
-                  fontSize: 11, color: "var(--ink-soft)", background: "var(--surface)",
-                  padding: "4px 8px", borderRadius: 6, marginBottom: 6, borderLeft: "3px solid var(--marigold)",
-                }}>
-                  Replying to <strong>{m.replyTo.senderName}</strong>: "{m.replyTo.content.slice(0, 30)}{m.replyTo.content.length > 30 ? "…" : ""}"
-                </div>
-              )}
-
-              {/* Content */}
-              <div style={{ fontStyle: m.isDeleted ? "italic" : "normal", color: m.isDeleted ? "var(--ink-soft)" : "var(--ink)", wordBreak: "break-word" }}>
+              <div
+                style={{
+                  maxWidth: "80%",
+                  padding: "9px 14px",
+                  borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                  background: isMe ? "var(--marigold)" : "var(--surface-2)",
+                  color: isMe ? "#ffffff" : "var(--ink)",
+                  fontSize: 13.5,
+                  lineHeight: 1.45,
+                  wordBreak: "break-word",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                }}
+              >
                 {m.content}
               </div>
-
-              {/* Message Actions */}
-              {!m.isDeleted && (
-                <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--ink-soft)" }}>
-                  <button
-                    onClick={() => { setReplyTo(m); setEditingMsg(null); }}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--marigold-dark)", fontWeight: 600 }}
-                  >
-                    Reply
-                  </button>
-                  <button
-                    onClick={() => handleEdit(m)}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--ink-soft)" }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(m.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#ef4444" }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
-      {/* Reply or edit active status banner */}
-      {(replyTo || editingMsg) && (
-        <div style={{
-          padding: "6px 12px", background: "var(--marigold-light)", borderTop: "1px solid var(--line)",
-          display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12,
-        }}>
-          <span>
-            {replyTo && <>Replying to <strong>{replyTo.senderName}</strong></>}
-            {editingMsg && <>Editing message</>}
-          </span>
-          <button
-            onClick={() => { setReplyTo(null); setEditingMsg(null); setText(""); }}
-            style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 600, color: "var(--ink-soft)" }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Composer form */}
-      <form onSubmit={handleSend} style={{ display: "flex", gap: 8, padding: 8, borderTop: "1px solid var(--line)", background: "var(--surface-2)" }}>
+      {/* Message Composer Footer */}
+      <form onSubmit={handleSendMessage} style={{ padding: 10, borderTop: "1px solid var(--line)", background: "var(--surface)", display: "flex", gap: 8, alignItems: "center" }}>
         <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={editingMsg ? "Edit message…" : replyTo ? `Reply to ${replyTo.senderName}…` : "Type a message…"}
-          style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13.5 }}
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          placeholder="Write a message..."
+          style={{
+            flex: 1,
+            padding: "9px 14px",
+            borderRadius: 20,
+            border: "1px solid var(--line)",
+            fontSize: 13.5,
+            background: "var(--surface-2)",
+            color: "var(--ink)",
+          }}
         />
-        <button className="btn" type="submit" disabled={sending || !text.trim()}>
-          {sending ? <span className="spin" /> : editingMsg ? "Save" : "Send"}
+
+        <button
+          type="submit"
+          disabled={sending || !textInput.trim()}
+          style={{
+            padding: "9px 18px",
+            borderRadius: 20,
+            border: "none",
+            background: sending || !textInput.trim() ? "var(--line)" : "var(--p-gradient)",
+            color: "#ffffff",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: sending || !textInput.trim() ? "not-allowed" : "pointer",
+          }}
+        >
+          Send
         </button>
       </form>
     </div>

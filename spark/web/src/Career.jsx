@@ -82,24 +82,42 @@ export default function Career({ onNavigate, user }) {
 
   const fileInputRef = useRef();
 
+  const [initialSaved, setInitialSaved] = useState(null);
+
   useEffect(() => {
     // Fetch user career profile & previous analysis
     setLoadingProfile(true);
     api.getCareerProfile()
       .then((prof) => {
         if (prof) {
-          if (prof.target_role) setTargetRole(prof.target_role);
-          if (prof.target_company) setTargetCompany(prof.target_company);
-          if (prof.job_description) setJobDescription(prof.job_description);
-          if (prof.resume_text) setResumeText(prof.resume_text);
-          if (prof.resume_filename) setResumeFilename(prof.resume_filename);
-          if (prof.github_username) setGithub(prof.github_username);
-          if (prof.last_analysis) setAnalysis(prof.last_analysis);
+          const role = prof.target_role || "";
+          const company = prof.target_company || "";
+          const jd = prof.job_description || "";
+          const resText = prof.resume_text || "";
+          const resFile = prof.resume_filename || "";
+          const gh = prof.github_username || "";
+          setTargetRole(role);
+          setTargetCompany(company);
+          setJobDescription(jd);
+          setResumeText(resText);
+          setResumeFilename(resFile);
+          setGithub(gh);
+          setAnalysis(prof.last_analysis);
+          setInitialSaved({ role, company, jd, resText, gh });
         }
       })
       .catch((e) => console.error("Failed to load career profile:", e))
       .finally(() => setLoadingProfile(false));
   }, []);
+
+  const isStale = Boolean(
+    initialSaved &&
+    (targetRole !== initialSaved.role ||
+      targetCompany !== initialSaved.company ||
+      jobDescription !== initialSaved.jd ||
+      resumeText !== initialSaved.resText ||
+      github !== initialSaved.gh)
+  );
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -175,6 +193,13 @@ export default function Career({ onNavigate, user }) {
         github_username: github,
       });
       setAnalysis(res);
+      setInitialSaved({
+        role: targetRole,
+        company: targetCompany,
+        jd: jobDescription,
+        resText: resumeText,
+        gh: github,
+      });
     } catch (e) {
       setErr(e.message || "Failed to analyze resume.");
     } finally {
@@ -510,6 +535,15 @@ export default function Career({ onNavigate, user }) {
       {/* AI Career Analysis Results Dashboard */}
       {analysis && !loadingProfile && (
         <div style={{ marginTop: 24 }}>
+          {isStale && (
+            <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>⚠️</span>
+              <div>
+                Target inputs or resume have been updated. Click <b>"Analyze Career Readiness →"</b> above to calculate updated match score & audit for current inputs.
+              </div>
+            </div>
+          )}
+
           {/* Readiness Score Header */}
           <div
             style={{

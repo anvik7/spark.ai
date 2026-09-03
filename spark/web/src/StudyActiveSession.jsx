@@ -498,6 +498,108 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
           </div>
         )}
 
+        {/* Final Mastery Check Assessment (when all chapters are reviewed) */}
+        {currentChapterIdx === sessionData.chapters.length - 1 && (
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "2px solid var(--marigold)",
+              borderRadius: 14,
+              padding: 20,
+              boxShadow: "var(--sh-md)",
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 32 }}>🏆</span>
+              <h3 style={{ fontSize: 18, fontWeight: 800, margin: "6px 0 2px", color: "var(--ink)" }}>
+                Final Mastery Assessment
+              </h3>
+              <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>
+                Source-grounded evaluation across all concepts in this session
+              </span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+              <div style={{ padding: 14, background: "var(--surface-2)", borderRadius: 10, textAlign: "center", border: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-soft)" }}>Final Mastery</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: sessionData.overallMasteryPercent >= 70 ? "#059669" : "#D97706", marginTop: 2 }}>
+                  {Math.round(sessionData.overallMasteryPercent || 0)}%
+                </div>
+              </div>
+
+              <div style={{ padding: 14, background: "var(--surface-2)", borderRadius: 10, textAlign: "center", border: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-soft)" }}>Concepts Mastered</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "var(--ink)", marginTop: 2 }}>
+                  {sessionData.conceptMastery?.filter((c) => c.status === "Mastered")?.length || 0} / {sessionData.conceptMastery?.length || sessionData.totalChaptersCount}
+                </div>
+              </div>
+            </div>
+
+            {/* Strong Areas & Needs Review Lists */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+              <div style={{ padding: 12, background: "#ECFDF5", borderRadius: 8, border: "1px solid #A7F3D0" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginBottom: 6 }}>
+                  ✓ Strong Areas
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink)" }}>
+                  {sessionData.conceptMastery?.filter((c) => c.status === "Mastered" || c.masteryScore >= 70)?.map((c) => c.conceptName)?.join(", ") || "Completing recall & quizzes..."}
+                </div>
+              </div>
+
+              <div style={{ padding: 12, background: "#FEF2F2", borderRadius: 8, border: "1px solid #FCA5A5" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>
+                  ⚠️ Needs Review
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink)" }}>
+                  {sessionData.conceptMastery?.filter((c) => c.status === "Needs Review" || c.masteryScore < 70)?.map((c) => c.conceptName)?.join(", ") || "None! All concepts strong."}
+                </div>
+              </div>
+            </div>
+
+            {/* Assessment Action Controls */}
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button
+                onClick={() => {
+                  const weakIdx = sessionData.chapters.findIndex((ch) =>
+                    sessionData.conceptMastery?.some((cm) => cm.conceptName === ch.title && cm.status === "Needs Review")
+                  );
+                  if (weakIdx !== -1) handleJumpToChapter(weakIdx);
+                  else handleJumpToChapter(0);
+                }}
+                style={{
+                  padding: "9px 18px",
+                  borderRadius: 8,
+                  border: "1px solid var(--marigold)",
+                  background: "var(--marigold-light)",
+                  color: "var(--marigold-dark)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Review Weak Areas
+              </button>
+
+              <button
+                onClick={onBack}
+                style={{
+                  padding: "9px 18px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "var(--p-gradient)",
+                  color: "#ffffff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Finish Session
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Concept Mastery & Weak-Area Insights Panel */}
         {sessionData.conceptMastery?.length > 0 && (
           <div style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, padding: 16 }}>

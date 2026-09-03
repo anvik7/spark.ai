@@ -91,17 +91,25 @@ export default function Interview({ onNavigate, user }) {
   // Load existing career profile resume & past interview sessions
   useEffect(() => {
     setLoading(true);
+    const activeStoredId = localStorage.getItem("spark_active_interview_id");
+
     Promise.all([
-      api.getInterviewSession().catch(() => null),
+      activeStoredId === "new"
+        ? Promise.resolve(null)
+        : api.getInterviewSession(activeStoredId && activeStoredId !== "new" ? Number(activeStoredId) : null).catch(() => null),
       api.getCareerProfile().catch(() => null),
       api.getInterviewHistory().catch(() => []),
     ])
       .then(([activeSess, profile, hist]) => {
-        if (activeSess) {
+        if (activeSess && activeStoredId !== "new") {
           setSession(activeSess);
+          localStorage.setItem("spark_active_interview_id", activeSess.id);
           if (activeSess.status === "completed") {
             setStatus("completed");
           }
+        } else if (activeStoredId === "new") {
+          setSession(null);
+          setStatus("idle");
         }
         if (Array.isArray(hist)) setHistory(hist);
         if (profile) {
@@ -145,6 +153,7 @@ export default function Interview({ onNavigate, user }) {
           },
           onInterviewCompleted: (evalSess) => {
             setSession(evalSess);
+            localStorage.setItem("spark_active_interview_id", evalSess.id);
             setStatus("completed");
             setHistory((prev) => [evalSess, ...prev.filter((h) => h.id !== evalSess.id)]);
           },
@@ -197,7 +206,10 @@ export default function Interview({ onNavigate, user }) {
       const ctrl = initController(targetRole, targetCompany, jobDescription, resumeText, roundType, difficulty);
       await ctrl.start();
       const st = ctrl.getState();
-      if (st.session) setSession(st.session);
+      if (st.session) {
+        setSession(st.session);
+        localStorage.setItem("spark_active_interview_id", st.session.id);
+      }
     } catch (error) {
       console.error("Start interview error:", error);
       setErr(error.message || "Failed to start interview session.");
@@ -222,11 +234,15 @@ export default function Interview({ onNavigate, user }) {
       if (controller) {
         await controller.submitAnswer(ans);
         const st = controller.getState();
-        if (st.session) setSession(st.session);
+        if (st.session) {
+          setSession(st.session);
+          localStorage.setItem("spark_active_interview_id", st.session.id);
+        }
       } else if (session) {
         setStatus("thinking");
         const updatedSess = await api.answerInterview(session.id, ans);
         setSession(updatedSess);
+        localStorage.setItem("spark_active_interview_id", updatedSess.id);
         setAnswerInput("");
         if (updatedSess.status === "completed") {
           setStatus("completed");
@@ -254,6 +270,7 @@ export default function Interview({ onNavigate, user }) {
       try {
         const evalSess = await api.evaluateInterview(session.id);
         setSession(evalSess);
+        localStorage.setItem("spark_active_interview_id", evalSess.id);
         setStatus("completed");
         setHistory((prev) => [evalSess, ...prev.filter((h) => h.id !== evalSess.id)]);
       } catch (error) {
@@ -268,6 +285,7 @@ export default function Interview({ onNavigate, user }) {
   const handleNewInterview = () => {
     if (controller) controller.stopAll();
     stopListeningMic();
+    localStorage.setItem("spark_active_interview_id", "new");
     setSession(null);
     setStatus("idle");
     setCurrentQuestion("");

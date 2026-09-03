@@ -145,8 +145,11 @@ export default function Study({ onOpenUpgrade }) {
         <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>
           Study Engine
         </h1>
-        <p className="sub" style={{ margin: "2px 0 0", fontSize: 13.5, color: "var(--ink-soft)" }}>
-          Transform passive lectures & documents into active learning sessions with AI micro-chapters, recall, and dynamic mind maps.
+        <p className="sub" style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
+          Turn learning material into active learning.
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--ink-soft)" }}>
+          Spark breaks your material into focused concepts, tests your recall, and helps you build mastery.
         </p>
       </div>
 
@@ -168,14 +171,13 @@ export default function Study({ onOpenUpgrade }) {
           marginBottom: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 20 }}>🚀</span>
+        <div style={{ display: "flex", alignItems: "center", justifyBetween: "space-between", marginBottom: 14 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
               Start Active AI Learning Session
             </h2>
             <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>
-              Input a lecture video, audio, document, or Paper Vault material to extract micro-chapters & recall quizzes.
+              Add a document, PDF, lecture video, audio, or text to extract micro-chapters & recall quizzes.
             </span>
           </div>
         </div>
@@ -198,81 +200,50 @@ export default function Study({ onOpenUpgrade }) {
           style={{ display: "none" }}
         />
 
-        {/* Mode Selector Choice Buttons */}
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 14, borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
-          <button
-            type="button"
-            onClick={() => setLauncherMode("url")}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: launcherMode === "url" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-              background: launcherMode === "url" ? "var(--marigold-light)" : "var(--surface-2)",
-              color: launcherMode === "url" ? "var(--marigold-dark)" : "var(--ink-soft)",
-              fontSize: 12.5,
-              fontWeight: launcherMode === "url" ? 700 : 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <span>🔗</span>
-            <span>Video / Web URL</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setLauncherMode("paper")}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: launcherMode === "paper" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-              background: launcherMode === "paper" ? "var(--marigold-light)" : "var(--surface-2)",
-              color: launcherMode === "paper" ? "var(--marigold-dark)" : "var(--ink-soft)",
-              fontSize: 12.5,
-              fontWeight: launcherMode === "paper" ? 700 : 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <span>📄</span>
-            <span>From Paper Vault</span>
-          </button>
-
-          {/* Simple "+" Icon Button for Adding File / Media Source */}
+        {/* Single Primary Action Button */}
+        <div style={{ marginBottom: 14 }}>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            title="Add file or media source"
             style={{
-              width: 30,
-              height: 30,
+              padding: "10px 18px",
               borderRadius: 8,
-              border: launcherMode === "upload" ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-              background: launcherMode === "upload" ? "var(--marigold-light)" : "var(--surface-2)",
-              color: launcherMode === "upload" ? "var(--marigold-dark)" : "var(--ink)",
-              fontSize: 16,
+              border: "1.5px solid var(--marigold)",
+              background: "var(--marigold-light)",
+              color: "var(--marigold-dark)",
+              fontSize: 13.5,
               fontWeight: 700,
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
-              justifyContent: "center",
-              lineHeight: 1,
+              gap: 8,
             }}
           >
-            +
+            <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 800 }}>+</span>
+            <span>Add Learning Material</span>
           </button>
         </div>
+
+        {/* Selected File Badge */}
+        {selectedFile && (
+          <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>📄 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)</span>
+            <button
+              type="button"
+              onClick={() => setSelectedFile(null)}
+              style={{ border: "none", background: "none", color: "#DC2626", fontWeight: 700, cursor: "pointer" }}
+            >
+              Change
+            </button>
+          </div>
+        )}
 
         {/* Active Session Input Form */}
         <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input
             value={titleInput}
             onChange={(e) => setTitleInput(e.target.value)}
-            placeholder="Session Topic / Title"
+            placeholder="Session Topic / Title (e.g., Machine Learning Basics)"
             required
             style={{
               width: "100%",
@@ -285,104 +256,27 @@ export default function Study({ onOpenUpgrade }) {
             }}
           />
 
-          {launcherMode === "url" && (
-            <input
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="Paste video or document URL"
-              required
-              style={{
-                width: "100%",
-                padding: "9px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                fontSize: 13.5,
-                background: "var(--surface-2)",
-                color: "var(--ink)",
-              }}
-            />
-          )}
-
-          {launcherMode === "upload" && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid var(--line)",
-                  background: "var(--surface-2)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--ink)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>{selectedFile ? `📄 ${selectedFile.name}` : "No file chosen"}</span>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  style={{
-                    border: "none",
-                    background: "var(--marigold-light)",
-                    color: "var(--marigold-dark)",
-                    borderRadius: 4,
-                    padding: "2px 6px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-          )}
-
-          {launcherMode === "paper" && (
-            <select
-              value={selectedPaperId}
-              onChange={(e) => setSelectedPaperId(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "9px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                fontSize: 13.5,
-                background: "var(--surface-2)",
-                color: "var(--ink)",
-              }}
-            >
-              <option value="">Select a Paper from your Paper Vault...</option>
-              {papers.map((p) => (
-                <option key={p.id} value={p.id}>{p.title} ({p.subject || "General"})</option>
-              ))}
-            </select>
-          )}
-
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
             <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-              AI generates 3-7 min concept chapters, active recall & mind maps
+              Extracts grounded concepts, active recall & mind maps
             </span>
 
             <button
               type="submit"
-              disabled={launchingBusy}
+              disabled={launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim())}
               style={{
                 padding: "9px 20px",
                 borderRadius: 8,
                 border: "none",
-                background: launchingBusy ? "var(--line)" : "var(--p-gradient)",
+                background: launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim()) ? "var(--line)" : "var(--p-gradient)",
                 color: "#ffffff",
                 fontSize: 13.5,
                 fontWeight: 700,
-                cursor: launchingBusy ? "not-allowed" : "pointer",
+                cursor: launchingBusy || (!selectedFile && !urlInput.trim() && !titleInput.trim()) ? "not-allowed" : "pointer",
                 boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
               }}
             >
-              {launchingBusy ? "Analyzing & Chaptering…" : "Start Active Session →"}
+              {launchingBusy ? "Analyzing & Extracting Concepts…" : "Start Active Session →"}
             </button>
           </div>
         </form>
@@ -400,72 +294,92 @@ export default function Study({ onOpenUpgrade }) {
         </div>
 
         {activeSessions.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
+          <div style={{ padding: 28, textAlign: "center", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
             <div style={{ fontSize: 13.5, color: "var(--ink-soft)" }}>
-              No active learning sessions created yet. Enter a topic, URL, or document above to start your first session.
+              Your learning sessions will appear here.
             </div>
           </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {activeSessions.map((as) => (
-            <div
-              key={as.id}
-              onClick={() => setSelectedActiveSessionId(as.id)}
-              style={{
-                background: "var(--surface)",
-                border: "1.5px solid var(--line)",
-                borderRadius: 12,
-                padding: 14,
-                boxShadow: "var(--sh-sm)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-                transition: "all .15s ease",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", letterSpacing: ".05em" }}>
-                    {as.subject}
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-                    · {as.completedChaptersCount} of {as.totalChaptersCount} chapters
-                  </span>
+          {activeSessions.map((as) => {
+            const mastery = Math.round(as.overallMasteryPercent || 0);
+            let tierLabel = "Needs Review";
+            let tierColor = "#DC2626";
+            let tierBg = "#FEE2E2";
+            if (mastery >= 85) {
+              tierLabel = "Mastered";
+              tierColor = "#059669";
+              tierBg = "#D1FAE5";
+            } else if (mastery >= 70) {
+              tierLabel = "Strong";
+              tierColor = "#0284C7";
+              tierBg = "#E0F2FE";
+            } else if (mastery >= 40) {
+              tierLabel = "Developing";
+              tierColor = "#D97706";
+              tierBg = "#FEF3C7";
+            }
+
+            return (
+              <div
+                key={as.id}
+                onClick={() => setSelectedActiveSessionId(as.id)}
+                style={{
+                  background: "var(--surface)",
+                  border: "1.5px solid var(--line)",
+                  borderRadius: 12,
+                  padding: 14,
+                  boxShadow: "var(--sh-sm)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  transition: "all .15s ease",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: tierColor, background: tierBg, padding: "2px 6px", borderRadius: 4 }}>
+                      {tierLabel}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
+                      · {as.completedChaptersCount} of {as.totalChaptersCount} concepts
+                    </span>
+                  </div>
+
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
+                    {as.title}
+                  </h3>
                 </div>
 
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
-                  {as.title}
-                </h3>
-              </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: tierColor }}>
+                      {mastery}% Mastery
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>
+                      {as.processingStatus}
+                    </div>
+                  </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
-                    {as.overallMasteryPercent}% Mastery
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>
-                    {as.processingStatus}
-                  </div>
+                  <button
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      background: "var(--marigold-light)",
+                      color: "var(--marigold-dark)",
+                      border: "none",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Continue →
+                  </button>
                 </div>
-
-                <button
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    background: "var(--marigold-light)",
-                    color: "var(--marigold-dark)",
-                    border: "none",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                  }}
-                >
-                  Continue →
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
