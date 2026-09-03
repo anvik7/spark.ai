@@ -7,17 +7,15 @@ export default function Study({ onOpenUpgrade }) {
   const [selectedActiveSessionId, setSelectedActiveSessionId] = useState(null);
   
   const [sessions, setSessions] = useState([]);
-  const [papers, setPapers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // New Active Learning Session Launcher Form
-  const [launcherMode, setLauncherMode] = useState("url"); // "url", "upload", "paper"
+  const [launcherMode, setLauncherMode] = useState("url"); // "url", "upload"
   const [titleInput, setTitleInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [subjectInput, setSubjectInput] = useState("General Academic");
   const [selectedFile, setSelectedFile] = useState(null);
-  const [selectedPaperId, setSelectedPaperId] = useState("");
   const [launchingBusy, setLaunchingBusy] = useState(false);
   const [err, setErr] = useState("");
   const fileRef = useRef();
@@ -35,13 +33,11 @@ export default function Study({ onOpenUpgrade }) {
       api.listActiveStudySessions().catch(() => []),
       api.getStudySessions().catch(() => []),
       api.getTodayStudyStats().catch(() => null),
-      api.listPapers().catch(() => []),
     ])
-      .then(([activeSessData, sessData, statsData, paperData]) => {
+      .then(([activeSessData, sessData, statsData]) => {
         setActiveSessions(activeSessData || []);
         setSessions(sessData || []);
         setStats(statsData);
-        setPapers(paperData || []);
       })
       .finally(() => setLoading(false));
   };
@@ -66,20 +62,15 @@ export default function Study({ onOpenUpgrade }) {
     setErr("");
     try {
       let res;
-      if (launcherMode === "url") {
-        if (!urlInput.trim()) return;
-        res = await api.createActiveStudySessionUrl(urlInput.trim(), titleInput.trim(), subjectInput);
-      } else if (launcherMode === "upload") {
-        if (!selectedFile || !titleInput.trim()) return;
+      if (selectedFile) {
         const f = new FormData();
         f.append("file", selectedFile);
-        f.append("title", titleInput.trim());
+        f.append("title", titleInput.trim() || selectedFile.name);
         f.append("subject", subjectInput);
         f.append("source_type", "video_file");
         res = await api.createActiveStudySessionUpload(f);
-      } else if (launcherMode === "paper") {
-        if (!selectedPaperId) return;
-        res = await api.createStudyFromPaper(Number(selectedPaperId));
+      } else if (urlInput.trim()) {
+        res = await api.createActiveStudySessionUrl(urlInput.trim(), titleInput.trim(), subjectInput);
       }
 
       if (res && res.id) {

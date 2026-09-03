@@ -17,7 +17,7 @@ from datetime import datetime, date, timedelta, timezone
 from sqlmodel import select, col, func
 import httpx
 from .config import get_settings
-from .models import User, Card, UsageDay, QuestionPaper, PaperDownloadLog
+from .models import User, Card, UsageDay, StudyMediaSource
 
 settings = get_settings()
 
@@ -112,20 +112,13 @@ def get_user_entitlements(user: User, session) -> dict:
         UsageDay.user_id == user.id, UsageDay.day == today)).first()
     ai_used_today = ai_row.ai_calls if ai_row else 0
 
-    downloads_month = session.exec(
-        select(func.count()).where(
-            PaperDownloadLog.user_id == user.id,
-            col(PaperDownloadLog.downloaded_at) >= start_of_month,
-        )
-    ).one()
+    downloads_month = 0
 
     uploads_count = session.exec(
-        select(func.count()).where(QuestionPaper.uploader_id == user.id)
+        select(func.count()).where(StudyMediaSource.user_id == user.id)
     ).one()
 
-    storage_used = session.exec(
-        select(func.sum(QuestionPaper.file_size)).where(QuestionPaper.uploader_id == user.id)
-    ).one() or 0
+    storage_used = 0
 
     trial_active = is_trial_active(user)
     trial_expires_at = getattr(user, "trial_expires_at", None)
@@ -181,44 +174,17 @@ def check_upload_quota(session, user: User, file_size: int) -> tuple[bool, str]:
 
     limits = get_plan_limits(user)
     uploads_count = session.exec(
-        select(func.count()).where(QuestionPaper.uploader_id == user.id)
+        select(func.count()).where(StudyMediaSource.user_id == user.id)
     ).one()
 
     if limits["max_uploads"] is not None and uploads_count >= limits["max_uploads"]:
         return False, f"Upload limit reached ({limits['max_uploads']} files). Upgrade to Plus or Pro for more storage."
-
-    storage_used = session.exec(
-        select(func.sum(QuestionPaper.file_size)).where(QuestionPaper.uploader_id == user.id)
-    ).one() or 0
-
-    if storage_used + file_size > limits["storage_bytes"]:
-        mb_limit = limits["storage_bytes"] // (1024 * 1024)
-        return False, f"Storage quota exceeded ({mb_limit}MB limit). Upgrade to Plus or Pro for expanded storage."
 
     return True, ""
 
 
 def check_download_quota(session, user: User) -> tuple[bool, str]:
     """Check monthly download limit."""
-    if user.id is None:
-        return False, "User ID missing"
-
-    limits = get_plan_limits(user)
-    if limits["max_downloads_per_month"] is None:
-        return True, ""
-
-    start_of_month = _now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    count = session.exec(
-        select(func.count()).where(
-            PaperDownloadLog.user_id == user.id,
-            col(PaperDownloadLog.downloaded_at) >= start_of_month,
-        )
-    ).one()
-
-    if count >= limits["max_downloads_per_month"]:
-        trial_note = " (14-Day Trial limit: 2 downloads/mo)" if limits.get("is_trial") else ""
-        return False, f"Download limit reached ({limits['max_downloads_per_month']}/month){trial_note}. Upgrade to Plus or Pro for higher download allowances."
-
     return True, ""
 
 

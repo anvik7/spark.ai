@@ -1,19 +1,23 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, Suspense, lazy } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
-import Capture from "./Capture.jsx";
-import Tasks from "./Tasks.jsx";
-import Study from "./Study.jsx";
-import Career from "./Career.jsx";
-import Interview from "./Interview.jsx";
 import Landing from "./Landing.jsx";
-import Upgrade from "./Upgrade.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
-import Account from "./Account.jsx";
-import Circles from "./Circles.jsx";
 import Avatar from "./components/Avatar.jsx";
 import CommandMenu from "./components/ui/CommandMenu.jsx";
+import ModuleErrorBoundary from "./components/ui/ModuleErrorBoundary.jsx";
+import ModuleLoadingState from "./components/ui/ModuleLoadingState.jsx";
+
+// Lazy-loaded standalone module chunks
+const Capture = lazy(() => import("./Capture.jsx"));
+const Tasks = lazy(() => import("./Tasks.jsx"));
+const Study = lazy(() => import("./Study.jsx"));
+const Career = lazy(() => import("./Career.jsx"));
+const Interview = lazy(() => import("./Interview.jsx"));
+const Circles = lazy(() => import("./Circles.jsx"));
+const Account = lazy(() => import("./Account.jsx"));
+const Upgrade = lazy(() => import("./Upgrade.jsx"));
 
 /* ---------- SVG Navigation Icons ---------- */
 const Ico = {
@@ -278,21 +282,70 @@ export default function App() {
           }}
         >
           {showAccount ? (
-            <Account
-              user={user}
-              onLogout={() => { setShowAccount(false); setUser(null); }}
-              onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
-            />
+            <ModuleErrorBoundary moduleName="Account">
+              <Suspense fallback={<ModuleLoadingState moduleName="Account" />}>
+                <Account
+                  user={user}
+                  onLogout={() => { setShowAccount(false); setUser(null); }}
+                  onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+                />
+              </Suspense>
+            </ModuleErrorBoundary>
           ) : showUpgrade ? (
-            <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
+            <ModuleErrorBoundary moduleName="Upgrade">
+              <Suspense fallback={<ModuleLoadingState moduleName="Upgrade" />}>
+                <Upgrade user={user} onUpgraded={() => { setShowUpgrade(false); refreshUser(); }} onBack={() => setShowUpgrade(false)} />
+              </Suspense>
+            </ModuleErrorBoundary>
           ) : (
             <>
-              {tab === "capture" && <Capture onNavigate={handleNav} />}
-              {tab === "tasks" && <Tasks />}
-              {tab === "study" && <Study onOpenUpgrade={() => setShowUpgrade(true)} />}
-              {tab === "career" && <Career onNavigate={handleNav} user={user} />}
-              {tab === "circles" && <Circles onOpenUpgrade={() => setShowUpgrade(true)} user={user} />}
-              {tab === "coach" && <Interview />}
+              {tab === "capture" && (
+                <ModuleErrorBoundary moduleName="Capture">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Capture" />}>
+                    <Capture onNavigate={handleNav} />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
+              {tab === "tasks" && (
+                <ModuleErrorBoundary moduleName="Tasks">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Tasks" />}>
+                    <Tasks />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
+              {tab === "study" && (
+                <ModuleErrorBoundary moduleName="Study">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Study" />}>
+                    <Study onOpenUpgrade={() => setShowUpgrade(true)} />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
+              {tab === "circles" && (
+                <ModuleErrorBoundary moduleName="Chat">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Chat" />}>
+                    <Circles onOpenUpgrade={() => setShowUpgrade(true)} user={user} />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
+              {tab === "career" && (
+                <ModuleErrorBoundary moduleName="Career">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Career" />}>
+                    <Career onNavigate={handleNav} user={user} />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
+              {tab === "coach" && (
+                <ModuleErrorBoundary moduleName="Coach">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Coach" />}>
+                    <Interview />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
             </>
           )}
         </div>
