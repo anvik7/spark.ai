@@ -39,6 +39,7 @@ export default function CommandMenu({ isOpen, onClose, onNavigate }) {
   const q = query.trim().toLowerCase();
 
   const navItems = [
+    { id: "home", label: "Go to Home Workspace", icon: "⚡", category: "Navigation" },
     { id: "tasks", label: "Go to Tasks", icon: "📋", category: "Navigation" },
     { id: "capture", label: "Go to Capture", icon: "✏️", category: "Navigation" },
     { id: "study", label: "Go to Study", icon: "📖", category: "Navigation" },

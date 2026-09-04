@@ -125,8 +125,6 @@ export const api = {
   // Active Learning Engine API
   listActiveStudySessions: () => req("/study/active-sessions"),
   createActiveStudySessionUpload: (formData) => req("/study/active-sessions", { method: "POST", form: formData }),
-  createActiveStudySessionUrl: (url, title = "", subject = "General Academic") =>
-    req("/study/active-sessions/url", { method: "POST", body: { url, title, subject } }),
   getActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`),
   processActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}/process`, { method: "POST" }),
   getStudyChapter: (chapterId) => req(`/study/active-sessions/chapters/${chapterId}`),
@@ -197,6 +195,7 @@ export const api = {
     return req("/circles/discover" + qs);
   },
   searchUsers: (q) => req(`/circles/users/search?q=${encodeURIComponent(q)}`),
+  getUserPublicProfile: (userId) => req(`/circles/users/${userId}/profile`),
   createCircle: (data) =>
     req("/circles", { method: "POST", body: typeof data === "object" ? data : { name: data } }),
   getCircle: (id) => req(`/circles/${id}`),
@@ -211,10 +210,24 @@ export const api = {
   // Circle Chat / Messages
   getCircleMessages: (circleId, limit = 50, offset = 0) =>
     req(`/circles/${circleId}/messages?limit=${limit}&offset=${offset}`),
-  sendMessage: (circleId, content, replyToId = null) =>
-    req(`/circles/${circleId}/messages`, { method: "POST", body: { content, reply_to_id: replyToId } }),
+  sendMessage: (circleId, payload, replyToId = null) => {
+    const bodyData = typeof payload === "string" ? { content: payload } : { ...payload };
+    if (replyToId) bodyData.reply_to_id = replyToId;
+    return req(`/circles/${circleId}/messages`, { method: "POST", body: bodyData });
+  },
   editMessage: (circleId, msgId, content) =>
     req(`/circles/${circleId}/messages/${msgId}`, { method: "PUT", body: { content } }),
   deleteMessage: (circleId, msgId) =>
     req(`/circles/${circleId}/messages/${msgId}`, { method: "DELETE" }),
+  uploadChatImage: (file) => {
+    const f = new FormData();
+    f.append("file", file);
+    return req("/circles/upload-image", { method: "POST", form: f });
+  },
+  blockUser: (userId) => req(`/circles/users/${userId}/block`, { method: "POST" }),
+  unblockUser: (userId) => req(`/circles/users/${userId}/block`, { method: "DELETE" }),
+  reportMessage: (msgId, reason = "inappropriate", details = "") =>
+    req(`/circles/messages/${msgId}/report`, { method: "POST", body: { reason, details } }),
+  muteCircle: (circleId) => req(`/circles/${circleId}/mute`, { method: "POST" }),
+  unmuteCircle: (circleId) => req(`/circles/${circleId}/mute`, { method: "DELETE" }),
 };

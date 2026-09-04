@@ -200,6 +200,7 @@ export function createTTSManager({
     }
 
     state.isSpeaking = false;
+    state.lastSpeechEndedTs = Date.now();
     state.currentUtterance = null;
     onEnd?.();
   }
@@ -222,19 +223,32 @@ export function createTTSManager({
         onStart?.();
         const audio = new Audio(audioUrl);
         state.currentAudio = audio;
-        audio.onended = () => {
-          state.isSpeaking = false;
-          state.currentAudio = null;
-          URL.revokeObjectURL(audioUrl);
-          onEnd?.();
-        };
-        audio.onerror = () => {
-          state.currentAudio = null;
-          URL.revokeObjectURL(audioUrl);
-          speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
-        };
-        await audio.play();
-        return;
+        return new Promise((resolve) => {
+          audio.onended = () => {
+            state.isSpeaking = false;
+            state.lastSpeechEndedTs = Date.now();
+            state.currentAudio = null;
+            try {
+              URL.revokeObjectURL(audioUrl);
+            } catch (e) {}
+            onEnd?.();
+            resolve(true);
+          };
+          audio.onerror = () => {
+            state.currentAudio = null;
+            try {
+              URL.revokeObjectURL(audioUrl);
+            } catch (e) {}
+            speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+          };
+          audio.play().catch(() => {
+            state.currentAudio = null;
+            try {
+              URL.revokeObjectURL(audioUrl);
+            } catch (e) {}
+            speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+          });
+        });
       }
     } catch (e) {
       console.warn("Server TTS playback error, falling back to Web Speech:", e);
@@ -242,11 +256,12 @@ export function createTTSManager({
 
     // Fallback: Browser SpeechSynthesis
     onStart?.();
-    speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+    await speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
   }
 
   function stop() {
     state.isSpeaking = false;
+    state.lastSpeechEndedTs = Date.now();
     state.isPaused = false;
     if (state.currentAudio) {
       try {
@@ -294,6 +309,7 @@ export function createTTSManager({
     pause,
     resume,
     replay,
+    isSpeaking: () => state.isSpeaking || (Date.now() - (state.lastSpeechEndedTs || 0) < 500),
     ensureVoicesLoaded,
     getVoices: () => (typeof window !== "undefined" ? window.speechSynthesis?.getVoices?.() || [] : []),
     getState: () => ({ ...state }),

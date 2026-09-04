@@ -279,9 +279,40 @@ class CircleMessage(SQLModel, table=True):
     circle_id: int = Field(index=True, foreign_key="studycircle.id")
     user_id: int = Field(index=True, foreign_key="user.id")
     content: str = ""
+    message_type: str = "text"  # "text" | "sticker" | "image" | "capture"
+    media_url: Optional[str] = None
+    sticker_id: Optional[str] = None
+    capture_id: Optional[int] = None
+    capture_title: Optional[str] = None
+    capture_summary: Optional[str] = None
+    capture_kind: Optional[str] = None
     reply_to_id: Optional[int] = Field(default=None, foreign_key="circlemessage.id")
     is_deleted: bool = False
     edited_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class UserBlock(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    blocker_id: int = Field(index=True, foreign_key="user.id")
+    blocked_id: int = Field(index=True, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class UserReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    reporter_id: int = Field(index=True, foreign_key="user.id")
+    reported_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    message_id: Optional[int] = Field(default=None, foreign_key="circlemessage.id")
+    reason: str = "inappropriate"  # "inappropriate" | "spam" | "harassment" | "other"
+    details: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CircleMute(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    circle_id: int = Field(index=True, foreign_key="studycircle.id")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -452,6 +483,23 @@ def _migrate() -> None:
                 if "avatar_icon" not in circle_cols:
                     print("[migrate] Adding avatar_icon column to 'studycircle' table...")
                     conn.execute(_sql("ALTER TABLE studycircle ADD COLUMN avatar_icon VARCHAR DEFAULT '💬'"))
+
+            # Auto-migrate circlemessage table
+            if inspector.has_table("circlemessage"):
+                msg_cols = {c["name"] for c in inspector.get_columns("circlemessage")}
+                msg_additions = {
+                    "message_type": "VARCHAR DEFAULT 'text'",
+                    "media_url": "VARCHAR",
+                    "sticker_id": "VARCHAR",
+                    "capture_id": "INTEGER",
+                    "capture_title": "VARCHAR",
+                    "capture_summary": "TEXT",
+                    "capture_kind": "VARCHAR",
+                }
+                for col_name, col_ddl in msg_additions.items():
+                    if col_name not in msg_cols:
+                        print(f"[migrate] Adding {col_name} column to 'circlemessage' table...")
+                        conn.execute(_sql(f'ALTER TABLE circlemessage ADD COLUMN {col_name} {col_ddl}'))
 
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")

@@ -34,7 +34,7 @@ const PILLARS = [
     icon: "👥",
     tag: "STUDY CIRCLES",
     title: "Connect & study with peer circles",
-    description: "Create or join private study circles for exams like JEE, NEET, UPSC, GATE, or custom tech stacks. Share invite codes and chat in real time.",
+    description: "Create or join private study circles for subjects, goals, projects, or shared interests. Share invite codes and chat in real time.",
     bullets: ["Private invite-code study groups", "Real-time circle chat with replies & edits", "Member directory & study progress tracking"],
   },
 ];

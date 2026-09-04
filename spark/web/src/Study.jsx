@@ -20,9 +20,13 @@ export default function Study({ onOpenUpgrade }) {
 
   const loadData = () => {
     setLoading(true);
+    setErr("");
     api.listActiveStudySessions()
       .then((data) => setActiveSessions(data || []))
-      .catch((e) => console.error("Failed to load study sessions:", e))
+      .catch((e) => {
+        console.error("Failed to load study sessions:", e);
+        setErr("Study couldn't load right now.");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -64,7 +68,7 @@ export default function Study({ onOpenUpgrade }) {
       if (error.message?.includes("402") || error.message?.toLowerCase().includes("quota")) {
         onOpenUpgrade?.();
       }
-      setErr(error.message || "Failed to initialize active study session.");
+      setErr(error.message || "Study couldn't load right now.");
     } finally {
       setLaunchingBusy(false);
     }
@@ -116,9 +120,39 @@ export default function Study({ onOpenUpgrade }) {
       </div>
 
       {err && (
-        <div className="err" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>⚠️ {err}</span>
-          <button onClick={() => setErr("")} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "inherit" }}>✕</button>
+        <div
+          style={{
+            padding: 16,
+            background: "var(--surface)",
+            border: "1.5px solid var(--line)",
+            borderRadius: 12,
+            marginBottom: 20,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
+            Study couldn't load right now.
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            style={{
+              padding: "7px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--p-gradient)",
+              color: "#ffffff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -137,11 +171,11 @@ export default function Study({ onOpenUpgrade }) {
           Start Learning Session
         </h2>
 
-        {/* Hidden File Input */}
+        {/* Hidden File Input (Documents Only) */}
         <input
           ref={fileRef}
           type="file"
-          accept=".pdf,.txt,.doc,.docx,video/*,audio/*"
+          accept=".pdf,.txt,.doc,.docx"
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
@@ -217,13 +251,13 @@ export default function Study({ onOpenUpgrade }) {
         <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
-              Session Title
+              Session title
             </label>
             <input
               type="text"
               value={titleInput}
               onChange={(e) => setTitleInput(e.target.value)}
-              placeholder="Session Title"
+              placeholder="Session title"
               required
               style={{
                 width: "100%",
@@ -254,7 +288,7 @@ export default function Study({ onOpenUpgrade }) {
                 boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
               }}
             >
-              {launchingBusy ? "Processing Material…" : "Start Learning →"}
+              {launchingBusy ? "Processing Material…" : "Start Learning"}
             </button>
           </div>
         </form>

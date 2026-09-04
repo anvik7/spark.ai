@@ -11,10 +11,21 @@ export function createInterviewController({
   aiStartInterview,
   aiAnswerInterview,
   aiEvaluateInterview,
+  ttsInstance = null,
+  sttInstance = null,
   ui = {},
 } = {}) {
-  const tts = createTTSManager({ rate: 0.93, pitch: 1.0, volume: 1.0, preferredLang: "en-US" });
-  const stt = createSpeechRecognitionManager({ lang: "en-US", maxSilenceMs: 2500 });
+  const tts = ttsInstance || createTTSManager({ rate: 0.93, pitch: 1.0, volume: 1.0, preferredLang: "en-US" });
+  const stt = sttInstance || createSpeechRecognitionManager({
+    lang: "en-US",
+    maxSilenceMs: 2500,
+    isTTSActive: () => tts.isSpeaking(),
+  });
+
+  // Ensure STT is linked to TTS activity
+  if (typeof stt.setTTSActiveCheck === "function") {
+    stt.setTTSActiveCheck(() => tts.isSpeaking());
+  }
 
   let running = false;
 
@@ -87,7 +98,7 @@ export function createInterviewController({
     state.previousQuestions.push(q);
     state.turnIndex += 1;
 
-    // IMPORTANT: Stop candidate recording while interviewer speaks to avoid self-capture!
+    // Stop candidate recording while interviewer speaks to avoid audio feedback
     stt.stopListening();
 
     setStatus("speaking");
@@ -102,6 +113,11 @@ export function createInterviewController({
     } catch (e) {
       ui.onTTSError?.(e);
     }
+
+    if (!running) return;
+
+    // Echo dissipation cooldown before opening candidate mic
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     if (!running) return;
 
@@ -177,10 +193,13 @@ export function createInterviewController({
       resume: () => tts.resume(),
       replay: () => tts.replay(),
       stop: () => tts.stop(),
+      isSpeaking: () => tts.isSpeaking(),
     },
     stt: {
       startListening: (opts) => stt.startListening(opts),
       stopListening: () => stt.stopListening(),
+      reset: () => stt.reset(),
+      isSupported: stt.isSupported,
     },
     isSpeechSupported: typeof window !== "undefined" && "speechSynthesis" in window,
     isRecognitionSupported: stt.isSupported,

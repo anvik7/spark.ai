@@ -10,6 +10,7 @@ import ModuleErrorBoundary from "./components/ui/ModuleErrorBoundary.jsx";
 import ModuleLoadingState from "./components/ui/ModuleLoadingState.jsx";
 
 // Lazy-loaded standalone module chunks
+const Home = lazy(() => import("./Home.jsx"));
 const Capture = lazy(() => import("./Capture.jsx"));
 const Tasks = lazy(() => import("./Tasks.jsx"));
 const Study = lazy(() => import("./Study.jsx"));
@@ -126,12 +127,12 @@ export default function App() {
 
       {/* Desktop Persistent Sidebar */}
       <aside className="app-sidebar">
-        <div className="sidebar-header" onClick={() => handleNav("capture")} style={{ cursor: "pointer" }}>
+        <div className="sidebar-header" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
           <Chakra size={24} />
           <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
         </div>
 
-        <div className="sidebar-workspace">
+        <div className="sidebar-workspace" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
           <span>⚡</span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Personal Workspace
@@ -189,7 +190,7 @@ export default function App() {
       <main className="app-main">
         {/* Mobile Header (< 768px) */}
         <header className="topbar-mobile">
-          <div onClick={() => handleNav("capture")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <div onClick={() => handleNav("home")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} title="Spark Home">
             <Chakra size={20} />
             <span className="logo-mark" style={{ fontSize: 18 }}>Spark</span>
           </div>
@@ -276,7 +277,9 @@ export default function App() {
             if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
               const primaryTabs = ["tasks", "capture", "study", "circles", "career", "coach"];
               const currentIdx = primaryTabs.indexOf(tab);
-              if (currentIdx !== -1) {
+              if (tab === "home" && dx < 0) {
+                handleNav("tasks");
+              } else if (currentIdx !== -1) {
                 if (dx < 0 && currentIdx < primaryTabs.length - 1) {
                   // Swipe Left -> Next module
                   handleNav(primaryTabs[currentIdx + 1]);
@@ -306,6 +309,17 @@ export default function App() {
             </ModuleErrorBoundary>
           ) : (
             <>
+              {tab === "home" && (
+                <ModuleErrorBoundary moduleName="Home">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Home" />}>
+                    <Home
+                      user={user}
+                      onNavigate={handleNav}
+                      onOpenUpgrade={() => setShowUpgrade(true)}
+                    />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
               {tab === "capture" && (
                 <ModuleErrorBoundary moduleName="Capture">
                   <Suspense fallback={<ModuleLoadingState moduleName="Capture" />}>
@@ -358,7 +372,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation (All 7 Modules Direct Access: CAPTURE | TASKS | STUDY | CAREER | PAPERS | CIRCLES | COACH) */}
+      {/* Mobile Bottom Navigation (Tasks | Capture | Study | Chat | Career | Coach) */}
       <nav className="nav">
         {navItems.map((item) => (
           <NavBtn

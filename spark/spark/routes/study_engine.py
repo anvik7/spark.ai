@@ -52,82 +52,16 @@ class ProgressUpdateIn(BaseModel):
     current_time_seconds: float = 0.0
 
 
-import re
-from youtube_transcript_api import YouTubeTranscriptApi
-
-
-def extract_youtube_id(url_or_id: str) -> str:
-    """Extract 11-character YouTube video ID from various URL formats."""
-    if not url_or_id:
-        return ""
-    url_or_id = url_or_id.strip()
-    if len(url_or_id) == 11 and re.match(r"^[A-Za-z0-9_-]{11}$", url_or_id):
-        return url_or_id
-    patterns = [
-        r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/e\/|watch\?.*v=)([A-Za-z0-9_-]{11})",
-        r"([A-Za-z0-9_-]{11})",
-    ]
-    for pattern in patterns:
-        m = re.search(pattern, url_or_id)
-        if m:
-            return m.group(1)
-    return ""
-
-
-def fetch_youtube_transcript_real(url_or_id: str) -> dict:
-    """Real YouTube transcript extractor. Obtains video captions/transcript using YouTubeTranscriptApi."""
-    vid = extract_youtube_id(url_or_id)
-    if not vid:
-        raise ValueError("Spark couldn't access the lecture content. Please provide a valid YouTube URL.")
-
-    api_inst = YouTubeTranscriptApi()
-    snippets = None
-    try:
-        ts = api_inst.fetch(vid)
-        snippets = getattr(ts, "snippets", None) or (ts if isinstance(ts, list) else None)
-    except Exception as e:
-        try:
-            tl = api_inst.list(vid)
-            t_obj = None
-            try:
-                t_obj = tl.find_transcript(["en", "en-US", "en-GB", "hi", "es", "fr"])
-            except Exception:
-                for t in tl:
-                    t_obj = t
-                    break
-            if t_obj:
-                fetched = t_obj.fetch()
-                snippets = getattr(fetched, "snippets", None) or (fetched if isinstance(fetched, list) else None)
-            else:
-                raise e
-        except Exception:
-            raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
-
-    if not snippets or len(snippets) == 0:
-        raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
-
-    lines = []
-    total_duration = 0.0
-    for snip in snippets:
-        start_sec = getattr(snip, "start", 0.0)
-        text = getattr(snip, "text", "").strip()
-        duration = getattr(snip, "duration", 0.0)
-        if start_sec + duration > total_duration:
-            total_duration = start_sec + duration
-
-        mins = int(start_sec // 60)
-        secs = int(start_sec % 60)
-        time_str = f"[{mins:02d}:{secs:02d}]"
-        if text:
-            lines.append(f"{time_str} {text}")
-
-    full_transcript = "\n".join(lines)
-    return {
-        "video_id": vid,
-        "transcript": full_transcript,
-        "duration_seconds": int(total_duration),
-        "snippet_count": len(snippets),
-    }
+def _update_concept_status(cm: ConceptMastery):
+    if cm.attempts_count == 0:
+        cm.status = "Learning"
+    else:
+        if cm.mastery_score >= 80.0:
+            cm.status = "Mastered"
+        elif cm.mastery_score >= 50.0:
+            cm.status = "Improving"
+        else:
+            cm.status = "Needs Review"
 
 
 # --- Pipeline Helper ---------------------------------------------------------
@@ -141,56 +75,21 @@ def _run_processing_pipeline(session, source: StudyMediaSource, active_session: 
         session.add(source)
         session.commit()
 
-        # Step 1: Extract Real Content Transcript
+        # Step 1: Extract Real Content Text
         text_content = (source.transcript_text or "").strip()
 
-        if source.source_type == "youtube_url" or (source.url and "youtu" in source.url.lower()):
-            yt_id = extract_youtube_id(source.url or source.title)
-            # Check DB cache for existing transcript with same video ID
-            cached_src = session.exec(
-                select(StudyMediaSource)
-                .where(StudyMediaSource.url.contains(yt_id))
-                .where(col(StudyMediaSource.transcript_text) != "")
-            ).first() if yt_id else None
-
-            if cached_src and cached_src.transcript_text and len(cached_src.transcript_text) > 50:
-                text_content = cached_src.transcript_text
-                source.transcript_text = text_content
-                source.duration_seconds = cached_src.duration_seconds
-                source.source_type = "youtube_url"
-                print(f"[study_engine] CACHE HIT for youtube_id = {yt_id} ({len(text_content)} chars)")
-            else:
-                yt_res = fetch_youtube_transcript_real(source.url or source.title)
-                text_content = yt_res["transcript"]
-                source.transcript_text = text_content
-                source.duration_seconds = yt_res["duration_seconds"]
-                source.source_type = "youtube_url"
-                print(f"[study_engine] SOURCE TYPE = youtube_transcript")
-                print(f"[study_engine] SOURCE CONTENT LENGTH = {len(text_content)}")
-
-        elif source.source_type == "paper_id":
-            if source.file_path and source.file_path.isdigit():
-                paper_obj = session.get(QuestionPaper, int(source.file_path))
-                if paper_obj and (paper_obj.extracted_ocr_text or paper_obj.title):
-                    text_content = f"{paper_obj.title}\n\n{paper_obj.extracted_ocr_text or paper_obj.subject or ''}"
-                    source.transcript_text = text_content
-            if not text_content:
-                raise ValueError("Spark couldn't access Paper Vault content. Please try a different resource.")
-
-        elif not text_content:
-            # Check file path for text
-            if source.file_path and os.path.exists(source.file_path):
-                try:
-                    with open(source.file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        file_txt = f.read().strip()
-                        if len(file_txt) > 20:
-                            text_content = file_txt
-                            source.transcript_text = text_content
-                except Exception:
-                    pass
+        if not text_content and source.file_path and os.path.exists(source.file_path):
+            try:
+                with open(source.file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    file_txt = f.read().strip()
+                    if len(file_txt) > 20:
+                        text_content = file_txt
+                        source.transcript_text = text_content
+            except Exception:
+                pass
 
         if not text_content or len(text_content.strip()) < 20:
-            raise ValueError("Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file.")
+            raise ValueError("Spark couldn't process this learning material. Please upload a supported text document (.pdf, .txt, .docx).")
 
         source.status = "ANALYZING"
         session.add(source)
@@ -349,11 +248,11 @@ def list_active_sessions(user: User = Depends(current_user)):
 async def create_active_session_upload(
     title: str = Form(...),
     subject: str = Form("General Academic"),
-    source_type: str = Form("video_file"),
+    source_type: str = Form("document"),
     file: UploadFile = File(None),
     user: User = Depends(current_user),
 ):
-    """Upload video, audio, or document file and initialize AI learning session."""
+    """Upload learning document file and initialize AI learning session."""
     assert user.id is not None
     title_clean = title.strip()
     if not title_clean:
@@ -375,7 +274,7 @@ async def create_active_session_upload(
             if not ok:
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
 
-        ext = os.path.splitext(file.filename or "")[1] or ".mp4"
+        ext = os.path.splitext(file.filename or "")[1] or ".pdf"
         file_key = f"media_{uuid.uuid4().hex[:10]}{ext}"
         file_path = os.path.join(LOCAL_MEDIA_DIR, file_key)
         with open(file_path, "wb") as f:
@@ -392,13 +291,10 @@ async def create_active_session_upload(
                 transcript = ""
 
         if not transcript:
-            if "text" in (file.content_type or "") or ext in [".txt", ".md", ".json", ".csv", ".py", ".js", ".html", ".rst"]:
-                try:
-                    transcript = data.decode("utf-8", errors="ignore")
-                except Exception:
-                    transcript = f"Learning document content for {title_clean}."
-            else:
-                transcript = f"Audio/video lecture transcript for {title_clean}. Explains core concepts, mechanics, and practice questions."
+            try:
+                transcript = data.decode("utf-8", errors="ignore")
+            except Exception:
+                transcript = f"Learning document content for {title_clean}."
 
     with get_session() as session:
         source = StudyMediaSource(
@@ -670,9 +566,34 @@ def submit_active_recall(chapter_id: int, body: ActiveRecallIn, user: User = Dep
             misconceptions_json=json.dumps(eval_res.get("misconceptions") or []),
             recommendation=eval_res.get("recommendation") or "Keep learning!",
         )
-        session.add(eval_obj)
+        eval_score = eval_res.get("understanding_score", 70)
+        understood = eval_res.get("understood_concepts") or []
+        missing = eval_res.get("missing_concepts") or []
+
+        # Update Concept Mastery based on active recall evaluation
+        chapter_concepts = json.loads(ch.key_concepts_json or "[]")
+        for c_name in set(chapter_concepts + understood + missing):
+            cm = session.exec(
+                select(ConceptMastery)
+                .where(ConceptMastery.session_id == active_session.id, ConceptMastery.concept_name == c_name)
+            ).first()
+            if cm:
+                cm.attempts_count += 1
+                if c_name in understood or (not missing and eval_score >= 70):
+                    cm.correct_count += 1
+                cm.mastery_score = (cm.correct_count / max(1, cm.attempts_count)) * 100.0
+                _update_concept_status(cm)
+                cm.last_evaluated_at = datetime.now(timezone.utc)
+                session.add(cm)
+
+        # Update overall session mastery
+        all_masteries = session.exec(select(ConceptMastery).where(ConceptMastery.session_id == active_session.id)).all()
+        if all_masteries:
+            avg_score = sum(m.mastery_score for m in all_masteries) / len(all_masteries)
+            active_session.overall_mastery_percent = avg_score
+            session.add(active_session)
+
         session.commit()
-        session.refresh(eval_obj)
 
         return {
             "understandingScore": eval_obj.understanding_score,
@@ -728,7 +649,7 @@ def submit_quiz_answer(question_id: int, body: QuizAnswerIn, user: User = Depend
             if is_correct:
                 cm.correct_count += 1
             cm.mastery_score = (cm.correct_count / max(1, cm.attempts_count)) * 100.0
-            cm.status = "Mastered" if cm.mastery_score >= 80 else "Learning" if cm.mastery_score >= 50 else "Needs Review"
+            _update_concept_status(cm)
             cm.last_evaluated_at = datetime.now(timezone.utc)
             session.add(cm)
 

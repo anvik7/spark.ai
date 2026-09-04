@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "./api.js";
 import { createInterviewController } from "./utils/interviewController.js";
 import { createSpeechRecognitionManager } from "./utils/speechRecognition.js";
+import { createTTSManager } from "./utils/tts.js";
 
 const scoreColor = (s) =>
   s >= 80 ? "#10B981" : s >= 65 ? "var(--marigold)" : "#EF4444";
@@ -79,13 +80,29 @@ export default function Interview({ onNavigate, user }) {
   const [err, setErr] = useState("");
 
   const sttManagerRef = useRef(null);
+  const ttsManagerRef = useRef(null);
+  const baseAnswerRef = useRef("");
 
-  // Speech Recognition Manager
+  // Speech Recognition & TTS Managers (Single Shared Lifetime)
   useEffect(() => {
+    ttsManagerRef.current = createTTSManager({
+      preferredLang: "en-US",
+      rate: 0.93,
+      pitch: 1.0,
+      volume: 1.0,
+    });
     sttManagerRef.current = createSpeechRecognitionManager({
       lang: "en-US",
       maxSilenceMs: 2500,
+      isTTSActive: () => ttsManagerRef.current?.isSpeaking?.() ?? false,
     });
+
+    return () => {
+      // Clean up all audio and speech recognition on component unmount
+      ttsManagerRef.current?.stop();
+      sttManagerRef.current?.stopListening();
+      sttManagerRef.current?.reset();
+    };
   }, []);
 
   // Load existing career profile resume & past interview sessions
@@ -93,21 +110,26 @@ export default function Interview({ onNavigate, user }) {
     setLoading(true);
     const activeStoredId = localStorage.getItem("spark_active_interview_id");
 
+    if (!activeStoredId || activeStoredId === "new") {
+      setSession(null);
+      setStatus("idle");
+    }
+
     Promise.all([
-      activeStoredId === "new"
-        ? Promise.resolve(null)
-        : api.getInterviewSession(activeStoredId && activeStoredId !== "new" ? Number(activeStoredId) : null).catch(() => null),
+      activeStoredId && activeStoredId !== "new"
+        ? api.getInterviewSession(Number(activeStoredId)).catch(() => null)
+        : Promise.resolve(null),
       api.getCareerProfile().catch(() => null),
       api.getInterviewHistory().catch(() => []),
     ])
       .then(([activeSess, profile, hist]) => {
-        if (activeSess && activeStoredId !== "new") {
+        if (activeSess && activeStoredId && activeStoredId !== "new") {
           setSession(activeSess);
           localStorage.setItem("spark_active_interview_id", activeSess.id);
           if (activeSess.status === "completed") {
             setStatus("completed");
           }
-        } else if (activeStoredId === "new") {
+        } else {
           setSession(null);
           setStatus("idle");
         }
@@ -133,12 +155,15 @@ export default function Interview({ onNavigate, user }) {
         candidateProfile: resumeVal || resumeText,
         interviewRound: roundVal || roundType,
         difficulty: diffVal || difficulty,
+        ttsInstance: ttsManagerRef.current,
+        sttInstance: sttManagerRef.current,
         aiStartInterview: (data) => api.startInterview(data),
         aiAnswerInterview: (sessId, text) => api.answerInterview(sessId, text),
         aiEvaluateInterview: (sessId) => api.evaluateInterview(sessId),
         ui: {
           onStatusChange: (s) => setStatus(s),
           onInterviewerSpeaking: (q) => {
+            stopListeningMic();
             setCurrentQuestion(q);
             setInterimTranscript("");
           },
@@ -147,9 +172,10 @@ export default function Interview({ onNavigate, user }) {
               startListeningMic();
             }
           },
-          onCandidateTranscribed: (ans) => {
+          onCandidateTranscribed: () => {
             setAnswerInput("");
             setInterimTranscript("");
+            baseAnswerRef.current = "";
           },
           onInterviewCompleted: (evalSess) => {
             setSession(evalSess);
@@ -168,27 +194,48 @@ export default function Interview({ onNavigate, user }) {
 
   const startListeningMic = () => {
     if (!sttManagerRef.current?.isSupported) return;
+    // Discard microphone start if interviewer is speaking
+    if (ttsManagerRef.current?.isSpeaking?.()) return;
+
+    baseAnswerRef.current = answerInput.trim();
     setIsMicActive(true);
+
     sttManagerRef.current.startListening({
       onResult: ({ interim, final }) => {
-        setInterimTranscript(interim);
+        setInterimTranscript(interim || "");
         if (final) {
-          setAnswerInput((prev) => (prev ? prev.trim() + " " + final : final));
+          const combined = baseAnswerRef.current
+            ? `${baseAnswerRef.current} ${final}`
+            : final;
+          setAnswerInput(combined);
         }
       },
       onFinal: (final) => {
+        setInterimTranscript("");
         if (final) {
-          setAnswerInput((prev) => (prev ? prev.trim() + " " + final : final));
+          const combined = baseAnswerRef.current
+            ? `${baseAnswerRef.current} ${final}`
+            : final;
+          setAnswerInput(combined);
         }
       },
-      onError: (e) => console.warn("Mic error:", e),
-      onEnd: () => setIsMicActive(false),
+      onError: (e) => {
+        console.warn("Mic error:", e);
+        setIsMicActive(false);
+        setInterimTranscript("");
+      },
+      onEnd: () => {
+        setIsMicActive(false);
+        setInterimTranscript("");
+      },
+      checkTTSActive: () => ttsManagerRef.current?.isSpeaking?.() ?? false,
     });
   };
 
   const stopListeningMic = () => {
     sttManagerRef.current?.stopListening();
     setIsMicActive(false);
+    setInterimTranscript("");
   };
 
   // Handlers
@@ -227,6 +274,9 @@ export default function Interview({ onNavigate, user }) {
     }
 
     stopListeningMic();
+    sttManagerRef.current?.reset();
+    baseAnswerRef.current = "";
+    setInterimTranscript("");
     setBusy(true);
     setErr("");
 
@@ -244,6 +294,8 @@ export default function Interview({ onNavigate, user }) {
         setSession(updatedSess);
         localStorage.setItem("spark_active_interview_id", updatedSess.id);
         setAnswerInput("");
+        setInterimTranscript("");
+        baseAnswerRef.current = "";
         if (updatedSess.status === "completed") {
           setStatus("completed");
         } else {
@@ -263,6 +315,9 @@ export default function Interview({ onNavigate, user }) {
 
   const handleConcludeInterview = async () => {
     stopListeningMic();
+    sttManagerRef.current?.reset();
+    baseAnswerRef.current = "";
+    setInterimTranscript("");
     if (controller) {
       controller.conclude();
     } else if (session) {
@@ -285,11 +340,16 @@ export default function Interview({ onNavigate, user }) {
   const handleNewInterview = () => {
     if (controller) controller.stopAll();
     stopListeningMic();
-    localStorage.setItem("spark_active_interview_id", "new");
+    ttsManagerRef.current?.stop();
+    sttManagerRef.current?.reset();
+    baseAnswerRef.current = "";
+    localStorage.removeItem("spark_active_interview_id");
     setSession(null);
+    setController(null);
     setStatus("idle");
     setCurrentQuestion("");
     setAnswerInput("");
+    setInterimTranscript("");
     setErr("");
   };
 

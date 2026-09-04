@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "./api.js";
 
 export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade }) {
@@ -6,11 +6,8 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   
-  // Player state
+  // Navigation state
   const [currentChapterIdx, setCurrentChapterIdx] = useState(0);
-  const [currentTimeSecs, setCurrentTimeSecs] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const mediaRef = useRef(null);
 
   // Active Recall state
   const [recallInput, setRecallInput] = useState("");
@@ -28,18 +25,18 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
 
   const loadSession = async () => {
     setLoading(true);
+    setErr("");
     try {
       const data = await api.getActiveStudySession(sessionId);
       setSessionData(data);
       setCurrentChapterIdx(data.currentChapterIndex || 0);
-      setCurrentTimeSecs(data.currentTimeSeconds || 0.0);
 
       // Load MindMap
       api.getStudyMindMap(sessionId)
         .then((mm) => setMindmapNodes(Array.isArray(mm) ? mm : []))
         .catch(() => {});
     } catch (e) {
-      setErr(e.message || "Failed to load study session.");
+      setErr("Study couldn't load right now.");
     } finally {
       setLoading(false);
     }
@@ -51,28 +48,10 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
 
   const currentChapter = sessionData?.chapters?.[currentChapterIdx] || null;
 
-  // Sync playback time & progress
-  const handleTimeUpdate = () => {
-    if (!mediaRef.current) return;
-    const cur = mediaRef.current.currentTime;
-    setCurrentTimeSecs(cur);
-
-    // Save progress periodically
-    if (Math.floor(cur) % 5 === 0) {
-      api.updateStudyProgress(sessionId, currentChapterIdx, cur).catch(() => {});
-    }
-  };
-
   const handleJumpToChapter = (idx) => {
     if (!sessionData?.chapters?.[idx]) return;
     const targetCh = sessionData.chapters[idx];
     setCurrentChapterIdx(idx);
-    setCurrentTimeSecs(targetCh.startTime || 0);
-
-    if (mediaRef.current) {
-      mediaRef.current.currentTime = targetCh.startTime || 0;
-    }
-
     setRecallResult(null);
     setRecallInput("");
 
@@ -87,8 +66,17 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
     try {
       const res = await api.submitActiveRecall(currentChapter.id, recallInput.trim());
       setRecallResult(res);
+
+      // Reload session details to update concept mastery breakdown
+      api.getStudyMindMap(sessionId).then((mm) => setMindmapNodes(Array.isArray(mm) ? mm : [])).catch(() => {});
+      const updated = await api.getActiveStudySession(sessionId);
+      setSessionData((prev) => ({
+        ...prev,
+        overallMasteryPercent: updated.overallMasteryPercent,
+        conceptMastery: updated.conceptMastery,
+      }));
     } catch (e) {
-      setErr(e.message || "Failed to evaluate active recall.");
+      setErr("Study couldn't load right now.");
     } finally {
       setRecallEvaluating(false);
     }
@@ -111,7 +99,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
         }));
       }).catch(() => {});
     } catch (e) {
-      setErr(e.message || "Failed to submit quiz answer.");
+      setErr("Study couldn't load right now.");
     } finally {
       setQuizBusy((prev) => ({ ...prev, [qId]: false }));
     }
@@ -132,14 +120,53 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
   if (err || !sessionData || sessionData.processingStatus === "FAILED") {
     return (
       <div className="screen" style={{ padding: 20 }}>
-        <button onClick={onBack} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", cursor: "pointer", marginBottom: 16 }}>
+        <button
+          onClick={onBack}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--line)",
+            background: "var(--surface-2)",
+            color: "var(--ink)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            marginBottom: 16,
+          }}
+        >
           ← Back to Sessions
         </button>
-        <div className="err" style={{ padding: 18, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, color: "#991B1B", lineHeight: 1.5 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>⚠️ Unable to Process Lecture</div>
-          <div style={{ fontSize: 13.5 }}>
-            {sessionData?.processingError || err || "Spark couldn't access the lecture content. Please try a video with captions/transcript or upload the video/audio file."}
+        <div
+          style={{
+            padding: 20,
+            background: "var(--surface)",
+            border: "1.5px solid var(--line)",
+            borderRadius: 12,
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
+            Study couldn't load right now.
           </div>
+          <button
+            onClick={loadSession}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--p-gradient)",
+              color: "#ffffff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -209,7 +236,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
       {/* Session Title Bar */}
       <div style={{ marginBottom: 16 }}>
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--marigold-dark)" }}>
-          {sessionData.subject} · Active Learning Loop
+          Active Learning Session
         </span>
         <h1 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 0", color: "var(--ink)" }}>
           {sessionData.title}
@@ -223,62 +250,58 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
 
       {/* Main Learning Hub Layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-        {/* Micro-Chapter Video/Audio Player & Summary */}
-        <div style={{ background: "#0F172A", borderRadius: 14, overflow: "hidden", color: "#F8FAFC", boxShadow: "var(--sh-md)" }}>
-          {sessionData.mediaUrl ? (
-            <video
-              ref={mediaRef}
-              src={sessionData.mediaUrl}
-              controls
-              onTimeUpdate={handleTimeUpdate}
-              style={{ width: "100%", maxHeight: 360, background: "#000000" }}
-            />
-          ) : (
-            <div style={{ padding: 24, textAlign: "center", background: "linear-gradient(135deg, #1E293B 0%, #0F172A 100%)" }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>🎧</div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Interactive Audio/Concept Reader</div>
-              <div style={{ fontSize: 12.5, color: "#94A3B8", marginTop: 4 }}>
-                Micro-chapter concept boundaries generated from source transcript.
+        {/* Study Material Summary Header */}
+        <div style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 14, padding: 18, boxShadow: "var(--sh-sm)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 24, padding: 10, borderRadius: 10, background: "var(--surface-2)" }}>📄</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {sessionData.title}
+              </h2>
+              <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>
+                {sessionData.totalChaptersCount || 0} Concept Chapters
               </div>
             </div>
-          )}
+          </div>
 
           {/* Current Micro-Chapter Header Bar */}
           {currentChapter && (
-            <div style={{ padding: "14px 18px", borderTop: "1px solid #1E293B", background: "#090D16" }}>
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#F59E0B", textTransform: "uppercase" }}>
-                  Micro-Chapter {currentChapter.chapterIndex + 1} of {sessionData.totalChaptersCount}
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--marigold-dark)", textTransform: "uppercase" }}>
+                  Concept Chapter {currentChapter.chapterIndex + 1} of {sessionData.totalChaptersCount}
                 </span>
-                <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                <span style={{ fontSize: 11, color: "var(--ink-soft)", fontWeight: 600 }}>
                   {currentChapter.difficulty} Level
                 </span>
               </div>
 
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px", color: "#FFFFFF" }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px", color: "var(--ink)" }}>
                 {currentChapter.title}
-              </h2>
+              </h3>
 
-              <p style={{ fontSize: 13, color: "#CBD5E1", margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13, color: "var(--ink-soft)", margin: 0, lineHeight: 1.5 }}>
                 {currentChapter.shortExplanation}
               </p>
 
               {/* Key Concept Badges */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                {currentChapter.keyConcepts?.map((kc, idx) => (
-                  <span key={idx} style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: "#1E293B", color: "#93C5FD", border: "1px solid #334155" }}>
-                    🏷️ {kc}
-                  </span>
-                ))}
-              </div>
+              {currentChapter.keyConcepts?.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                  {currentChapter.keyConcepts.map((kc, idx) => (
+                    <span key={idx} style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: "var(--surface-2)", color: "var(--ink)", border: "1px solid var(--line)" }}>
+                      🏷️ {kc}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Micro-Chapter Navigation Timeline */}
+        {/* Concept Chapters Timeline */}
         <div style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, padding: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-faint)", marginBottom: 10 }}>
-            Concept Timeline & Micro-Chapters
+            Concept Timeline & Chapters
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -315,10 +338,6 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
                       </div>
                     </div>
                   </div>
-
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-faint)", whiteSpace: "nowrap" }}>
-                    {Math.round(ch.durationSeconds / 60)} min
-                  </span>
                 </div>
               );
             })}
@@ -552,7 +571,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
                   ⚠️ Needs Review
                 </div>
                 <div style={{ fontSize: 12, color: "var(--ink)" }}>
-                  {sessionData.conceptMastery?.filter((c) => c.status === "Needs Review" || c.masteryScore < 70)?.map((c) => c.conceptName)?.join(", ") || "None! All concepts strong."}
+                  {sessionData.conceptMastery?.filter((c) => c.status === "Needs Review" || (c.attemptsCount > 0 && c.masteryScore < 70))?.map((c) => c.conceptName)?.join(", ") || "None! All concepts strong."}
                 </div>
               </div>
             </div>
@@ -609,8 +628,34 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
               {sessionData.conceptMastery.map((cm, idx) => {
-                const isMastered = cm.status === "Mastered";
-                const isNeedsReview = cm.status === "Needs Review";
+                let statusLabel = cm.status || "Learning";
+                let badgeColor = "#0284C7";
+                let badgeBg = "#E0F2FE";
+                let cardBg = "var(--surface-2)";
+                let borderCol = "var(--line)";
+
+                if (statusLabel === "Mastered") {
+                  badgeColor = "#059669";
+                  badgeBg = "#D1FAE5";
+                  cardBg = "#ECFDF5";
+                  borderCol = "#A7F3D0";
+                } else if (statusLabel === "Improving") {
+                  badgeColor = "#D97706";
+                  badgeBg = "#FEF3C7";
+                  cardBg = "#FFFBEB";
+                  borderCol = "#FDE68A";
+                } else if (statusLabel === "Needs Review") {
+                  badgeColor = "#DC2626";
+                  badgeBg = "#FEE2E2";
+                  cardBg = "#FEF2F2";
+                  borderCol = "#FCA5A5";
+                } else {
+                  // Learning
+                  badgeColor = "#0284C7";
+                  badgeBg = "#E0F2FE";
+                  cardBg = "#F0F9FF";
+                  borderCol = "#BAE6FD";
+                }
 
                 return (
                   <div
@@ -618,8 +663,8 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
                     style={{
                       padding: 12,
                       borderRadius: 10,
-                      border: "1px solid var(--line)",
-                      background: isMastered ? "#ECFDF5" : isNeedsReview ? "#FEF2F2" : "var(--surface-2)",
+                      border: `1px solid ${borderCol}`,
+                      background: cardBg,
                     }}
                   >
                     <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{cm.conceptName}</div>
@@ -630,14 +675,14 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
                           fontWeight: 700,
                           padding: "2px 6px",
                           borderRadius: 4,
-                          background: isMastered ? "#10B981" : isNeedsReview ? "#EF4444" : "#F59E0B",
-                          color: "#ffffff",
+                          background: badgeBg,
+                          color: badgeColor,
                         }}
                       >
-                        {cm.status}
+                        {statusLabel}
                       </span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)" }}>
-                        {cm.masteryScore}%
+                        {Math.round(cm.masteryScore || 0)}%
                       </span>
                     </div>
                   </div>

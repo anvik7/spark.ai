@@ -3,6 +3,7 @@ export function createSpeechRecognitionManager({
   lang = "en-US",
   interimResults = true,
   maxSilenceMs = 2500,
+  isTTSActive = () => false,
 } = {}) {
   const SpeechRecognition =
     typeof window !== "undefined"
@@ -15,7 +16,9 @@ export function createSpeechRecognitionManager({
     listening: false,
     transcript: "",
     interim: "",
+    lastEmittedFinal: "",
     lastHeardTs: 0,
+    isTTSActive,
     onResult: null,
     onFinal: null,
     onError: null,
@@ -23,11 +26,22 @@ export function createSpeechRecognitionManager({
     silenceTimer: null,
   };
 
-  function startListening({ onResult, onFinal, onError, onEnd } = {}) {
+  function reset() {
+    stopListening();
+    state.transcript = "";
+    state.interim = "";
+    state.lastEmittedFinal = "";
+    state.lastHeardTs = 0;
+  }
+
+  function startListening({ onResult, onFinal, onError, onEnd, checkTTSActive } = {}) {
     state.onResult = onResult;
     state.onFinal = onFinal;
     state.onError = onError;
     state.onEnd = onEnd;
+    if (typeof checkTTSActive === "function") {
+      state.isTTSActive = checkTTSActive;
+    }
 
     if (!state.isSupported) {
       const err = new Error("SpeechRecognition is not supported in this browser.");
@@ -47,58 +61,82 @@ export function createSpeechRecognitionManager({
 
       state.transcript = "";
       state.interim = "";
+      state.lastEmittedFinal = "";
       state.listening = true;
 
       state.recognition.onresult = (event) => {
-        let interimText = "";
-        let finalText = "";
+        // PREVENT FEEDBACK LOOP: If interviewer TTS is currently speaking or just finished, discard
+        if (state.isTTSActive?.()) {
+          return;
+        }
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        let fullFinal = "";
+        let currentInterim = "";
+
+        for (let i = 0; i < event.results.length; i++) {
           const res = event.results[i];
           const txt = res[0]?.transcript || "";
-          if (res.isFinal) finalText += txt;
-          else interimText += txt;
+          if (res.isFinal) {
+            fullFinal += (fullFinal ? " " : "") + txt.trim();
+          } else {
+            currentInterim += (currentInterim ? " " : "") + txt.trim();
+          }
         }
 
         const now = Date.now();
-        if (finalText || interimText) state.lastHeardTs = now;
-
-        if (interimText) {
-          state.interim = interimText.trim();
-          state.onResult?.({ interim: state.interim, final: state.transcript.trim() });
+        if (fullFinal || currentInterim) {
+          state.lastHeardTs = now;
         }
 
-        if (finalText) {
-          state.transcript = (state.transcript + " " + finalText).trim();
-          state.onFinal?.(state.transcript);
+        state.interim = currentInterim;
+        state.transcript = fullFinal;
+
+        // Emit clean, separated interim and canonical final
+        state.onResult?.({
+          interim: state.interim,
+          final: state.transcript,
+        });
+
+        // Emit onFinal only when new final content is committed
+        if (fullFinal && fullFinal !== state.lastEmittedFinal) {
+          state.lastEmittedFinal = fullFinal;
+          state.onFinal?.(fullFinal);
         }
       };
 
       state.recognition.onerror = (event) => {
-        state.listening = false;
-        // Ignore non-fatal 'no-speech' or 'aborted' errors cleanly
+        // Non-fatal errors like 'no-speech' or 'aborted' are normal lifecycle events
         if (event?.error !== "no-speech" && event?.error !== "aborted") {
-          state.onError?.(event?.error ? new Error(`Speech error: ${event.error}`) : new Error("Speech recognition error."));
+          state.listening = false;
+          state.onError?.(
+            event?.error ? new Error(`Speech error: ${event.error}`) : new Error("Speech recognition error.")
+          );
         }
       };
 
       state.recognition.onend = () => {
         state.listening = false;
-        if (state.silenceTimer) clearInterval(state.silenceTimer);
+        if (state.silenceTimer) {
+          clearInterval(state.silenceTimer);
+          state.silenceTimer = null;
+        }
         state.onEnd?.(state.transcript.trim());
       };
 
       // Soft silence timer automatically stops listening after candidate pauses
       state.silenceTimer = setInterval(() => {
         if (!state.listening) return;
+        // Don't timeout if TTS is speaking
+        if (state.isTTSActive?.()) return;
+
         const silenceFor = Date.now() - state.lastHeardTs;
         if (state.lastHeardTs > 0 && silenceFor > maxSilenceMs) {
           try {
             state.listening = false;
-            state.recognition.stop();
+            state.recognition?.stop();
           } catch (e) {}
         }
-      }, 400);
+      }, 350);
 
       state.lastHeardTs = Date.now();
       state.recognition.start();
@@ -112,7 +150,10 @@ export function createSpeechRecognitionManager({
       const prevOnEnd = state.onEnd;
       state.onEnd = (finalText) => {
         prevOnEnd?.(finalText);
-        if (state.silenceTimer) clearInterval(state.silenceTimer);
+        if (state.silenceTimer) {
+          clearInterval(state.silenceTimer);
+          state.silenceTimer = null;
+        }
         resolve(finalText || "");
       };
     });
@@ -126,6 +167,9 @@ export function createSpeechRecognitionManager({
     }
     try {
       if (state.recognition) {
+        state.recognition.onresult = null;
+        state.recognition.onerror = null;
+        state.recognition.onend = null;
         state.recognition.stop();
         state.recognition = null;
       }
@@ -136,6 +180,10 @@ export function createSpeechRecognitionManager({
     isSupported: state.isSupported,
     startListening,
     stopListening,
+    reset,
+    setTTSActiveCheck: (fn) => {
+      state.isTTSActive = fn;
+    },
     getState: () => ({ ...state }),
   };
 }
