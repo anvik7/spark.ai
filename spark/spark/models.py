@@ -292,6 +292,14 @@ class CircleMessage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class CircleMessageReaction(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    message_id: int = Field(index=True, foreign_key="circlemessage.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    emoji: str = Field(index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class UserBlock(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     blocker_id: int = Field(index=True, foreign_key="user.id")
@@ -500,6 +508,11 @@ def _migrate() -> None:
                     if col_name not in msg_cols:
                         print(f"[migrate] Adding {col_name} column to 'circlemessage' table...")
                         conn.execute(_sql(f'ALTER TABLE circlemessage ADD COLUMN {col_name} {col_ddl}'))
+
+            # Auto-migrate circlemessagereaction table
+            if not inspector.has_table("circlemessagereaction"):
+                print("[migrate] Creating 'circlemessagereaction' table...")
+                CircleMessageReaction.__table__.create(conn)
 
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")

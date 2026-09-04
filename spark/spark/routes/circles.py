@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlmodel import col, func, select
+from sqlmodel import col, func, select, delete
 
 from ..auth import current_user
-from ..models import CircleMember, CircleMessage, CircleMute, StudyCircle, User, UserBlock, UserReport, get_session
+from ..models import CircleMember, CircleMessage, CircleMessageReaction, CircleMute, StudyCircle, User, UserBlock, UserReport, get_session
 from ..subscription import is_active_paid, is_trial_active
 
 router = APIRouter(prefix="/api/circles", tags=["circles"])
@@ -99,7 +99,36 @@ def _check_membership(session, circle_id: int, user_id: int) -> CircleMember:
     return membership
 
 
-def _message_out(session, msg: CircleMessage) -> dict:
+def _get_message_reactions(session, message_id: int, current_user_id: Optional[int] = None) -> list[dict]:
+    """Retrieve and aggregate reactions for a message."""
+    rx_list = session.exec(
+        select(CircleMessageReaction)
+        .where(CircleMessageReaction.message_id == message_id)
+        .order_by(col(CircleMessageReaction.created_at).asc())
+    ).all()
+    if not rx_list:
+        return []
+
+    grouped: dict[str, dict] = {}
+    for r in rx_list:
+        if r.emoji not in grouped:
+            grouped[r.emoji] = {
+                "emoji": r.emoji,
+                "count": 0,
+                "users": [],
+                "reacted": False,
+            }
+        grouped[r.emoji]["count"] += 1
+        u = session.get(User, r.user_id)
+        u_name = u.name if u and u.name else f"User #{r.user_id}"
+        grouped[r.emoji]["users"].append({"id": r.user_id, "name": u_name})
+        if current_user_id and r.user_id == current_user_id:
+            grouped[r.emoji]["reacted"] = True
+
+    return list(grouped.values())
+
+
+def _message_out(session, msg: CircleMessage, current_user_id: Optional[int] = None) -> dict:
     sender = session.get(User, msg.user_id)
     reply_to = None
     if msg.reply_to_id:
@@ -115,6 +144,8 @@ def _message_out(session, msg: CircleMessage) -> dict:
     created_dt = getattr(msg, "created_at", None) or datetime.now(timezone.utc)
     if not created_dt.tzinfo:
         created_dt = created_dt.replace(tzinfo=timezone.utc)
+
+    reactions = [] if msg.is_deleted else _get_message_reactions(session, msg.id, current_user_id)
 
     return {
         "id": msg.id,
@@ -136,6 +167,7 @@ def _message_out(session, msg: CircleMessage) -> dict:
         "isEdited": bool(getattr(msg, "edited_at", None)),
         "editedAt": msg.edited_at.isoformat() if getattr(msg, "edited_at", None) else None,
         "createdAt": created_dt.isoformat(),
+        "reactions": reactions,
     }
 
 
@@ -599,7 +631,7 @@ def send_message(circle_id: int, body: dict, user: User = Depends(current_user))
         session.commit()
         session.refresh(msg)
 
-        return _message_out(session, msg)
+        return _message_out(session, msg, user.id)
 
 
 @router.get("/{circle_id}/messages")
@@ -632,7 +664,7 @@ def list_messages(
             "total": total,
             "limit": limit,
             "offset": offset,
-            "messages": [_message_out(session, m) for m in messages],
+            "messages": [_message_out(session, m, user.id) for m in messages],
         }
 
 
@@ -662,7 +694,7 @@ def edit_message(circle_id: int, msg_id: int, body: dict, user: User = Depends(c
         session.commit()
         session.refresh(msg)
 
-        return _message_out(session, msg)
+        return _message_out(session, msg, user.id)
 
 
 @router.delete("/{circle_id}/messages/{msg_id}")
@@ -685,14 +717,115 @@ def delete_message(circle_id: int, msg_id: int, user: User = Depends(current_use
                 "Only the message author or circle owner can delete this message.",
             )
 
-        # Soft delete
+        # Soft delete & cleanup reactions
         msg.is_deleted = True
         msg.content = ""
+        session.exec(delete(CircleMessageReaction).where(CircleMessageReaction.message_id == msg_id))
         session.add(msg)
         session.commit()
         session.refresh(msg)
 
-        return _message_out(session, msg)
+        return _message_out(session, msg, user.id)
+
+
+# ==================== MESSAGE REACTIONS ENDPOINTS ====================
+
+@router.post("/{circle_id}/messages/{msg_id}/reactions")
+def toggle_message_reaction(
+    circle_id: int,
+    msg_id: int,
+    body: dict,
+    user: User = Depends(current_user)
+):
+    """Add, change, or remove (toggle off) a message reaction."""
+    assert user.id is not None
+    emoji = (body.get("emoji") or "").strip()
+    if not emoji:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Emoji cannot be empty")
+    if len(emoji) > 32:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Emoji exceeds maximum allowed length")
+
+    with get_session() as session:
+        _check_membership(session, circle_id, user.id)
+
+        msg = session.get(CircleMessage, msg_id)
+        if not msg or msg.circle_id != circle_id or msg.is_deleted:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found or deleted")
+
+        existing = session.exec(
+            select(CircleMessageReaction).where(
+                CircleMessageReaction.message_id == msg_id,
+                CircleMessageReaction.user_id == user.id,
+            )
+        ).first()
+
+        action = "added"
+        if existing:
+            if existing.emoji == emoji:
+                # Same emoji clicked again -> remove own reaction (toggle off)
+                session.delete(existing)
+                session.commit()
+                action = "removed"
+            else:
+                # Different emoji clicked -> change own reaction
+                existing.emoji = emoji
+                existing.created_at = datetime.now(timezone.utc)
+                session.add(existing)
+                session.commit()
+                action = "changed"
+        else:
+            new_rx = CircleMessageReaction(
+                message_id=msg_id,
+                user_id=user.id,
+                emoji=emoji,
+            )
+            session.add(new_rx)
+            session.commit()
+            action = "added"
+
+        updated_reactions = _get_message_reactions(session, msg_id, user.id)
+        return {
+            "ok": True,
+            "action": action,
+            "messageId": msg_id,
+            "emoji": emoji,
+            "reactions": updated_reactions,
+        }
+
+
+@router.delete("/{circle_id}/messages/{msg_id}/reactions")
+def remove_message_reaction(
+    circle_id: int,
+    msg_id: int,
+    user: User = Depends(current_user)
+):
+    """Explicitly remove own reaction from a message."""
+    assert user.id is not None
+    with get_session() as session:
+        _check_membership(session, circle_id, user.id)
+
+        msg = session.get(CircleMessage, msg_id)
+        if not msg or msg.circle_id != circle_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found")
+
+        existing = session.exec(
+            select(CircleMessageReaction).where(
+                CircleMessageReaction.message_id == msg_id,
+                CircleMessageReaction.user_id == user.id,
+            )
+        ).first()
+
+        if existing:
+            session.delete(existing)
+            session.commit()
+
+        updated_reactions = _get_message_reactions(session, msg_id, user.id)
+        return {
+            "ok": True,
+            "action": "removed",
+            "messageId": msg_id,
+            "reactions": updated_reactions,
+        }
 
 
 # ==================== SAFETY & MODERATION ENDPOINTS ====================

@@ -152,14 +152,16 @@ export const api = {
   deleteTask: (taskId) => req(`/tasks/${taskId}`, { method: "DELETE" }),
   getCareerProfile: () => req("/career/profile"),
   auditCareer: (data) => req("/career/audit", { method: "POST", body: data }),
-  uploadResume: (file, target_role = "", job_description = "") => {
+  uploadResume: (file, target_role = "", job_description = "", target_company = "") => {
     const f = new FormData();
     f.append("file", file);
     if (target_role) f.append("target_role", target_role);
+    if (target_company) f.append("target_company", target_company);
     if (job_description) f.append("job_description", job_description);
     return req("/career/upload-resume", { method: "POST", form: f });
   },
   clearResume: () => req("/career/resume", { method: "DELETE" }),
+  draftCoverLetter: (data) => req("/career/cover-letter", { method: "POST", body: data }),
   getInterviewSession: (sessionId = null) =>
     req("/interview/session" + (sessionId ? `?session_id=${sessionId}` : "")),
   startInterview: (data) => req("/interview/start", { method: "POST", body: data }),
@@ -230,4 +232,8 @@ export const api = {
     req(`/circles/messages/${msgId}/report`, { method: "POST", body: { reason, details } }),
   muteCircle: (circleId) => req(`/circles/${circleId}/mute`, { method: "POST" }),
   unmuteCircle: (circleId) => req(`/circles/${circleId}/mute`, { method: "DELETE" }),
+  toggleMessageReaction: (circleId, msgId, emoji) =>
+    req(`/circles/${circleId}/messages/${msgId}/reactions`, { method: "POST", body: { emoji } }),
+  removeMessageReaction: (circleId, msgId) =>
+    req(`/circles/${circleId}/messages/${msgId}/reactions`, { method: "DELETE" }),
 };

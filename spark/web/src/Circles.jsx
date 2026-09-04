@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { api } from "./api.js";
+import EmojiPicker from "./components/chat/EmojiPicker.jsx";
+
+const QUICK_REACTIONS = ["❤️", "😂", "🔥", "👍", "👀", "🫡"];
 
 /* ── Helper Functions & Constants ────────────────────────────── */
 
@@ -798,9 +801,14 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
 
   // Attachment & Popup Menus
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
-  const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showCapturePicker, setShowCapturePicker] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+
+  // Reaction & Emoji States
+  const [reactionBarMsgId, setReactionBarMsgId] = useState(null);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState(null);
+  const [showComposerEmojiPicker, setShowComposerEmojiPicker] = useState(false);
+  const longPressTimerRef = useRef(null);
 
   // Selection & Modals
   const [selectedCapture, setSelectedCapture] = useState(null);
@@ -839,6 +847,15 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Dismiss reaction bar on outside tap/click
+  useEffect(() => {
+    const handleDocClick = () => {
+      setReactionBarMsgId(null);
+    };
+    window.addEventListener("click", handleDocClick);
+    return () => window.removeEventListener("click", handleDocClick);
+  }, []);
+
   /* Message Sending Handlers */
   const handleSendText = async (e) => {
     e?.preventDefault();
@@ -847,6 +864,7 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
     const contentStr = textInput.trim();
     setTextInput("");
     setSending(true);
+    setShowComposerEmojiPicker(false);
 
     try {
       const newMsg = await api.sendMessage(circle.id, { content: contentStr, message_type: "text" });
@@ -858,22 +876,126 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
     }
   };
 
-  const handleSendSticker = async (sticker) => {
-    setShowStickerPicker(false);
-    setShowAttachmentSheet(false);
-    setSending(true);
+  /* Reaction Handlers with Optimistic UI and Rollback */
+  const handleToggleReaction = async (msgId, emoji) => {
+    setReactionBarMsgId(null);
+    setReactionPickerMsgId(null);
+
+    const prevMessages = [...messages];
+    setMessages((current) =>
+      current.map((m) => {
+        if (m.id !== msgId) return m;
+        const currentRx = m.reactions || [];
+        const existingRx = currentRx.find((r) => r.reacted);
+        let updatedRx = [];
+
+        if (existingRx && existingRx.emoji === emoji) {
+          // Toggle off (remove own reaction)
+          updatedRx = currentRx
+            .map((r) => {
+              if (r.emoji === emoji) {
+                const newCount = r.count - 1;
+                const newUsers = (r.users || []).filter((u) => u.id !== user?.id);
+                return { ...r, count: newCount, users: newUsers, reacted: false };
+              }
+              return r;
+            })
+            .filter((r) => r.count > 0);
+        } else if (existingRx && existingRx.emoji !== emoji) {
+          // Change own reaction
+          const removedOld = currentRx
+            .map((r) => {
+              if (r.emoji === existingRx.emoji) {
+                const newCount = r.count - 1;
+                const newUsers = (r.users || []).filter((u) => u.id !== user?.id);
+                return { ...r, count: newCount, users: newUsers, reacted: false };
+              }
+              return r;
+            })
+            .filter((r) => r.count > 0);
+
+          const target = removedOld.find((r) => r.emoji === emoji);
+          if (target) {
+            updatedRx = removedOld.map((r) =>
+              r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count + 1,
+                    users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
+                    reacted: true,
+                  }
+                : r
+            );
+          } else {
+            updatedRx = [
+              ...removedOld,
+              {
+                emoji,
+                count: 1,
+                users: [{ id: user?.id, name: user?.name || "Me" }],
+                reacted: true,
+              },
+            ];
+          }
+        } else {
+          // Add new reaction
+          const target = currentRx.find((r) => r.emoji === emoji);
+          if (target) {
+            updatedRx = currentRx.map((r) =>
+              r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count + 1,
+                    users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
+                    reacted: true,
+                  }
+                : r
+            );
+          } else {
+            updatedRx = [
+              ...currentRx,
+              {
+                emoji,
+                count: 1,
+                users: [{ id: user?.id, name: user?.name || "Me" }],
+                reacted: true,
+              },
+            ];
+          }
+        }
+
+        return { ...m, reactions: updatedRx };
+      })
+    );
+
     try {
-      const newMsg = await api.sendMessage(circle.id, {
-        content: `Sent a sticker: ${sticker.name}`,
-        message_type: "sticker",
-        sticker_id: sticker.id,
-      });
-      setMessages((prev) => [...prev, newMsg]);
+      const res = await api.toggleMessageReaction(circle.id, msgId, emoji);
+      if (res && res.reactions) {
+        setMessages((current) =>
+          current.map((m) => (m.id === msgId ? { ...m, reactions: res.reactions } : m))
+        );
+      }
     } catch (err) {
-      onError(err.message || "Failed to send sticker.");
-    } finally {
-      setSending(false);
+      setMessages(prevMessages);
+      onError(err.message || "Failed to update reaction.");
     }
+  };
+
+  const handleTouchStartMessage = (msgId) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setReactionBarMsgId(msgId);
+    }, 420);
+  };
+
+  const handleTouchEndMessage = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleInsertComposerEmoji = (emoji) => {
+    setTextInput((prev) => prev + emoji);
   };
 
   const handleSendImageFile = async (e) => {
@@ -1082,6 +1204,15 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                 )}
 
                 <div
+                  onTouchStart={() => !m.isDeleted && handleTouchStartMessage(m.id)}
+                  onTouchEnd={handleTouchEndMessage}
+                  onTouchCancel={handleTouchEndMessage}
+                  onContextMenu={(e) => {
+                    if (!m.isDeleted) {
+                      e.preventDefault();
+                      setReactionBarMsgId((curr) => (curr === m.id ? null : m.id));
+                    }
+                  }}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -1095,6 +1226,83 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                     <span>{fmtDate(m.createdAt)}</span>
                     {m.isEdited && <span style={{ fontStyle: "italic", color: "var(--ink-faint)" }}>(edited)</span>}
                   </div>
+
+                  {/* Compact Quick Reaction Bar (shown on long-press or hover trigger) */}
+                  {reactionBarMsgId === m.id && !m.isDeleted && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% - 2px)",
+                        [isMe ? "right" : "left"]: 0,
+                        zIndex: 60,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                        background: "var(--surface)",
+                        border: "1px solid var(--line)",
+                        borderRadius: 24,
+                        padding: "4px 8px",
+                        boxShadow: "0 6px 20px rgba(0,0,0,0.16)",
+                        animation: "fadeIn .12s ease",
+                      }}
+                    >
+                      {QUICK_REACTIONS.map((em) => {
+                        const hasReacted = (m.reactions || []).some((r) => r.emoji === em && r.reacted);
+                        return (
+                          <button
+                            key={em}
+                            type="button"
+                            onClick={() => handleToggleReaction(m.id, em)}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: "50%",
+                              border: "none",
+                              background: hasReacted ? "rgba(139, 92, 246, 0.18)" : "transparent",
+                              cursor: "pointer",
+                              fontSize: 19,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              transition: "transform .12s ease",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.22)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                          >
+                            {em}
+                          </button>
+                        );
+                      })}
+
+                      {/* + button to open full emoji picker */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReactionBarMsgId(null);
+                          setReactionPickerMsgId(m.id);
+                        }}
+                        title="All Emojis"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          border: "1px solid var(--line)",
+                          background: "var(--surface-2)",
+                          color: "var(--ink)",
+                          cursor: "pointer",
+                          fontSize: 14,
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginLeft: 2,
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
 
                   {/* Message Bubble Container */}
                   <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "82%" }}>
@@ -1116,6 +1324,30 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                           🗑️
                         </button>
                       </div>
+                    )}
+
+                    {/* Quick Reaction Button for anyone */}
+                    {!m.isDeleted && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReactionBarMsgId((curr) => (curr === m.id ? null : m.id));
+                        }}
+                        title="React with emoji"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          color: "var(--ink-soft)",
+                          padding: 2,
+                          opacity: 0.65,
+                          order: isMe ? -1 : 1,
+                        }}
+                      >
+                        😊
+                      </button>
                     )}
 
                     {/* Deleted Message Render */}
@@ -1187,6 +1419,52 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                       </button>
                     )}
                   </div>
+
+                  {/* Reaction Pills Badges below bubble */}
+                  {m.reactions && m.reactions.length > 0 && !m.isDeleted && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 4,
+                        marginTop: 4,
+                        justifyContent: isMe ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      {m.reactions.map((rx) => {
+                        const usersList = (rx.users || []).map((u) => u.name).join(", ");
+                        return (
+                          <button
+                            key={rx.emoji}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleReaction(m.id, rx.emoji);
+                            }}
+                            title={usersList ? `${usersList} reacted with ${rx.emoji}` : rx.emoji}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                              border: rx.reacted ? "1.5px solid #8B5CF6" : "1px solid var(--line)",
+                              background: rx.reacted ? "rgba(139, 92, 246, 0.12)" : "var(--surface-2)",
+                              color: rx.reacted ? "#8B5CF6" : "var(--ink)",
+                              fontSize: 12,
+                              fontWeight: rx.reacted ? 700 : 500,
+                              cursor: "pointer",
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                              transition: "all .12s ease",
+                            }}
+                          >
+                            <span style={{ fontSize: 13 }}>{rx.emoji}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700 }}>{rx.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </React.Fragment>
             );
@@ -1219,63 +1497,37 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             </div>
             <span style={{ fontSize: 11, fontWeight: 700 }}>Photo</span>
           </button>
-
-          <button
-            onClick={() => {
-              setShowAttachmentSheet(false);
-              setShowStickerPicker((p) => !p);
-            }}
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: "var(--ink)" }}
-          >
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: "#FEF3C7", color: "#D97706", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              😊
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 700 }}>Sticker</span>
-          </button>
         </div>
       )}
 
-      {/* Spark Original Sticker Picker Popover */}
-      {showStickerPicker && (
-        <div style={{ padding: 12, background: "var(--surface-2)", borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#8B5CF6", textTransform: "uppercase" }}>⚡ Spark Stickers</span>
-            <button onClick={() => setShowStickerPicker(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>✕</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, maxHeight: 150, overflowY: "auto" }}>
-            {SPARK_STICKERS.map((st) => (
-              <button
-                key={st.id}
-                onClick={() => handleSendSticker(st)}
-                title={st.name}
-                style={{
-                  padding: "8px 4px",
-                  borderRadius: 10,
-                  border: "1px solid var(--line)",
-                  background: st.bg,
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 2,
-                }}
-              >
-                <span style={{ fontSize: 20 }}>{st.icon}</span>
-                <span style={{ fontSize: 9.5, fontWeight: 700, color: st.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
-                  {st.name}
-                </span>
-              </button>
-            ))}
-          </div>
+      {/* Floating Composer Emoji Picker */}
+      {showComposerEmojiPicker && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            bottom: 66,
+            right: 12,
+            zIndex: 140,
+            maxWidth: "calc(100% - 24px)",
+            borderRadius: 16,
+            boxShadow: "0 10px 32px rgba(0,0,0,0.18)",
+          }}
+        >
+          <EmojiPicker
+            anchorTitle="Insert Emoji"
+            onSelectEmoji={(emoji) => handleInsertComposerEmoji(emoji)}
+            onClose={() => setShowComposerEmojiPicker(false)}
+          />
         </div>
       )}
 
       {/* Bottom Message Composer */}
-      <form onSubmit={handleSendText} style={{ padding: "10px 12px", borderTop: "1px solid var(--line)", background: "var(--surface)", display: "flex", gap: 8, alignItems: "center" }}>
+      <form onSubmit={handleSendText} style={{ padding: "10px 12px", borderTop: "1px solid var(--line)", background: "var(--surface)", display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
         <button
           type="button"
           onClick={() => {
-            setShowStickerPicker(false);
+            setShowComposerEmojiPicker(false);
             setShowAttachmentSheet((p) => !p);
           }}
           style={{
@@ -1293,7 +1545,7 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             justifyContent: "center",
             flexShrink: 0,
           }}
-          title="Add Attachment (Capture, Image, Sticker)"
+          title="Add Attachment (Capture, Photo)"
         >
           +
         </button>
@@ -1315,9 +1567,13 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
 
         <button
           type="button"
-          onClick={() => setShowStickerPicker((p) => !p)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAttachmentSheet(false);
+            setShowComposerEmojiPicker((p) => !p);
+          }}
           style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "0 4px" }}
-          title="Stickers"
+          title="Emojis & Spark Reactions"
         >
           😊
         </button>
@@ -1340,6 +1596,32 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
           Send
         </button>
       </form>
+
+      {/* Message Reaction Picker Modal */}
+      {reactionPickerMsgId && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            backdropFilter: "blur(2px)",
+          }}
+          onClick={() => setReactionPickerMsgId(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "100%" }}>
+            <EmojiPicker
+              anchorTitle="React with Emoji"
+              onSelectEmoji={(emoji) => handleToggleReaction(reactionPickerMsgId, emoji)}
+              onClose={() => setReactionPickerMsgId(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Capture Picker Modal */}
       {showCapturePicker && (

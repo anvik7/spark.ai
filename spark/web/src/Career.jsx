@@ -137,12 +137,13 @@ export default function Career({ onNavigate, user }) {
 
     setUploadState("uploading");
     setBusy(true);
+    setAnalysis(null); // Clear stale analysis immediately
     setErr("");
     setToastMsg("");
 
     try {
       setUploadState("extracting");
-      const res = await api.uploadResume(file, targetRole, jobDescription);
+      const res = await api.uploadResume(file, targetRole, jobDescription, targetCompany);
       if (res.resume_filename) setResumeFilename(res.resume_filename);
       if (res.resume_text) setResumeText(res.resume_text);
       if (res.analysis) setAnalysis(res.analysis);
@@ -183,6 +184,7 @@ export default function Career({ onNavigate, user }) {
       return;
     }
     setBusy(true);
+    setAnalysis(null); // Clear stale analysis immediately so it does not persist during evaluation
     setErr("");
     try {
       const res = await api.auditCareer({
@@ -532,8 +534,38 @@ export default function Career({ onNavigate, user }) {
         </div>
       )}
 
+      {busy && (
+        <div
+          style={{
+            padding: 36,
+            textAlign: "center",
+            background: "var(--surface)",
+            borderRadius: "var(--r)",
+            border: "1px solid var(--line)",
+            boxShadow: "var(--sh-sm)",
+            marginBottom: 20,
+          }}
+        >
+          <span className="spin" style={{ display: "inline-block", fontSize: 24, marginBottom: 10 }}>⚡</span>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>
+            Analyzing Resume & Job Match with AI…
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 4 }}>
+            Evaluating candidate competencies, extracting requirements, and calculating readiness match.
+          </div>
+        </div>
+      )}
+
+      {!analysis && !busy && !loadingProfile && (
+        <EmptyState
+          icon="🎯"
+          title="No Career Analysis Yet"
+          description="Upload your resume document or paste your experience text above, specify your target role, and run analysis to get a personalized readiness assessment and ATS audit."
+        />
+      )}
+
       {/* AI Career Analysis Results Dashboard */}
-      {analysis && !loadingProfile && (
+      {analysis && !loadingProfile && !busy && (
         <div style={{ marginTop: 24 }}>
           {isStale && (
             <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
@@ -557,7 +589,7 @@ export default function Career({ onNavigate, user }) {
               gap: 24,
             }}
           >
-            <Ring score={analysis.overall_score || 0} />
+            <Ring score={analysis.overall_score ?? analysis.readiness ?? 0} />
             <div style={{ flex: 1 }}>
               <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Target Match Assessment</div>
               <h2 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 6px", color: "var(--ink)" }}>
@@ -570,7 +602,7 @@ export default function Career({ onNavigate, user }) {
           </div>
 
           {/* Strengths & Missing Skills */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
             {/* Strengths */}
             <div className="card" style={{ padding: 18, marginBottom: 0 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#059669" }}>
@@ -578,9 +610,9 @@ export default function Career({ onNavigate, user }) {
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(analysis.strengths || []).map((st, idx) => (
-                  <div key={idx} style={{ background: "#F0FDF4", border: "1px solid #DCFCE7", padding: "8px 12px", borderRadius: 8 }}>
+                  <div key={idx} style={{ background: "#F0FDF4", border: "1px solid #DCFCE7", padding: "10px 12px", borderRadius: 8 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>{st.skill}</div>
-                    <div style={{ fontSize: 12, color: "#15803D", marginTop: 2 }}>{st.evidence}</div>
+                    {st.evidence && <div style={{ fontSize: 12, color: "#15803D", marginTop: 2 }}>{st.evidence}</div>}
                   </div>
                 ))}
               </div>
@@ -593,9 +625,9 @@ export default function Career({ onNavigate, user }) {
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(analysis.gaps || []).map((gap, idx) => (
-                  <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", padding: "8px 12px", borderRadius: 8 }}>
+                  <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", padding: "10px 12px", borderRadius: 8 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{gap.skill}</div>
-                    <div style={{ fontSize: 12, color: "#B45309", marginTop: 2 }}>{gap.recommendation}</div>
+                    {gap.recommendation && <div style={{ fontSize: 12, color: "#B45309", marginTop: 2 }}>{gap.recommendation}</div>}
                   </div>
                 ))}
               </div>
@@ -603,20 +635,23 @@ export default function Career({ onNavigate, user }) {
           </div>
 
           {/* Action Plan */}
-          {analysis.action_plan && (
+          {(analysis.action_plan || analysis.plan) && (
             <div className="card" style={{ padding: 18, marginBottom: 20 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "var(--ink)" }}>
                 🚀 AI Recommended Career Action Plan
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {(analysis.action_plan || []).map((act, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
-                    <span style={{ fontWeight: 800, color: "var(--marigold-dark)", background: "var(--surface-2)", width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
-                      {idx + 1}
-                    </span>
-                    <span>{act}</span>
-                  </div>
-                ))}
+                {(analysis.action_plan || analysis.plan || []).map((act, idx) => {
+                  const text = typeof act === "string" ? act : act?.plan || act?.why || act?.project || "";
+                  return (
+                    <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
+                      <span style={{ fontWeight: 800, color: "var(--marigold-dark)", background: "var(--surface-2)", width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                        {idx + 1}
+                      </span>
+                      <span>{text}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

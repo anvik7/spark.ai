@@ -928,17 +928,13 @@ def career_audit(body: CareerIn, user: User = Depends(current_user)):
             prof = UserCareerProfile(user_id=user.id)
             session.add(prof)
 
-        # Update profile attributes if provided
+        # Update profile attributes with current user inputs
         if body.resume_text.strip():
             prof.resume_text = body.resume_text.strip()
-        if body.target_role.strip():
-            prof.target_role = body.target_role.strip()
-        if body.target_company.strip():
-            prof.target_company = body.target_company.strip()
-        if body.job_description.strip():
-            prof.job_description = body.job_description.strip()
-        if body.github_username.strip():
-            prof.github_username = body.github_username.strip()
+        prof.target_role = body.target_role.strip()
+        prof.target_company = body.target_company.strip()
+        prof.job_description = body.job_description.strip()
+        prof.github_username = body.github_username.strip()
 
         # Run AI analysis on resume & target role
         result = career.solve_career_audit(
@@ -962,6 +958,7 @@ def career_audit(body: CareerIn, user: User = Depends(current_user)):
 async def upload_resume(file: UploadFile = File(...),
                         target_role: str = Form(""),
                         job_description: str = Form(""),
+                        target_company: str = Form(""),
                         user: User = Depends(current_user)):
     """Upload PDF/Doc resume, extract text, update profile, and return AI career analysis."""
     data = await file.read()
@@ -982,6 +979,8 @@ async def upload_resume(file: UploadFile = File(...),
         prof.resume_filename = file.filename or "uploaded_resume.pdf"
         if target_role.strip():
             prof.target_role = target_role.strip()
+        if target_company.strip():
+            prof.target_company = target_company.strip()
         if job_description.strip():
             prof.job_description = job_description.strip()
 
