@@ -105,10 +105,10 @@ export default function Study({ onOpenUpgrade }) {
   }
 
   return (
-    <div className="screen" style={{ maxWidth: 720, margin: "0 auto" }}>
+    <div className="screen" style={{ width: "100%", maxWidth: 720, margin: "0 auto", boxSizing: "border-box", minWidth: 0 }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)" }}>
+      <div style={{ marginBottom: 20, width: "100%", boxSizing: "border-box" }}>
+        <h1 className="title" style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)", overflowWrap: "anywhere" }}>
           Study Engine
         </h1>
         <p className="sub" style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
@@ -132,6 +132,8 @@ export default function Study({ onOpenUpgrade }) {
             alignItems: "center",
             gap: 10,
             textAlign: "center",
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
@@ -162,9 +164,13 @@ export default function Study({ onOpenUpgrade }) {
           background: "var(--surface)",
           border: "1.5px solid var(--line)",
           borderRadius: 14,
-          padding: 18,
+          padding: "16px 18px",
           boxShadow: "var(--sh-sm)",
           marginBottom: 24,
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          minWidth: 0,
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px", color: "var(--ink)" }}>
@@ -187,7 +193,9 @@ export default function Study({ onOpenUpgrade }) {
             onClick={() => fileRef.current?.click()}
             style={{
               width: "100%",
-              padding: "12px 18px",
+              maxWidth: "100%",
+              boxSizing: "border-box",
+              padding: "12px 14px",
               borderRadius: 10,
               border: "1.5px dashed var(--marigold)",
               background: "var(--marigold-light)",
@@ -200,14 +208,20 @@ export default function Study({ onOpenUpgrade }) {
               justifyContent: "center",
               gap: 8,
               marginBottom: 12,
+              whiteSpace: "normal",
+              textAlign: "center",
+              minWidth: 0,
             }}
           >
-            <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 800 }}>+</span>
-            <span>Add Learning Material</span>
+            <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 800, flexShrink: 0 }}>+</span>
+            <span style={{ overflowWrap: "anywhere" }}>Add Learning Material</span>
           </button>
         ) : (
           <div
             style={{
+              width: "100%",
+              maxWidth: "100%",
+              boxSizing: "border-box",
               padding: "10px 14px",
               background: "var(--surface-2)",
               borderRadius: 10,
@@ -218,11 +232,13 @@ export default function Study({ onOpenUpgrade }) {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 8,
+              minWidth: 0,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
-              <span style={{ fontSize: 16 }}>📄</span>
-              <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>📄</span>
+              <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)
               </span>
             </div>
@@ -240,6 +256,7 @@ export default function Study({ onOpenUpgrade }) {
                 fontSize: 12.5,
                 cursor: "pointer",
                 padding: "2px 8px",
+                flexShrink: 0,
               }}
             >
               Remove
@@ -248,8 +265,8 @@ export default function Study({ onOpenUpgrade }) {
         )}
 
         {/* Form Inputs */}
-        <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
+        <form onSubmit={handleLaunchActiveSession} style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+          <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
               Session title
             </label>
@@ -261,6 +278,8 @@ export default function Study({ onOpenUpgrade }) {
               required
               style={{
                 width: "100%",
+                maxWidth: "100%",
+                boxSizing: "border-box",
                 padding: "9.5px 14px",
                 borderRadius: 8,
                 border: "1px solid var(--line)",
@@ -271,13 +290,15 @@ export default function Study({ onOpenUpgrade }) {
             />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+          <div style={{ width: "100%", maxWidth: "100%", marginTop: 4, boxSizing: "border-box" }}>
             <button
               type="submit"
               disabled={launchingBusy || !selectedFile || !titleInput.trim()}
               style={{
                 width: "100%",
-                padding: "10px 20px",
+                maxWidth: "100%",
+                boxSizing: "border-box",
+                padding: "11px 20px",
                 borderRadius: 8,
                 border: "none",
                 background: launchingBusy || !selectedFile || !titleInput.trim() ? "var(--line)" : "var(--p-gradient)",
@@ -286,6 +307,7 @@ export default function Study({ onOpenUpgrade }) {
                 fontWeight: 700,
                 cursor: launchingBusy || !selectedFile || !titleInput.trim() ? "not-allowed" : "pointer",
                 boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                textAlign: "center",
               }}
             >
               {launchingBusy ? "Processing Material…" : "Start Learning"}
@@ -295,116 +317,109 @@ export default function Study({ onOpenUpgrade }) {
       </div>
 
       {/* Continue Learning Drawer */}
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, width: "100%", boxSizing: "border-box" }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
             Continue Learning
           </h2>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 10, flexShrink: 0 }}>
             {activeSessions.length} sessions
           </span>
         </div>
 
         {loading && (
-          <div style={{ padding: 30, textAlign: "center", color: "var(--ink-soft)" }}>
+          <div style={{ padding: 30, textAlign: "center", color: "var(--ink-soft)", width: "100%", boxSizing: "border-box" }}>
             <span className="spin" style={{ display: "inline-block", marginRight: 8 }} /> Loading sessions…
           </div>
         )}
 
         {!loading && activeSessions.length === 0 && (
-          <div style={{ padding: 28, textAlign: "center", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)" }}>
+          <div style={{ padding: 28, textAlign: "center", background: "var(--surface-2)", borderRadius: 10, border: "1px dashed var(--line)", width: "100%", boxSizing: "border-box" }}>
             <div style={{ fontSize: 13.5, color: "var(--ink-soft)" }}>
               No active learning sessions. Add your material above to begin.
             </div>
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "100%", boxSizing: "border-box", minWidth: 0 }}>
           {activeSessions.map((as) => {
             const mastery = Math.round(as.overallMasteryPercent || 0);
             let tierLabel = "Ready";
             let tierColor = "#0284C7";
-            let tierBg = "#E0F2FE";
+            let tierBg = "rgba(2, 132, 199, 0.14)";
 
             if (mastery >= 85) {
               tierLabel = "Mastered";
               tierColor = "#059669";
-              tierBg = "#D1FAE5";
+              tierBg = "rgba(5, 150, 105, 0.14)";
             } else if (mastery >= 40) {
               tierLabel = "In Progress";
               tierColor = "#D97706";
-              tierBg = "#FEF3C7";
+              tierBg = "rgba(217, 119, 6, 0.14)";
             } else if (as.completedChaptersCount > 0) {
               tierLabel = "Needs Review";
               tierColor = "#DC2626";
-              tierBg = "#FEE2E2";
+              tierBg = "rgba(220, 38, 38, 0.14)";
             }
 
             return (
               <div
                 key={as.id}
-                style={{
-                  background: "var(--surface)",
-                  border: "1.5px solid var(--line)",
-                  borderRadius: 12,
-                  padding: 14,
-                  boxShadow: "var(--sh-sm)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
-                }}
+                className="study-session-card"
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: tierColor, background: tierBg, padding: "2px 6px", borderRadius: 4 }}>
-                      {tierLabel}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-                      {as.completedChaptersCount || 0} of {as.totalChaptersCount || 0} concepts
-                    </span>
+                <div className="study-card-left">
+                  <div className="study-card-meta">
+                    <div className="study-card-badges">
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          color: tierColor,
+                          background: tierBg,
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {tierLabel}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: "var(--ink-faint)", whiteSpace: "nowrap" }}>
+                        {as.completedChaptersCount || 0} of {as.totalChaptersCount || 0} concepts
+                      </span>
+                    </div>
+
+                    {/* Mobile mastery display (top-right of card) */}
+                    <div
+                      className="study-card-mastery-mobile"
+                      style={{ fontSize: 13, fontWeight: 800, color: tierColor, flexShrink: 0 }}
+                    >
+                      {mastery}% Mastery
+                    </div>
                   </div>
 
-                  <h3
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 700,
-                      margin: 0,
-                      color: "var(--ink)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <h3 className="study-card-title">
                     {as.title}
                   </h3>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: tierColor }}>
-                      {mastery}% Mastery
-                    </div>
+                <div className="study-card-right">
+                  {/* Desktop mastery display (inline next to buttons) */}
+                  <div
+                    className="study-card-mastery-desktop"
+                    style={{ fontSize: 13, fontWeight: 800, color: tierColor }}
+                  >
+                    {mastery}% Mastery
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setSelectedActiveSessionId(as.id)}
-                    style={{
-                      padding: "7px 14px",
-                      borderRadius: 8,
-                      background: "var(--marigold-light)",
-                      color: "var(--marigold-dark)",
-                      border: "none",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
+                    className="study-card-continue-btn"
                   >
                     Continue →
                   </button>
 
-                  {/* Unobtrusive Delete Action */}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -412,18 +427,8 @@ export default function Study({ onOpenUpgrade }) {
                       setDeletingSessionId(as.id);
                     }}
                     title="Delete session"
-                    style={{
-                      padding: "6px 9px",
-                      borderRadius: 8,
-                      background: "transparent",
-                      color: "var(--ink-soft)",
-                      border: "1px solid var(--line)",
-                      fontSize: 13,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                    className="study-card-delete-btn"
+                    aria-label="Delete session"
                   >
                     🗑️
                   </button>

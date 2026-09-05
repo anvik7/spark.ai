@@ -245,6 +245,8 @@ body[data-persona="preset-12"], [data-persona="preset-12"] {
 /* ── Base ──────────────────────────────────────────── */
 html, body {
   height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   background: var(--surface-2);
   color: var(--ink);
   font-family: var(--sans);
@@ -253,12 +255,15 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-#root { height: 100%; }
+#root { height: 100%; max-width: 100%; }
 
 /* ── RESPONSIVE SAAS APPSHELL LAYOUT ────────────────────────── */
 .app-layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: var(--surface-2);
 }
 
@@ -346,10 +351,13 @@ html, body {
 /* ── MAIN CONTENT WORKSPACE ────────────────────────── */
 .app-main {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   margin-left: 240px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .topbar-desktop {
@@ -402,6 +410,8 @@ html, body {
   flex: 1;
   max-width: 1200px;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 24px 28px 48px;
 }
@@ -413,12 +423,14 @@ html, body {
   }
   .app-main {
     margin-left: 0;
+    max-width: 100vw;
   }
   .topbar-desktop {
     display: none !important;
   }
   .workspace-container {
     padding: 16px 16px calc(72px + env(safe-area-inset-bottom, 0px));
+    max-width: 100vw;
   }
 }
 
@@ -431,10 +443,157 @@ html, body {
   }
 }
 
-/* ── Legacy Screen Fallback ────────────────────────── */
+/* ── Responsive Screen Container ───────────────────── */
 .screen {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0;
+}
+
+/* ── STUDY SESSION CARD RESPONSIVE LAYOUT ──────────── */
+.study-session-card {
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--sh-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.study-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.study-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+}
+
+.study-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.study-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.study-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.study-card-continue-btn {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: var(--marigold-light);
+  color: var(--marigold-dark);
+  border: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity .15s;
+}
+
+.study-card-continue-btn:hover {
+  opacity: 0.9;
+}
+
+.study-card-delete-btn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  min-width: 40px;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+
+.study-card-delete-btn:hover {
+  background: var(--surface-2);
+}
+
+.study-card-mastery-desktop {
+  display: none !important;
+}
+
+@media (min-width: 640px) {
+  .study-session-card {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .study-card-left {
+    flex: 1;
+  }
+
+  .study-card-meta {
+    justify-content: flex-start;
+  }
+
+  .study-card-mastery-mobile {
+    display: none !important;
+  }
+
+  .study-card-mastery-desktop {
+    display: block !important;
+    text-align: right;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+
+  .study-card-right {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .study-card-continue-btn {
+    flex: initial;
+  }
 }
 
 /* ── Typography ────────────────────────────────────── */

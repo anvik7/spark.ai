@@ -173,9 +173,9 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
   }
 
   return (
-    <div className="screen">
+    <div className="screen" style={{ width: "100%", maxWidth: 720, margin: "0 auto", boxSizing: "border-box", minWidth: 0 }}>
       {/* Top Header & Navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10, width: "100%", boxSizing: "border-box" }}>
         <button
           onClick={onBack}
           style={{
@@ -238,7 +238,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--marigold-dark)" }}>
           Active Learning Session
         </span>
-        <h1 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 0", color: "var(--ink)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 0", color: "var(--ink)", overflowWrap: "anywhere", wordBreak: "break-word" }}>
           {sessionData.title}
         </h1>
       </div>
@@ -249,13 +249,13 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
       )}
 
       {/* Main Learning Hub Layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, width: "100%", boxSizing: "border-box", minWidth: 0 }}>
         {/* Study Material Summary Header */}
-        <div style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 14, padding: 18, boxShadow: "var(--sh-sm)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontSize: 24, padding: 10, borderRadius: 10, background: "var(--surface-2)" }}>📄</div>
+        <div style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 14, padding: "16px 18px", boxShadow: "var(--sh-sm)", width: "100%", boxSizing: "border-box", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box" }}>
+            <div style={{ fontSize: 24, padding: 10, borderRadius: 10, background: "var(--surface-2)", flexShrink: 0 }}>📄</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)", overflowWrap: "anywhere", wordBreak: "break-word" }}>
                 {sessionData.title}
               </h2>
               <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 2 }}>
@@ -556,7 +556,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
             </div>
 
             {/* Strong Areas & Needs Review Lists */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, marginBottom: 18, width: "100%", boxSizing: "border-box" }}>
               <div style={{ padding: 12, background: "#ECFDF5", borderRadius: 8, border: "1px solid #A7F3D0" }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginBottom: 6 }}>
                   ✓ Strong Areas
@@ -577,7 +577,7 @@ export default function StudyActiveSession({ sessionId, onBack, onOpenUpgrade })
             </div>
 
             {/* Assessment Action Controls */}
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
               <button
                 onClick={() => {
                   const weakIdx = sessionData.chapters.findIndex((ch) =>
@@ -701,7 +701,7 @@ function MindMapGraph({ nodes, title }) {
   if (!nodes || nodes.length === 0) return null;
 
   return (
-    <div style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 12, padding: 16, marginBottom: 16, color: "#F8FAFC" }}>
+    <div style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 12, padding: 16, marginBottom: 16, color: "#F8FAFC", width: "100%", maxWidth: "100%", boxSizing: "border-box", minWidth: 0 }}>
       <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#F59E0B", marginBottom: 10 }}>
         🧠 Dynamic Concept Mind Map Graph
       </div>
