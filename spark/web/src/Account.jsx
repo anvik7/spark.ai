@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { api, setToken } from "./api.js";
 import Avatar, { AVATAR_PRESETS, getPreset } from "./components/Avatar.jsx";
 
-export default function Account({ user = {}, onLogout, onUpdateUser }) {
+export default function Account({ user = {}, onLogout, onUpdateUser, theme = "system", onChangeTheme }) {
   const [busy, setBusy] = useState(false);
   const [updatingPreset, setUpdatingPreset] = useState(false);
   const [err, setErr] = useState("");
@@ -134,6 +134,73 @@ export default function Account({ user = {}, onLogout, onUpdateUser }) {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      {/* Appearance / Theme Toggle */}
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1.5px solid var(--line)",
+          borderRadius: "var(--r)",
+          padding: 20,
+          marginBottom: 16,
+          boxShadow: "var(--sh-sm)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: ".05em",
+            color: "var(--ink-soft)",
+            textTransform: "uppercase",
+            marginBottom: 12,
+          }}
+        >
+          Appearance
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 0,
+            borderRadius: 10,
+            border: "1.5px solid var(--line)",
+            overflow: "hidden",
+          }}
+        >
+          {[
+            { id: "light", icon: "☀️", label: "Light" },
+            { id: "dark", icon: "🌙", label: "Dark" },
+            { id: "system", icon: "◐", label: "System" },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => onChangeTheme?.(opt.id)}
+              aria-label={`${opt.label} theme`}
+              aria-pressed={theme === opt.id}
+              style={{
+                flex: 1,
+                padding: "10px 8px",
+                fontSize: 13,
+                fontWeight: theme === opt.id ? 700 : 500,
+                fontFamily: "var(--sans)",
+                background: theme === opt.id ? "var(--marigold-light)" : "var(--surface-2)",
+                color: theme === opt.id ? "var(--marigold-dark)" : "var(--ink-soft)",
+                border: "none",
+                borderRight: "1px solid var(--line)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                transition: "background .15s, color .15s",
+              }}
+            >
+              <span>{opt.icon}</span>
+              <span>{opt.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 

@@ -54,7 +54,7 @@ export default function SharedCapture({ shareToken }) {
       {/* Branding Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Chakra size={20} />
+          <Chakra size={26} />
           <span className="logo-mark" style={{ fontSize: 17, fontWeight: 700 }}>Spark Shared Capture</span>
         </div>
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 6 }}>

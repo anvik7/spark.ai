@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#ECE9E2" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <meta name="description" content="Spark is your universal AI workspace for thinking, capturing, learning, working, connecting, and growing. Bring your tasks, notes, active study, chat, career readiness, and AI assistance into one intelligent place." />
@@ -13,6 +14,16 @@
   <meta property="og:description" content="Think, capture, learn, work, connect, and grow — in one intelligent workspace." />
   <meta property="og:type" content="website" />
   <title>Spark — Your AI Workspace for Everything You Do</title>
+  <script>
+    // Anti-flicker: apply theme before first paint
+    (function(){
+      var t = localStorage.getItem('spark_theme');
+      var dark = t === 'dark' || (!t || t === 'system') && matchMedia('(prefers-color-scheme:dark)').matches;
+      if (dark) document.documentElement.setAttribute('data-theme','dark');
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', dark ? '#141419' : '#ECE9E2');
+    })();
+  </script>
 </head>
 
 <body>

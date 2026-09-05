@@ -688,7 +688,7 @@ export default function EmojiPicker({
                 {currentCategoryData.label}
               </span>
               {currentCategoryData.id === "spark" && (
-                <span style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, background: "#EDE9FE", padding: "1px 6px", borderRadius: 4 }}>
+                <span style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, background: "rgba(139,92,246,0.18)", padding: "1px 6px", borderRadius: 4 }}>
                   ORIGINAL
                 </span>
               )}

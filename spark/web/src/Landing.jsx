@@ -120,7 +120,7 @@ const WORKFLOW_STEPS = [
   { step: "06", title: "Coach & Grow", text: "Receive strategic guidance and mock interview preparation at every milestone." },
 ];
 
-export default function Landing({ onGetStarted, onLogin }) {
+export default function Landing({ onGetStarted, onLogin, theme = "system", onChangeTheme }) {
   const [activeTab, setActiveTab] = useState("tasks");
 
   const currentModule = MODULES.find((m) => m.id === activeTab) || MODULES[0];
@@ -153,19 +153,18 @@ export default function Landing({ onGetStarted, onLogin }) {
           borderBottom: "1px solid var(--line, #E5E7EB)",
           position: "sticky",
           top: 0,
-          background: "rgba(255, 255, 255, 0.94)",
+          background: "var(--surface)",
+          opacity: 1,
           backdropFilter: "blur(10px)",
           zIndex: 100,
         }}
       >
         <div
+          className="spark-logo-lockup"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
         >
-          <Chakra size={26} />
-          <span className="logo-mark" style={{ fontSize: 21, fontWeight: 800, fontFamily: "var(--sans)" }}>
-            Spark
-          </span>
+          <Chakra size={38} />
+          <span className="logo-mark" style={{ fontSize: 24 }}>Spark</span>
         </div>
 
         <nav style={{ display: "flex", alignItems: "center", gap: 20 }} className="desktop-nav">
@@ -190,6 +189,31 @@ export default function Landing({ onGetStarted, onLogin }) {
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {onChangeTheme && (
+            <button
+              onClick={() => {
+                const next = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+                onChangeTheme(next);
+              }}
+              aria-label={`Theme: ${theme}. Click to switch theme`}
+              title={`Theme: ${theme ? theme.charAt(0).toUpperCase() + theme.slice(1) : "System"} (click to switch)`}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                width: 36,
+                height: 36,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 15,
+                cursor: "pointer",
+                color: "var(--ink)",
+              }}
+            >
+              {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "◐"}
+            </button>
+          )}
           <button
             onClick={onLogin}
             style={{
@@ -519,6 +543,11 @@ export default function Landing({ onGetStarted, onLogin }) {
         </div>
       </section>
 
+      {/* ── BRAND MOMENT: Chakra transition into ecosystem ── */}
+      <div style={{ display: "flex", justifyContent: "center", padding: "32px 0 0" }}>
+        <Chakra size={28} variant="light" animated={false} />
+      </div>
+
       {/* ── 5. THE BIG DIFFERENCE (CONNECTED ECOSYSTEM) ── */}
       <section
         id="ecosystem"
@@ -832,7 +861,9 @@ export default function Landing({ onGetStarted, onLogin }) {
             boxShadow: "var(--sh-lg)",
           }}
         >
-          <div style={{ display: "inline-block", fontSize: 28, marginBottom: 12 }}>⚡</div>
+          <div style={{ display: "inline-block", marginBottom: 16 }}>
+            <Chakra size={40} variant="dark" animated={true} />
+          </div>
           <h2 style={{ fontFamily: "var(--display)", fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 700, margin: "0 0 12px" }}>
             Make Spark your workspace.
           </h2>
@@ -876,7 +907,7 @@ export default function Landing({ onGetStarted, onLogin }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Chakra size={18} />
+          <Chakra size={22} />
           <span style={{ fontWeight: 700, color: "var(--ink)" }}>Spark</span>
           <span>· Universal AI Workspace</span>
         </div>

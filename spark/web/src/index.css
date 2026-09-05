@@ -58,6 +58,51 @@
 }
 
 /* ============================================================
+   DARK THEME — Activated via html[data-theme="dark"]
+   ============================================================ */
+html[data-theme="dark"] {
+  --surface:        #141419;
+  --surface-2:      #1C1C24;
+  --surface-3:      #25252F;
+  --ink:            #E8E6E1;
+  --ink-soft:       #9CA3AF;
+  --ink-faint:      #6B7280;
+  --line:           #2D2D3A;
+  --nav-bg:         #0D0D12;
+  --marigold-glow:  rgba(245,158,11,.22);
+  --marigold-light: rgba(245,158,11,.12);
+  --sh-sm: 0 1px 3px rgba(0,0,0,.24), 0 1px 2px rgba(0,0,0,.18);
+  --sh:    0 4px 12px rgba(0,0,0,.30), 0 2px 4px rgba(0,0,0,.20);
+  --sh-lg: 0 12px 28px rgba(0,0,0,.40), 0 4px 8px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+
+/* Dark overrides for hardcoded component colors */
+html[data-theme="dark"] .err {
+  background: #2D1B1B;
+  border-color: #5C2B2B;
+  color: #F87171;
+}
+
+html[data-theme="dark"] .pro-lock {
+  background: linear-gradient(135deg, rgba(245,158,11,.10), rgba(217,119,6,.08));
+  border-color: rgba(245,158,11,.25);
+}
+
+html[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+}
+
+html[data-theme="dark"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+html[data-theme="dark"] .pro-badge {
+  background: linear-gradient(135deg, #25252F, #2D2D3A);
+}
+
+/* ============================================================
    PERSONA THEME PALETTES (12 Distinct Visual Personalities)
    ============================================================ */
 
@@ -604,7 +649,6 @@ html, body {
 }
 hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
 
-/* ── DARK NAVY NAVIGATION ──────────────────────────── */
 nav, .nav-bar {
   position: fixed;
   bottom: 0;
@@ -618,6 +662,12 @@ nav, .nav-bar {
   padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px));
   z-index: 100;
   border-top: 1px solid rgba(255,255,255,.08);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+nav::-webkit-scrollbar, .nav-bar::-webkit-scrollbar {
+  display: none;
 }
 
 nav button, .nav-bar button, .nav-btn {
@@ -625,18 +675,20 @@ nav button, .nav-bar button, .nav-btn {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px 6px;
+  padding: 8px 4px;
   background: none;
   border: none;
   cursor: pointer;
-  color: rgba(255,255,255,.32);
+  color: rgba(255,255,255,.36);
   transition: color .15s;
   position: relative;
   border-radius: 10px;
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 auto;
+  min-width: 50px;
+  min-height: 48px;
+  -webkit-tap-highlight-color: transparent;
 }
-nav button:hover, .nav-btn:hover { color: rgba(255,255,255,.65); }
+nav button:hover, .nav-btn:hover { color: rgba(255,255,255,.75); }
 
 /* Active */
 nav button.active, .nav-btn.active,
@@ -717,18 +769,29 @@ nav button span, .nav-label {
 
 @media (min-width: 520px) {
   body { background: #D1D5DB; }
+  html[data-theme="dark"] body { background: #0A0A0F; }
 }
 
+/* ── SPARK BRAND LOGO ─────────────────────────────── */
+
 .logo-mark {
-  font-family: var(--display);
-  font-weight: 700;
-  color: var(--marigold-dark);
-  letter-spacing: -.3px;
+  font-family: var(--sans);
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -.4px;
+}
+
+.spark-logo-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .logo-icon {
   display: inline-block;
-  animation: spinChakra 24s linear infinite;
+  animation: spinChakra 40s linear infinite;
   transform-origin: center;
   will-change: transform;
 }

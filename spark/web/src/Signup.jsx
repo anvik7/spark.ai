@@ -52,12 +52,12 @@ export default function Signup({ onAuthed, goToLogin, onBackToHome }) {
         }}
       >
         <div
+          className="spark-logo-lockup"
           onClick={onBackToHome}
-          style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
           title="Back to home"
         >
-          <Chakra size={24} />
-          <span className="logo-mark" style={{ fontSize: 19, fontWeight: 700 }}>Spark</span>
+          <Chakra size={32} />
+          <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
         </div>
         <button
           onClick={onBackToHome}

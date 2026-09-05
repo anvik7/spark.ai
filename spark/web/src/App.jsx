@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, Suspense, lazy } from "react";
+import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
 import Landing from "./Landing.jsx";
@@ -43,13 +43,41 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
-  const [tab, setTab] = useState(() => {
-    return localStorage.getItem("spark_active_tab") || "tasks";
-  });
+  const [tab, setTab] = useState("tasks");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
-  const touchStartRef = useRef(null);
+
+  // ── Theme system (Light / Dark / System) ──
+  const [theme, setThemeState] = useState(() => localStorage.getItem("spark_theme") || "system");
+
+  const applyTheme = useCallback((mode) => {
+    const isDark = mode === "dark" ||
+      (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    if (isDark) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    // Update meta theme-color
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", isDark ? "#141419" : "#ECE9E2");
+  }, []);
+
+  const handleChangeTheme = useCallback((newTheme) => {
+    setThemeState(newTheme);
+    localStorage.setItem("spark_theme", newTheme);
+    applyTheme(newTheme);
+  }, [applyTheme]);
+
+  // Apply theme on mount and listen for system changes
+  useEffect(() => {
+    applyTheme(theme);
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => { if (theme === "system") applyTheme("system"); };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [theme, applyTheme]);
 
   // Check public shared capture URL route
   const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
@@ -102,6 +130,8 @@ export default function App() {
       <Landing
         onGetStarted={() => { setAuthMode("signup"); setShowAuth(true); }}
         onLogin={() => { setAuthMode("login"); setShowAuth(true); }}
+        theme={theme}
+        onChangeTheme={handleChangeTheme}
       />
     );
   }
@@ -127,9 +157,9 @@ export default function App() {
 
       {/* Desktop Persistent Sidebar */}
       <aside className="app-sidebar">
-        <div className="sidebar-header" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
-          <Chakra size={24} />
-          <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
+        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
+          <Chakra size={32} />
+          <span className="logo-mark" style={{ fontSize: 22 }}>Spark</span>
         </div>
 
         <div className="sidebar-workspace" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
@@ -190,9 +220,9 @@ export default function App() {
       <main className="app-main">
         {/* Mobile Header (< 768px) */}
         <header className="topbar-mobile">
-          <div onClick={() => handleNav("home")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} title="Spark Home">
-            <Chakra size={20} />
-            <span className="logo-mark" style={{ fontSize: 18 }}>Spark</span>
+          <div className="spark-logo-lockup" onClick={() => handleNav("home")} title="Spark Home">
+            <Chakra size={32} />
+            <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -225,6 +255,30 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => {
+                const nextTheme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+                handleChangeTheme(nextTheme);
+              }}
+              aria-label={`Current theme: ${theme}. Click to switch theme`}
+              title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                cursor: "pointer",
+                color: "var(--ink)",
+              }}
+            >
+              {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "◐"}
+            </button>
+
+            <button
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
               onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
             >
@@ -248,6 +302,31 @@ export default function App() {
             >
               {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : "Free Plan"}
             </button>
+
+            <button
+              onClick={() => {
+                const nextTheme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+                handleChangeTheme(nextTheme);
+              }}
+              aria-label={`Current theme: ${theme}. Click to switch theme`}
+              title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                width: 34,
+                height: 34,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 15,
+                cursor: "pointer",
+                color: "var(--ink)",
+              }}
+            >
+              {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "◐"}
+            </button>
+
             <button
               style={{ background: "none", border: "none", cursor: "pointer", padding: 2, borderRadius: "50%" }}
               onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
@@ -257,47 +336,17 @@ export default function App() {
           </div>
         </header>
 
-        {/* Page Content Container with Mobile Swipe Navigation */}
-        <div
-          className="workspace-container"
-          onTouchStart={(e) => {
-            if (typeof window !== "undefined" && window.innerWidth >= 768) return;
-            const touch = e.touches[0];
-            touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-          }}
-          onTouchEnd={(e) => {
-            if (typeof window !== "undefined" && window.innerWidth >= 768) return;
-            if (!touchStartRef.current) return;
-            const touch = e.changedTouches[0];
-            const dx = touch.clientX - touchStartRef.current.x;
-            const dy = touch.clientY - touchStartRef.current.y;
-            touchStartRef.current = null;
-
-            // Only trigger if horizontal movement is dominant and > 50px
-            if (Math.abs(dx) > 50 && Math.abs(dy) < 45) {
-              const primaryTabs = ["tasks", "capture", "study", "circles", "career", "coach"];
-              const currentIdx = primaryTabs.indexOf(tab);
-              if (tab === "home" && dx < 0) {
-                handleNav("tasks");
-              } else if (currentIdx !== -1) {
-                if (dx < 0 && currentIdx < primaryTabs.length - 1) {
-                  // Swipe Left -> Next module
-                  handleNav(primaryTabs[currentIdx + 1]);
-                } else if (dx > 0 && currentIdx > 0) {
-                  // Swipe Right -> Prev module
-                  handleNav(primaryTabs[currentIdx - 1]);
-                }
-              }
-            }
-          }}
-        >
+        {/* Page Content Container */}
+        <div className="workspace-container">
           {showAccount ? (
             <ModuleErrorBoundary moduleName="Account">
               <Suspense fallback={<ModuleLoadingState moduleName="Account" />}>
                 <Account
                   user={user}
-                  onLogout={() => { setShowAccount(false); setUser(null); }}
+                  onLogout={() => { setShowAccount(false); setUser(null); setTab("tasks"); localStorage.removeItem("spark_active_tab"); }}
                   onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+                  theme={theme}
+                  onChangeTheme={handleChangeTheme}
                 />
               </Suspense>
             </ModuleErrorBoundary>
@@ -390,8 +439,14 @@ export default function App() {
 }
 
 function NavBtn({ id, tab, set, icon, label }) {
+  const isActive = tab === id;
   return (
-    <button className={tab === id ? "nav-btn active" : "nav-btn"} onClick={() => set(id)}>
+    <button
+      className={isActive ? "nav-btn active" : "nav-btn"}
+      onClick={() => set(id)}
+      aria-label={label}
+      aria-current={isActive ? "page" : undefined}
+    >
       <Svg d={icon} /><span>{label}</span><span className="dot" />
     </button>
   );

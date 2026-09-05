@@ -1,48 +1,159 @@
 import React from "react";
 
-export function Chakra({ size = 24 }) {
+/**
+ * Spark Chakra — Brand Mark
+ *
+ * A modern geometric symbol derived from the visual language of the
+ * Sudarshana Chakra: circular motion, precision, radiance, clarity, power.
+ *
+ * Anatomy:
+ *  1. Outer ring — the discus boundary
+ *  2. 12 tapered radial blades — rotational motion & precision
+ *  3. Inner ring — depth & layering
+ *  4. 12 outer energy points — radiance emanation
+ *  5. Central core — axis of rotation / focus
+ *
+ * @param {number}  size     — pixel dimensions (default 36)
+ * @param {string}  variant  — "light" | "dark" | "auto" (default "auto")
+ * @param {boolean} animated — apply CSS spin class (default true)
+ */
+export function Chakra({ size = 36, variant = "auto", animated = true }) {
+  // Unique gradient ID per instance to avoid SVG id collisions
+  const id = React.useId ? React.useId() : React.useMemo(() => `sc${Math.random().toString(36).slice(2, 8)}`, []);
+
+  // Gradient stops per variant
+  const gradients = {
+    light: { a: "#B8872A", b: "#D4A43A", c: "#C6952B" },  // warm champagne gold on white
+    dark:  { a: "#E8C56D", b: "#F5DFA0", c: "#EDD490" },  // luminous gold on dark
+  };
+
+  const resolvedVariant = variant === "auto" ? "light" : variant;
+  const g = gradients[resolvedVariant] || gradients.light;
+
+  // ─── Blade geometry ────────────────────────────────────────
+  // 12 tapered blades radiating from center (50,50) in a 100×100 viewBox.
+  // Each blade is a slim triangle: narrow at center, wider at outer ring.
+  const bladeCount = 12;
+  const innerR = 16;   // blade start radius
+  const outerR = 37;   // blade end radius
+  const halfAngle = 5; // degrees — half-width of blade tip
+
+  const blades = [];
+  for (let i = 0; i < bladeCount; i++) {
+    const angle = (i * 360) / bladeCount;
+    const rad = (a) => (a * Math.PI) / 180;
+
+    // Inner point (narrow base near center)
+    const ix = 50 + innerR * Math.cos(rad(angle));
+    const iy = 50 + innerR * Math.sin(rad(angle));
+
+    // Outer left edge of blade
+    const olx = 50 + outerR * Math.cos(rad(angle - halfAngle));
+    const oly = 50 + outerR * Math.sin(rad(angle - halfAngle));
+
+    // Outer tip (sharp point)
+    const otx = 50 + (outerR + 3) * Math.cos(rad(angle));
+    const oty = 50 + (outerR + 3) * Math.sin(rad(angle));
+
+    // Outer right edge of blade
+    const orx = 50 + outerR * Math.cos(rad(angle + halfAngle));
+    const ory = 50 + outerR * Math.sin(rad(angle + halfAngle));
+
+    blades.push(
+      `M${ix.toFixed(2)},${iy.toFixed(2)} L${olx.toFixed(2)},${oly.toFixed(2)} L${otx.toFixed(2)},${oty.toFixed(2)} L${orx.toFixed(2)},${ory.toFixed(2)} Z`
+    );
+  }
+
+  // ─── Outer energy points ───────────────────────────────────
+  // 12 small diamond/dot accents between blades at the outer edge
+  const energyR = 43; // radius for energy points
+  const energyPoints = [];
+  for (let i = 0; i < bladeCount; i++) {
+    const angle = (i * 360) / bladeCount + 15; // offset 15° between blades
+    const rad = (a) => (a * Math.PI) / 180;
+    const cx = 50 + energyR * Math.cos(rad(angle));
+    const cy = 50 + energyR * Math.sin(rad(angle));
+    energyPoints.push({ cx: cx.toFixed(2), cy: cy.toFixed(2) });
+  }
+
   return (
     <svg
-      className="logo-icon"
+      className={animated ? "logo-icon" : undefined}
       width={size}
       height={size}
       viewBox="0 0 100 100"
       fill="none"
-      style={{ color: "#E0922F", display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="Spark"
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
     >
-      <path
-        d="M50.00,2.00 L55.35,9.35 L62.42,3.64 L65.69,12.12 L74.00,8.43 L74.96,17.47 L83.94,16.06 L82.53,25.04 L91.57,26.00 L87.88,34.31 L96.36,37.58 L90.65,44.65 L98.00,50.00 L90.65,55.35 L96.36,62.42 L87.88,65.69 L91.57,74.00 L82.53,74.96 L83.94,83.94 L74.96,82.53 L74.00,91.57 L65.69,87.88 L62.42,96.36 L55.35,90.65 L50.00,98.00 L44.65,90.65 L37.58,96.36 L34.31,87.88 L26.00,91.57 L25.04,82.53 L16.06,83.94 L17.47,74.96 L8.43,74.00 L12.12,65.69 L3.64,62.42 L9.35,55.35 L2.00,50.00 L9.35,44.65 L3.64,37.58 L12.12,34.31 L8.43,26.00 L17.47,25.04 L16.06,16.06 L25.04,17.47 L26.00,8.43 L34.31,12.12 L37.58,3.64 L44.65,9.35 Z"
-        fill="currentColor"
-        opacity="0.18"
+      <defs>
+        {/* Primary gradient — metallic gold sweep */}
+        <linearGradient id={`${id}-g1`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={g.a} />
+          <stop offset="50%" stopColor={g.b} />
+          <stop offset="100%" stopColor={g.a} />
+        </linearGradient>
+        {/* Radial gradient for the central core glow */}
+        <radialGradient id={`${id}-g2`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={g.b} />
+          <stop offset="100%" stopColor={g.c} />
+        </radialGradient>
+      </defs>
+
+      {/* Layer 1: Outer Ring — the discus boundary */}
+      <circle
+        cx="50" cy="50" r="45"
+        stroke={`url(#${id}-g1)`}
+        strokeWidth="2.2"
+        fill="none"
       />
-      <circle cx="50" cy="50" r="38" stroke="currentColor" strokeWidth="2.4" />
-      <circle cx="50" cy="50" r="33" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
-      <line x1="50" y1="50" x2="83.00" y2="50.00" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="78.58" y2="66.50" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="66.50" y2="78.58" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="50.00" y2="83.00" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="33.50" y2="78.58" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="21.42" y2="66.50" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="17.00" y2="50.00" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="21.42" y2="33.50" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="33.50" y2="21.42" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="50.00" y2="17.00" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="66.50" y2="21.42" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="50" y1="50" x2="78.58" y2="33.50" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="83.00" cy="50.00" r="2" fill="currentColor" />
-      <circle cx="78.58" cy="66.50" r="2" fill="currentColor" />
-      <circle cx="66.50" cy="78.58" r="2" fill="currentColor" />
-      <circle cx="50.00" cy="83.00" r="2" fill="currentColor" />
-      <circle cx="33.50" cy="78.58" r="2" fill="currentColor" />
-      <circle cx="21.42" cy="66.50" r="2" fill="currentColor" />
-      <circle cx="17.00" cy="50.00" r="2" fill="currentColor" />
-      <circle cx="21.42" cy="33.50" r="2" fill="currentColor" />
-      <circle cx="33.50" cy="21.42" r="2" fill="currentColor" />
-      <circle cx="50.00" cy="17.00" r="2" fill="currentColor" />
-      <circle cx="66.50" cy="21.42" r="2" fill="currentColor" />
-      <circle cx="78.58" cy="33.50" r="2" fill="currentColor" />
-      <circle cx="50" cy="50" r="9" stroke="currentColor" strokeWidth="2.4" />
-      <circle cx="50" cy="50" r="3.2" fill="currentColor" />
+
+      {/* Layer 2: 12 Tapered Radial Blades */}
+      {blades.map((d, i) => (
+        <path
+          key={i}
+          d={d}
+          fill={`url(#${id}-g1)`}
+          opacity="0.88"
+        />
+      ))}
+
+      {/* Layer 3: Inner Ring — depth layer */}
+      <circle
+        cx="50" cy="50" r="14"
+        stroke={`url(#${id}-g1)`}
+        strokeWidth="1.8"
+        fill="none"
+      />
+
+      {/* Layer 4: Outer Energy Points — radiance emanation */}
+      {energyPoints.map((p, i) => (
+        <circle
+          key={i}
+          cx={p.cx}
+          cy={p.cy}
+          r="1.3"
+          fill={`url(#${id}-g1)`}
+          opacity="0.7"
+        />
+      ))}
+
+      {/* Layer 5: Central Core — axis of rotation */}
+      <circle
+        cx="50" cy="50" r="6"
+        fill={`url(#${id}-g2)`}
+      />
+
+      {/* Inner core accent ring */}
+      <circle
+        cx="50" cy="50" r="9"
+        stroke={`url(#${id}-g1)`}
+        strokeWidth="0.8"
+        fill="none"
+        opacity="0.5"
+      />
     </svg>
   );
 }
