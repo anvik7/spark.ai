@@ -140,36 +140,37 @@ function addPricing(pptx) {
 
   const y = 1.55, ch = 3.7;
 
-  /* FREE card */
+  /* 14-DAY TRIAL card */
   const fx = 0.4, cw = 2.8;
   s.addShape("roundRect", { x: fx, y, w: cw, h: ch, rectRadius: 0.14, fill: { color: SURFACE }, line: { color: "E5E7EB", pt: 1.5 } });
-  s.addText("Free",         { x: fx + 0.3, y: y + 0.28, w: cw - 0.6, h: 0.42, fontFace: "Georgia", fontSize: 18, bold: true, color: SLATE, margin: 0 });
-  s.addText("Rs.0 / month", { x: fx + 0.3, y: y + 0.72, w: cw - 0.6, h: 0.6,  fontFace: "Georgia", fontSize: 26, bold: true, color: INK, margin: 0 });
-  ["30 knowledge cards","AI auto-tagging","Spaced repetition","Semantic search"].forEach((t, i) => {
+  s.addText("14-Day Trial", { x: fx + 0.3, y: y + 0.28, w: cw - 0.6, h: 0.42, fontFace: "Georgia", fontSize: 18, bold: true, color: SLATE, margin: 0 });
+  s.addText("₹0 / 14 days", { x: fx + 0.3, y: y + 0.72, w: cw - 0.6, h: 0.6,  fontFace: "Georgia", fontSize: 24, bold: true, color: INK, margin: 0 });
+  ["Full workspace access","100 AI calls/day","25 uploads (1GB)","Trial guardrails"].forEach((t, i) => {
     s.addText(t, { x: fx + 0.3, y: y + 1.55 + i * 0.46, w: cw - 0.6, h: 0.42, fontFace: "Arial", fontSize: 12, color: SLATE, bullet: { code: "2713" }, margin: 0 });
   });
 
-  /* PRO card */
-  const px = fx + cw + 0.4, cw2 = 5.6;
+  /* PLUS card */
+  const px = fx + cw + 0.4, cw2 = 4.4;
   s.addShape("roundRect", { x: px, y, w: cw2, h: ch, rectRadius: 0.14, fill: { color: INK }, line: { type: "none" } });
-  s.addText("Pro",            { x: px + 0.3, y: y + 0.28, w: cw2 - 0.6, h: 0.42, fontFace: "Georgia", fontSize: 18, bold: true, color: WHITE, margin: 0 });
-  s.addText("Rs.299 / month", { x: px + 0.3, y: y + 0.72, w: cw2 - 0.6, h: 0.6,  fontFace: "Georgia", fontSize: 26, bold: true, color: WHITE, margin: 0 });
-  ["Unlimited cards","Career readiness score","AI cover letter","Learning plan","Resume audit"].forEach((t, i) => {
+  s.addText("Plus",            { x: px + 0.3, y: y + 0.28, w: cw2 - 0.6, h: 0.42, fontFace: "Georgia", fontSize: 18, bold: true, color: WHITE, margin: 0 });
+  s.addText("₹599 / month",   { x: px + 0.3, y: y + 0.72, w: cw2 - 0.6, h: 0.6,  fontFace: "Georgia", fontSize: 26, bold: true, color: WHITE, margin: 0 });
+  ["Everyday workspace","100 AI calls/day","1GB cloud storage","Tasks & Career Intelligence","Save 2 months yearly"].forEach((t, i) => {
     s.addText(t, { x: px + 0.3, y: y + 1.55 + i * 0.42, w: cw2 - 0.6, h: 0.38, fontFace: "Arial", fontSize: 12, color: "FEF9EC", bullet: { code: "2713" }, margin: 0 });
   });
 
-  /* ULTRA card */
+  /* PRO card */
   const ux = px + cw2 + 0.4;
-  s.addShape("roundRect", { x: ux, y, w: cw2, h: ch, rectRadius: 0.14, fill: { color: "#7C3AED" }, line: { type: "none" } });
-  s.addText("Ultra", { x: ux + 0.35, y: y + 0.3, w: cw2 - 0.7, h: 0.5, fontFace: "Georgia", fontSize: 22, bold: true, color: "#C4B5FD", margin: 0 });
-  s.addText("₹599 / month", { x: ux + 0.35, y: y + 0.85, w: cw2 - 0.7, h: 0.7, fontFace: "Georgia", fontSize: 34, bold: true, color: "#F3E8FF", margin: 0 });
+  s.addShape("roundRect", { x: ux, y, w: cw2, h: ch, rectRadius: 0.14, fill: { color: "#D97706" }, line: { type: "none" } });
+  s.addText("Pro (Best Value)", { x: ux + 0.35, y: y + 0.3, w: cw2 - 0.7, h: 0.5, fontFace: "Georgia", fontSize: 20, bold: true, color: "#FFFFFF", margin: 0 });
+  s.addText("₹999 / month",     { x: ux + 0.35, y: y + 0.85, w: cw2 - 0.7, h: 0.7, fontFace: "Georgia", fontSize: 26, bold: true, color: "#FFFFFF", margin: 0 });
   [
-    "Everything in Pro, plus:",
-    "2x faster AI responses",
-    "Priority support (24h)",
-    "Advanced export formats",
+    "Full-power workspace",
+    "1,000 AI calls/day (Fair Use)",
+    "10GB storage & 1,000 DL/mo",
+    "Voice Interviews & Analytics",
+    "Private Circles 1-on-1 chat",
   ].forEach((t, i) => {
-    s.addText(t, { x: ux + 0.35, y: y + 1.75 + i * 0.5, w: cw2 - 0.7, h: 0.45, fontFace: "Arial", fontSize: 14, color: "#E9D5FF", bullet: { code: "2713" }, margin: 0 });
+    s.addText(t, { x: ux + 0.35, y: y + 1.55 + i * 0.42, w: cw2 - 0.7, h: 0.38, fontFace: "Arial", fontSize: 12, color: "#FFFFFF", bullet: { code: "2713" }, margin: 0 });
   });
 }
 

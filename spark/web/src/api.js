@@ -71,9 +71,9 @@ export const api = {
     return req("/me/avatar", { method: "POST", form: f });
   },
   deleteAvatar: () => req("/me/avatar", { method: "DELETE" }),
-  cards: () => req("/captures"),
-  getCards: () => req("/captures"),
-  getCaptures: () => req("/captures"),
+  cards: () => req("/captures").then(res => res.items || res),
+  getCards: () => req("/captures").then(res => res.items || res),
+  getCaptures: () => req("/captures").then(res => res.items || res),
   createCapture: (kind, raw, source_url = "") =>
     req("/captures", { method: "POST", body: { kind, raw, source_url } }),
   uploadCaptureFile: (file) => {
@@ -100,10 +100,15 @@ export const api = {
     req("/connect", { method: "POST", body: { q, mode } }),
   digest: () => req("/digest"),
   weeklyDigest: () => req("/digest/weekly"),
-  checkout: (tier) =>
-    req(`/subscribe/order${tier ? `?plan=${tier}` : ""}`, { method: "POST" }),
-  verify: (order_id) =>
-    req("/billing/verify", { method: "POST", body: { order_id } }),
+  getBillingPlans: () => req("/billing/plans"),
+  checkout: (plan = "plus", interval = "monthly", currency = "INR") =>
+    req(`/billing/checkout?plan=${encodeURIComponent(plan)}&interval=${encodeURIComponent(interval)}&currency=${encodeURIComponent(currency)}`, { method: "POST" }),
+  verify: (order_id, payment_id = "mock_payment", signature = "", plan = "plus", interval = "monthly", currency = "INR") =>
+    req("/billing/verify", {
+      method: "POST",
+      body: { order_id, payment_id, signature, plan, interval, currency },
+    }),
+  cancelSubscription: () => req("/billing/cancel", { method: "POST" }),
   getGoal: () => req("/goals"),
   setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
   updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
@@ -138,7 +143,7 @@ export const api = {
   deleteActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`, { method: "DELETE" }),
   createStudyFromCapture: (captureId) => req(`/study/active-sessions/from-capture/${captureId}`, { method: "POST" }),
 
-  getTasks: () => req("/tasks"),
+  getTasks: () => req("/tasks").then(res => res.items || res),
   solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
   uploadTaskFile: (file, prompt = "", subject_hint = "") => {
     const f = new FormData();
@@ -210,8 +215,8 @@ export const api = {
   deleteCircle: (id) => req(`/circles/${id}`, { method: "DELETE" }),
 
   // Circle Chat / Messages
-  getCircleMessages: (circleId, limit = 50, offset = 0) =>
-    req(`/circles/${circleId}/messages?limit=${limit}&offset=${offset}`),
+  getCircleMessages: (circleId, limit = 50, offset = 0, since = null) =>
+    req(`/circles/${circleId}/messages?limit=${limit}&offset=${offset}${since ? `&since=${since}` : ""}`),
   sendMessage: (circleId, payload, replyToId = null) => {
     const bodyData = typeof payload === "string" ? { content: payload } : { ...payload };
     if (replyToId) bodyData.reply_to_id = replyToId;
@@ -236,4 +241,4 @@ export const api = {
     req(`/circles/${circleId}/messages/${msgId}/reactions`, { method: "POST", body: { emoji } }),
   removeMessageReaction: (circleId, msgId) =>
     req(`/circles/${circleId}/messages/${msgId}/reactions`, { method: "DELETE" }),
-};
+};

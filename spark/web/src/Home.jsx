@@ -197,7 +197,7 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
               onClick={onOpenUpgrade}
               style={{ fontSize: 11, padding: "2px 8px" }}
             >
-              {plan === "pro" ? "⚡ Pro" : plan === "plus" ? "⭐ Plus" : "Free · Upgrade"}
+              {plan === "pro" ? "⚡ Pro" : plan === "plus" ? "⭐ Plus" : (user?.entitlements?.trial?.active || user?.trial_active) ? `🎁 Trial (${user?.entitlements?.trial?.days_remaining ?? 14}d)` : "Choose Plan"}
             </button>
           </div>
         </div>

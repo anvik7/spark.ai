@@ -1,9 +1,6 @@
 import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
-import Landing from "./Landing.jsx";
-import Login from "./Login.jsx";
-import Signup from "./Signup.jsx";
 import Avatar from "./components/Avatar.jsx";
 import CommandMenu from "./components/ui/CommandMenu.jsx";
 import ModuleErrorBoundary from "./components/ui/ModuleErrorBoundary.jsx";
@@ -19,6 +16,10 @@ const Interview = lazy(() => import("./Interview.jsx"));
 const Circles = lazy(() => import("./Circles.jsx"));
 const Account = lazy(() => import("./Account.jsx"));
 const Upgrade = lazy(() => import("./Upgrade.jsx"));
+const Landing = lazy(() => import("./Landing.jsx"));
+const Login = lazy(() => import("./Login.jsx"));
+const Signup = lazy(() => import("./Signup.jsx"));
+const SharedCapture = lazy(() => import("./SharedCapture.jsx"));
 
 /* ---------- SVG Navigation Icons ---------- */
 const Ico = {
@@ -35,8 +36,6 @@ const Svg = ({ d, cls = "ico" }) => (
   <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>{d}</svg>
 );
-
-import SharedCapture from "./SharedCapture.jsx";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -157,9 +156,9 @@ export default function App() {
 
       {/* Desktop Persistent Sidebar */}
       <aside className="app-sidebar">
-        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
+        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="SparkDhi Home">
           <Chakra size={32} />
-          <span className="logo-mark" style={{ fontSize: 22 }}>Spark</span>
+          <span className="logo-mark" style={{ fontSize: 22 }}>SparkDhi</span>
         </div>
 
         <div className="sidebar-workspace" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
@@ -188,9 +187,9 @@ export default function App() {
             style={{ width: "100%", justifyContent: "center" }}
             onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
           >
-            {user.plan === "pro" ? "⚡ Pro Plan" : user.plan === "plus" ? "⭐ Plus Plan" : "Free Plan · Upgrade"}
+            {user.plan === "pro" ? "⚡ Pro Plan" : user.plan === "plus" ? "⭐ Plus Plan" : (user.entitlements?.trial?.active || user.trial_active) ? `🎁 14-Day Trial (${user.entitlements?.trial?.days_remaining ?? 14}d)` : "Choose Plan · Upgrade"}
           </button>
-          
+
           <div
             onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
             style={{
@@ -220,9 +219,9 @@ export default function App() {
       <main className="app-main">
         {/* Mobile Header (< 768px) */}
         <header className="topbar-mobile">
-          <div className="spark-logo-lockup" onClick={() => handleNav("home")} title="Spark Home">
+          <div className="spark-logo-lockup" onClick={() => handleNav("home")} title="SparkDhi Home">
             <Chakra size={32} />
-            <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
+            <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

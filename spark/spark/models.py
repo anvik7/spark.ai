@@ -26,13 +26,33 @@ class User(SQLModel, table=True):
     hashed_password: Optional[str] = None
     name: str = ""
     avatar_url: Optional[str] = None
-    plan: str = "free"
+    plan: str = "trial"  # "trial", "plus", "pro", "expired"
     plan_until: Optional[datetime] = None
     trial_active: bool = True
     trial_started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     trial_expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=14))
+    subscription_status: str = "trial"  # "trial", "active", "expired", "cancelled", "past_due"
+    billing_interval: Optional[str] = "monthly"  # "monthly", "yearly"
+    billing_currency: Optional[str] = "INR"      # "INR", "USD"
+    razorpay_customer_id: Optional[str] = None
     digest_hour: int = 8
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SubscriptionOrder(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    order_id: str = Field(index=True, unique=True)
+    plan: str = "plus"              # "plus" | "pro"
+    interval: str = "monthly"       # "monthly" | "yearly"
+    currency: str = "INR"           # "INR" | "USD"
+    amount: int = 0                 # in paise/cents
+    status: str = "created"         # "created", "paid", "failed", "cancelled"
+    provider: str = "razorpay"      # "razorpay", "mock"
+    payment_id: Optional[str] = None
+    signature: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Card(SQLModel, table=True):
@@ -398,6 +418,20 @@ def _migrate() -> None:
                 if "trial_expires_at" not in user_cols:
                     print("[migrate] Adding trial_expires_at column to 'user' table...")
                     conn.execute(_sql('ALTER TABLE "user" ADD COLUMN trial_expires_at TIMESTAMP WITH TIME ZONE'))
+                if "subscription_status" not in user_cols:
+                    print("[migrate] Adding subscription_status column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN subscription_status VARCHAR DEFAULT \'trial\''))
+                if "billing_interval" not in user_cols:
+                    print("[migrate] Adding billing_interval column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN billing_interval VARCHAR DEFAULT \'monthly\''))
+                if "billing_currency" not in user_cols:
+                    print("[migrate] Adding billing_currency column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN billing_currency VARCHAR DEFAULT \'INR\''))
+                if "razorpay_customer_id" not in user_cols:
+                    print("[migrate] Adding razorpay_customer_id column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN razorpay_customer_id VARCHAR'))
+                # Upgrade legacy 'free' plans to 'trial' if trial is active
+                conn.execute(_sql('UPDATE "user" SET plan = \'trial\' WHERE plan = \'free\' AND (trial_active = TRUE OR trial_active = 1)'))
 
             # 2. Card table schema sync
             if inspector.has_table("card"):
@@ -513,6 +547,11 @@ def _migrate() -> None:
             if not inspector.has_table("circlemessagereaction"):
                 print("[migrate] Creating 'circlemessagereaction' table...")
                 CircleMessageReaction.__table__.create(conn)
+
+            # Auto-migrate subscriptionorder table
+            if not inspector.has_table("subscriptionorder"):
+                print("[migrate] Creating 'subscriptionorder' table...")
+                SubscriptionOrder.__table__.create(conn)
 
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")

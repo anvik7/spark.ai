@@ -820,10 +820,28 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  const lastMsgIdRef = useRef(null);
+
   const loadMessages = useCallback(async () => {
     try {
-      const res = await api.getCircleMessages(circle.id);
-      setMessages(res.messages || []);
+      const sinceId = lastMsgIdRef.current;
+      if (sinceId) {
+        // Delta-fetch: only get messages newer than the last known ID
+        const res = await api.getCircleMessages(circle.id, 50, 0, sinceId);
+        const newMsgs = res.messages || [];
+        if (newMsgs.length > 0) {
+          setMessages((prev) => [...prev, ...newMsgs]);
+          lastMsgIdRef.current = newMsgs[newMsgs.length - 1].id;
+        }
+      } else {
+        // Initial full load
+        const res = await api.getCircleMessages(circle.id);
+        const msgs = res.messages || [];
+        setMessages(msgs);
+        if (msgs.length > 0) {
+          lastMsgIdRef.current = msgs[msgs.length - 1].id;
+        }
+      }
     } catch (err) {
       onError(err.message || "Failed to load messages.");
     } finally {
@@ -831,14 +849,16 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
     }
   }, [circle.id, onError]);
 
-  // Real-time polling (2.5s interval with visibility pause)
+  // Real-time polling (6s interval with visibility pause)
   useEffect(() => {
+    lastMsgIdRef.current = null; // Reset on conversation change
+    setLoading(true);
     loadMessages();
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         loadMessages();
       }
-    }, 2500);
+    }, 6000);
     return () => clearInterval(interval);
   }, [loadMessages]);
 
@@ -919,11 +939,11 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             updatedRx = removedOld.map((r) =>
               r.emoji === emoji
                 ? {
-                    ...r,
-                    count: r.count + 1,
-                    users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
-                    reacted: true,
-                  }
+                  ...r,
+                  count: r.count + 1,
+                  users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
+                  reacted: true,
+                }
                 : r
             );
           } else {
@@ -944,11 +964,11 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             updatedRx = currentRx.map((r) =>
               r.emoji === emoji
                 ? {
-                    ...r,
-                    count: r.count + 1,
-                    users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
-                    reacted: true,
-                  }
+                  ...r,
+                  count: r.count + 1,
+                  users: [...(r.users || []), { id: user?.id, name: user?.name || "Me" }],
+                  reacted: true,
+                }
                 : r
             );
           } else {

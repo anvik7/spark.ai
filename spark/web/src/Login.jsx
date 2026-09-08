@@ -46,7 +46,7 @@ export default function Login({ onAuthed, goToSignup, onBackToHome }) {
           title="Back to home"
         >
           <Chakra size={32} />
-          <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
+          <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
         </div>
         <button
           onClick={onBackToHome}

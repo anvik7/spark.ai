@@ -946,23 +946,21 @@ nav button span, .nav-label {
   gap: 10px;
   text-decoration: none;
   cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
-.logo-icon {
-  display: inline-block;
-  animation: spinChakra 40s linear infinite;
-  transform-origin: center;
-  will-change: transform;
+.spark-logo-lockup:hover .sparkdhi-brand-logo {
+  transform: scale(1.04);
 }
 
-@keyframes spinChakra {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+.sparkdhi-brand-logo {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-icon {
-    animation: none !important;
+  .sparkdhi-brand-logo {
+    transition: none !important;
   }
 }
 

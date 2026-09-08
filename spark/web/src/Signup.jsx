@@ -57,7 +57,7 @@ export default function Signup({ onAuthed, goToLogin, onBackToHome }) {
           title="Back to home"
         >
           <Chakra size={32} />
-          <span className="logo-mark" style={{ fontSize: 20 }}>Spark</span>
+          <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
         </div>
         <button
           onClick={onBackToHome}
@@ -80,7 +80,7 @@ export default function Signup({ onAuthed, goToLogin, onBackToHome }) {
         >
           <div className="eyebrow" style={{ marginBottom: 4 }}>GET STARTED</div>
           <h1 className="title" style={{ fontSize: 26, marginBottom: 4 }}>Create your Spark</h1>
-          <p className="sub" style={{ marginBottom: 20, fontSize: 14 }}>Free plan included — upgrade any time.</p>
+          <p className="sub" style={{ marginBottom: 20, fontSize: 14 }}>14-day full access trial included — upgrade any time.</p>
 
           {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
 

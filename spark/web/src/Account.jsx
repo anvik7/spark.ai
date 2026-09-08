@@ -30,6 +30,10 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
   };
 
   const isPro = user?.plan === "pro";
+  const isPlus = user?.plan === "plus";
+  const isPaid = isPro || isPlus;
+  const isTrial = user?.entitlements?.trial?.active || user?.trial_active;
+  const trialDays = user?.entitlements?.trial?.days_remaining ?? (isTrial ? 14 : 0);
   const cardCount = user?.card_count || 0;
   const freeLimit = user?.free_card_limit || 1;
   const pct = Math.min(100, Math.round((cardCount / freeLimit) * 100));
@@ -219,7 +223,13 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
           <div>
             <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", display: "block" }}>Account Plan</span>
             <span style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>
-              {isPro ? "Full access to AI tools, voice mock interviews & learning plans." : "Standard access to Spark capture, study & practice tools."}
+              {isPro
+                ? "Full-power SparkDhi workspace · 1,000 AI calls/day, 10GB storage, Voice Interviews & Advanced Analytics."
+                : isPlus
+                ? "Everyday SparkDhi workspace · 100 AI calls/day, 1GB storage, Tasks & Career Intelligence."
+                : isTrial
+                ? `14-Day Full Access Trial (${trialDays} ${trialDays === 1 ? 'day' : 'days'} remaining) · Complete workspace unlocked.`
+                : "Trial has ended · Upgrade to Plus or Pro to resume AI generation and uploads. Your data is safely preserved."}
             </span>
           </div>
           <span
@@ -230,24 +240,29 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
               borderRadius: 20,
               background: isPro
                 ? "linear-gradient(135deg, var(--marigold), var(--marigold-dark))"
-                : "var(--surface-2)",
-              color: isPro ? "#fff" : "var(--ink-soft)",
+                : isPlus
+                ? "var(--marigold-light)"
+                : isTrial
+                ? "var(--surface-2)"
+                : "rgba(239, 68, 68, 0.1)",
+              color: isPro ? "#fff" : isPlus ? "var(--marigold-dark)" : isTrial ? "var(--ink)" : "#DC2626",
               flexShrink: 0,
               marginLeft: 12,
             }}
           >
-            {isPro ? "Pro" : "Free"}
+            {isPro ? "Pro" : isPlus ? "Plus" : isTrial ? "14-Day Trial" : "Expired"}
           </span>
         </div>
 
-        {isPro && user?.plan_until && (
-          <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: 0 }}>
-            Renews{" "}
+        {isPaid && user?.plan_until && (
+          <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: "8px 0 0" }}>
+            {user?.subscription_status === "cancelled" ? "Cancels " : "Renews "}
             {new Date(user.plan_until).toLocaleDateString("en-IN", {
               day: "numeric",
               month: "short",
               year: "numeric",
             })}
+            {user?.billing_interval ? ` (${user.billing_interval}, ${user.billing_currency || 'INR'})` : ""}
           </p>
         )}
       </div>

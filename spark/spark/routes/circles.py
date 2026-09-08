@@ -100,35 +100,57 @@ def _check_membership(session, circle_id: int, user_id: int) -> CircleMember:
 
 
 def _get_message_reactions(session, message_id: int, current_user_id: Optional[int] = None) -> list[dict]:
-    """Retrieve and aggregate reactions for a message."""
+    """Retrieve and aggregate reactions for a single message (used by toggle endpoint)."""
+    return _batch_get_reactions(session, [message_id], current_user_id).get(message_id, [])
+
+
+def _batch_get_reactions(session, message_ids: list[int], current_user_id: Optional[int] = None) -> dict[int, list[dict]]:
+    """Batch-load and aggregate reactions for multiple messages in a single query.
+    Returns a dict mapping message_id -> list of reaction dicts.
+    """
+    if not message_ids:
+        return {}
+
     rx_list = session.exec(
         select(CircleMessageReaction)
-        .where(CircleMessageReaction.message_id == message_id)
+        .where(col(CircleMessageReaction.message_id).in_(message_ids))
         .order_by(col(CircleMessageReaction.created_at).asc())
     ).all()
-    if not rx_list:
-        return []
 
-    grouped: dict[str, dict] = {}
+    if not rx_list:
+        return {}
+
+    # Batch-load all referenced users in one query to avoid N+1 on user lookups
+    user_ids = list({r.user_id for r in rx_list})
+    users_map: dict[int, str] = {}
+    if user_ids:
+        users = session.exec(select(User).where(col(User.id).in_(user_ids))).all()
+        users_map = {u.id: (u.name or f"User #{u.id}") for u in users}
+
+    # Group by message_id, then by emoji
+    result: dict[int, dict[str, dict]] = {}
     for r in rx_list:
-        if r.emoji not in grouped:
-            grouped[r.emoji] = {
+        msg_group = result.setdefault(r.message_id, {})
+        if r.emoji not in msg_group:
+            msg_group[r.emoji] = {
                 "emoji": r.emoji,
                 "count": 0,
                 "users": [],
                 "reacted": False,
             }
-        grouped[r.emoji]["count"] += 1
-        u = session.get(User, r.user_id)
-        u_name = u.name if u and u.name else f"User #{r.user_id}"
-        grouped[r.emoji]["users"].append({"id": r.user_id, "name": u_name})
+        msg_group[r.emoji]["count"] += 1
+        u_name = users_map.get(r.user_id, f"User #{r.user_id}")
+        msg_group[r.emoji]["users"].append({"id": r.user_id, "name": u_name})
         if current_user_id and r.user_id == current_user_id:
-            grouped[r.emoji]["reacted"] = True
+            msg_group[r.emoji]["reacted"] = True
 
-    return list(grouped.values())
+    return {mid: list(emojis.values()) for mid, emojis in result.items()}
 
 
-def _message_out(session, msg: CircleMessage, current_user_id: Optional[int] = None) -> dict:
+def _message_out(session, msg: CircleMessage, current_user_id: Optional[int] = None, reactions_map: Optional[dict] = None) -> dict:
+    """Format a single message for API output.
+    If reactions_map is provided, use pre-loaded reactions instead of querying.
+    """
     sender = session.get(User, msg.user_id)
     reply_to = None
     if msg.reply_to_id:
@@ -145,7 +167,12 @@ def _message_out(session, msg: CircleMessage, current_user_id: Optional[int] = N
     if not created_dt.tzinfo:
         created_dt = created_dt.replace(tzinfo=timezone.utc)
 
-    reactions = [] if msg.is_deleted else _get_message_reactions(session, msg.id, current_user_id)
+    if msg.is_deleted or msg.id is None:
+        reactions = []
+    elif reactions_map is not None:
+        reactions = reactions_map.get(msg.id, [])
+    else:
+        reactions = _get_message_reactions(session, msg.id, current_user_id)
 
     return {
         "id": msg.id,
@@ -639,6 +666,7 @@ def list_messages(
     circle_id: int,
     limit: int = 50,
     offset: int = 0,
+    since: Optional[int] = None,
     user: User = Depends(current_user),
 ):
     assert user.id is not None
@@ -652,19 +680,27 @@ def list_messages(
             select(func.count()).where(CircleMessage.circle_id == circle_id)
         ).one()
 
+        q = select(CircleMessage).where(CircleMessage.circle_id == circle_id)
+
+        # Delta-fetch: only return messages newer than the given message ID
+        if since is not None:
+            q = q.where(col(CircleMessage.id) > since)
+
         messages = session.exec(
-            select(CircleMessage)
-            .where(CircleMessage.circle_id == circle_id)
-            .order_by(col(CircleMessage.created_at).asc())
+            q.order_by(col(CircleMessage.created_at).asc())
             .offset(offset)
             .limit(limit)
         ).all()
+
+        # Batch-load reactions for all messages in one query (fixes N+1)
+        msg_ids = [m.id for m in messages if not m.is_deleted and m.id is not None]
+        reactions_map = _batch_get_reactions(session, msg_ids, user.id) if msg_ids else {}
 
         return {
             "total": total,
             "limit": limit,
             "offset": offset,
-            "messages": [_message_out(session, m, user.id) for m in messages],
+            "messages": [_message_out(session, m, user.id, reactions_map=reactions_map) for m in messages],
         }
 
 
@@ -720,7 +756,7 @@ def delete_message(circle_id: int, msg_id: int, user: User = Depends(current_use
         # Soft delete & cleanup reactions
         msg.is_deleted = True
         msg.content = ""
-        session.exec(delete(CircleMessageReaction).where(CircleMessageReaction.message_id == msg_id))
+        session.exec(delete(CircleMessageReaction).where(col(CircleMessageReaction.message_id) == msg_id))
         session.add(msg)
         session.commit()
         session.refresh(msg)

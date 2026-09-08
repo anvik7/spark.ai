@@ -122,6 +122,8 @@ const WORKFLOW_STEPS = [
 
 export default function Landing({ onGetStarted, onLogin, theme = "system", onChangeTheme }) {
   const [activeTab, setActiveTab] = useState("tasks");
+  const [pricingCurrency, setPricingCurrency] = useState("INR");
+  const [pricingInterval, setPricingInterval] = useState("monthly");
 
   const currentModule = MODULES.find((m) => m.id === activeTab) || MODULES[0];
 
@@ -164,7 +166,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         >
           <Chakra size={38} />
-          <span className="logo-mark" style={{ fontSize: 24 }}>Spark</span>
+          <span className="logo-mark" style={{ fontSize: 24 }}>SparkDhi</span>
         </div>
 
         <nav style={{ display: "flex", alignItems: "center", gap: 20 }} className="desktop-nav">
@@ -660,136 +662,226 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
           padding: "20px 20px 64px",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div className="eyebrow" style={{ color: "var(--marigold-dark)", fontSize: 11.5, letterSpacing: ".1em", marginBottom: 8 }}>
-            TRANSPARENT PLANS
+            TRANSPARENT PRICING
           </div>
           <h2 style={{ fontFamily: "var(--display)", fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 700, margin: "0 0 10px", color: "var(--ink)" }}>
-            Choose your Spark plan
+            Try SparkDhi free for 14 days.
           </h2>
-          <p style={{ fontSize: 15, color: "var(--ink-soft)", margin: 0 }}>
-            Start free. Upgrade whenever you need higher capacity and dedicated tools.
+          <p style={{ fontSize: 15, color: "var(--ink-soft)", margin: "0 auto 8px", maxWidth: 580, lineHeight: 1.5 }}>
+            Experience the complete SparkDhi workspace before choosing a plan.
           </p>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--marigold-dark)" }}>
+            {pricingCurrency === "INR" ? "India: Plans from ₹599/month." : "Global: Plans from $12/month."}
+          </div>
+
+          {/* Pricing Controls: Interval & Currency */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 20 }}>
+            {/* Interval Toggle */}
+            <div style={{ display: "inline-flex", background: "var(--surface-2)", padding: 4, borderRadius: 12, border: "1.5px solid var(--line)" }}>
+              <button
+                onClick={() => setPricingInterval("monthly")}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 13,
+                  fontWeight: pricingInterval === "monthly" ? 700 : 500,
+                  background: pricingInterval === "monthly" ? "var(--surface)" : "transparent",
+                  color: pricingInterval === "monthly" ? "var(--ink)" : "var(--ink-soft)",
+                  cursor: "pointer",
+                }}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setPricingInterval("yearly")}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 13,
+                  fontWeight: pricingInterval === "yearly" ? 700 : 500,
+                  background: pricingInterval === "yearly" ? "var(--surface)" : "transparent",
+                  color: pricingInterval === "yearly" ? "var(--ink)" : "var(--ink-soft)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>Yearly</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, background: "var(--marigold-dark)", color: "#fff", padding: "1px 6px", borderRadius: 8 }}>
+                  SAVE 2 MONTHS
+                </span>
+              </button>
+            </div>
+
+            {/* Currency Toggle */}
+            <div style={{ display: "inline-flex", background: "var(--surface-2)", padding: 4, borderRadius: 12, border: "1.5px solid var(--line)" }}>
+              <button
+                onClick={() => setPricingCurrency("INR")}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 13,
+                  fontWeight: pricingCurrency === "INR" ? 700 : 500,
+                  background: pricingCurrency === "INR" ? "var(--surface)" : "transparent",
+                  color: pricingCurrency === "INR" ? "var(--ink)" : "var(--ink-soft)",
+                  cursor: "pointer",
+                }}
+              >
+                🇮🇳 INR (₹)
+              </button>
+              <button
+                onClick={() => setPricingCurrency("USD")}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 13,
+                  fontWeight: pricingCurrency === "USD" ? 700 : 500,
+                  background: pricingCurrency === "USD" ? "var(--surface)" : "transparent",
+                  color: pricingCurrency === "USD" ? "var(--ink)" : "var(--ink-soft)",
+                  cursor: "pointer",
+                }}
+              >
+                🌐 USD ($)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Separate 14-Day Full Access Trial Card ── */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1.5px solid var(--marigold)",
+            borderRadius: "var(--r, 16px)",
+            padding: "20px 24px",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            marginBottom: 24,
+            boxShadow: "0 2px 12px rgba(184, 135, 42, 0.08)",
+          }}
+        >
+          <div style={{ flex: "1 1 280px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  color: "var(--marigold-dark)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".06em",
+                  background: "var(--marigold-light)",
+                  padding: "2px 8px",
+                  borderRadius: 8,
+                }}
+              >
+                14-DAY FULL ACCESS
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+                {pricingCurrency === "INR" ? "₹0" : "$0"} / 14 days
+              </span>
+            </div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.4 }}>
+              Experience the complete SparkDhi workspace before choosing a plan.
+            </div>
+          </div>
+          <button
+            onClick={onGetStarted}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 10,
+              border: "none",
+              background: "var(--marigold-dark)",
+              color: "#FFFFFF",
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Start 14-Day Trial
+          </button>
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 20,
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 24,
+            marginBottom: 28,
           }}
         >
-          {/* Free Tier */}
+          {/* Plus Tier */}
           <div
             style={{
               background: "var(--surface)",
-              border: "1px solid var(--line)",
+              border: "1.5px solid var(--line)",
               borderRadius: "var(--r, 16px)",
-              padding: 24,
+              padding: 28,
               display: "flex",
               flexDirection: "column",
               boxShadow: "var(--sh-sm)",
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 6 }}>
-              Free
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--marigold-dark)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>
+              PLUS
             </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+              Your everyday SparkDhi workspace.
+            </div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 16, minHeight: 38 }}>
+              For everyday thinking, learning and getting things done.
+            </div>
+
             <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
-              ₹0 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
+              {pricingCurrency === "INR"
+                ? (pricingInterval === "monthly" ? "₹599" : "₹5,990")
+                : (pricingInterval === "monthly" ? "$12" : "$120")
+              }
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>
+                {pricingInterval === "monthly" ? " / month" : " / year"}
+              </span>
             </div>
-            <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 38 }}>
-              Core workspace for personal thinking and everyday questions.
-            </p>
+            {pricingInterval === "yearly" && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--marigold-dark)", marginBottom: 12 }}>
+                {pricingCurrency === "INR" ? "₹599/mo value · Pay 10 months (Save 2 months)" : "$12/mo value · Pay 10 months (Save 2 months)"}
+              </div>
+            )}
 
             <button
               onClick={onGetStarted}
               style={{
-                padding: "11px 16px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
+                padding: "12px 18px",
+                borderRadius: 10,
+                border: "1.5px solid var(--line)",
                 background: "var(--surface-2)",
                 color: "var(--ink)",
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: 700,
                 cursor: "pointer",
-                marginBottom: 20,
+                margin: "12px 0 20px",
               }}
             >
-              Start Free
+              Choose Plus
             </button>
 
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8, color: "var(--ink)" }}>
-              <div>✓ Core Spark workspace</div>
-              <div>✓ Tasks problem solving (10 calls/day)</div>
-              <div>✓ Capture knowledge stream & voice notes</div>
-              <div>✓ Active recall study mode</div>
-              <div>✓ Public community chat</div>
-            </div>
-          </div>
-
-          {/* Plus Tier */}
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "2px solid var(--marigold)",
-              borderRadius: "var(--r, 16px)",
-              padding: 24,
-              display: "flex",
-              flexDirection: "column",
-              position: "relative",
-              boxShadow: "var(--sh)",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: -12,
-                right: 20,
-                background: "var(--marigold-dark)",
-                color: "#ffffff",
-                padding: "2px 10px",
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: ".05em",
-              }}
-            >
-              ⭐ POPULAR
-            </div>
-
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--marigold-dark)", textTransform: "uppercase", marginBottom: 6 }}>
-              Plus
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
-              ₹499 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
-            </div>
-            <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 38 }}>
-              Higher capacity for deeper work, research, and larger projects.
-            </p>
-
-            <button
-              onClick={onGetStarted}
-              style={{
-                padding: "11px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: "var(--p-gradient)",
-                color: "#ffffff",
-                fontSize: 13.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: 20,
-              }}
-            >
-              Get Plus →
-            </button>
-
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8, color: "var(--ink)" }}>
-              <div>✓ <strong>Everything in Free</strong></div>
-              <div>✓ 100 AI calls per day</div>
-              <div>✓ Up to 25 file uploads (1GB)</div>
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 9, color: "var(--ink)" }}>
+              <div>✓ <strong>100 AI calls per day</strong></div>
+              <div>✓ Up to 25 file uploads (1 GB storage)</div>
+              <div>✓ 25 downloads per month</div>
               <div>✓ Priority AI processing</div>
-              <div>✓ Advanced document extraction</div>
+              <div>✓ Full Tasks reasoning & coding solutions</div>
+              <div>✓ Active recall study mode & quizzes</div>
+              <div>✓ Spark Circles public communities</div>
+              <div>✓ Career Intelligence & resume audit</div>
             </div>
           </div>
 
@@ -797,49 +889,102 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
           <div
             style={{
               background: "var(--surface)",
-              border: "1px solid var(--line)",
+              border: "2.5px solid var(--marigold)",
               borderRadius: "var(--r, 16px)",
-              padding: 24,
+              padding: 28,
               display: "flex",
               flexDirection: "column",
-              boxShadow: "var(--sh-sm)",
+              position: "relative",
+              boxShadow: "var(--sh-lg)",
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", textTransform: "uppercase", marginBottom: 6 }}>
-              Pro 🚀
+            <div
+              style={{
+                position: "absolute",
+                top: -13,
+                right: 20,
+                background: "linear-gradient(135deg, var(--marigold), var(--marigold-dark))",
+                color: "#ffffff",
+                padding: "3px 12px",
+                borderRadius: 12,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: ".06em",
+              }}
+            >
+              ★ BEST VALUE
             </div>
+
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--marigold-dark)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>
+              PRO
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+              Your full-power SparkDhi workspace.
+            </div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 16, minHeight: 38 }}>
+              For people who rely on SparkDhi heavily and want more AI capacity and advanced capabilities.
+            </div>
+
             <div style={{ fontSize: 32, fontWeight: 800, color: "var(--ink)", marginBottom: 4 }}>
-              ₹799 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>/ month</span>
+              {pricingCurrency === "INR"
+                ? (pricingInterval === "monthly" ? "₹999" : "₹9,990")
+                : (pricingInterval === "monthly" ? "$15" : "$150")
+              }
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-soft)" }}>
+                {pricingInterval === "monthly" ? " / month" : " / year"}
+              </span>
             </div>
-            <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20, minHeight: 38 }}>
-              Complete capability suite with private chat and career OS.
-            </p>
+            {pricingInterval === "yearly" && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--marigold-dark)", marginBottom: 12 }}>
+                {pricingCurrency === "INR" ? "₹999/mo value · Pay 10 months (Save 2 months)" : "$15/mo value · Pay 10 months (Save 2 months)"}
+              </div>
+            )}
 
             <button
               onClick={onGetStarted}
               style={{
-                padding: "11px 16px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: "var(--ink)",
+                padding: "12px 18px",
+                borderRadius: 10,
+                border: "none",
+                background: "var(--p-gradient)",
                 color: "#ffffff",
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: 700,
                 cursor: "pointer",
-                marginBottom: 20,
+                margin: "12px 0 20px",
+                boxShadow: "0 4px 12px var(--marigold-glow)",
               }}
             >
-              Get Pro →
+              Choose Pro
             </button>
 
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 8, color: "var(--ink)" }}>
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16, fontSize: 13, display: "flex", flexDirection: "column", gap: 9, color: "var(--ink)" }}>
               <div>✓ <strong>Everything in Plus</strong></div>
-              <div>✓ Unlimited AI calls</div>
-              <div>✓ Private 1-on-1 direct chat</div>
+              <div>✓ <strong>1,000 AI calls/day</strong> (Fair Use capacity)</div>
+              <div>✓ <strong>10 GB storage</strong> (100 file uploads)</div>
+              <div>✓ <strong>1,000 downloads per month</strong></div>
+              <div>✓ <strong>Highest priority AI processing</strong> (Zero wait)</div>
+              <div>✓ Interactive voice interview simulation</div>
               <div>✓ Full Career OS & resume audit</div>
-              <div>✓ Interactive voice mock interviews</div>
+              <div>✓ Private 1-to-1 direct messaging in Circles</div>
             </div>
           </div>
+        </div>
+
+        {/* 14-Day Trial & Data Safety Guarantee Footer */}
+        <div
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            padding: "14px 20px",
+            textAlign: "center",
+            fontSize: 13,
+            color: "var(--ink-soft)",
+            lineHeight: 1.5,
+          }}
+        >
+          🎁 <strong>14-day full access trial included</strong> for every new member. No permanent free tier. Cancel anytime. All your notes, study data, and tasks are permanently preserved.
         </div>
       </section>
 
@@ -908,7 +1053,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Chakra size={22} />
-          <span style={{ fontWeight: 700, color: "var(--ink)" }}>Spark</span>
+          <span style={{ fontWeight: 700, color: "var(--ink)" }}>SparkDhi.ai</span>
           <span>· Universal AI Workspace</span>
         </div>
         <div>Your thoughts and data stay yours.</div>

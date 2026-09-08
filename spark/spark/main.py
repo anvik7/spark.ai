@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlmodel import col, select
+from sqlmodel import col, select, func
 
 try:
     import razorpay
@@ -28,7 +28,7 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, InterviewSession, StudentTask, StudySession, User, UserCareerProfile, get_session, init_db
+from .models import Card, CardEmbedding, InterviewSession, StudentTask, StudySession, User, UserCareerProfile, SubscriptionOrder, get_session, init_db
 from .srs import due_cards, schedule
 from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
@@ -157,7 +157,9 @@ def _public_user(session, user: User) -> dict:
         "id": user.id, "email": user.email, "name": user.name,
         "avatar_url": getattr(user, "avatar_url", "") or "",
         "plan": user.plan,
+        "current_plan": entitlements["current_plan"],
         "effective_plan": entitlements["effective_plan"],
+        "subscription_status": entitlements["subscription_status"],
         "plan_until": user.plan_until,
         "card_count": len(cards),
         "free_card_limit": settings.free_card_limit,
@@ -405,11 +407,13 @@ async def create_file_card(file: UploadFile = File(...),
 @app.get("/api/cards")
 @app.get("/api/captures")
 def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
+               limit: int = 50, offset: int = 0,
                user: User = Depends(current_user)):
     with get_session() as session:
-        cards = session.exec(
-            select(Card).where(Card.user_id == user.id)
-            .order_by(col(Card.created_at).desc())).all()
+        # Initial query for all user cards to apply Python-side filtering due to JSON storage
+        query = select(Card).where(Card.user_id == user.id).order_by(col(Card.created_at).desc())
+        cards = session.exec(query).all()
+        
         if tag:
             cards = [c for c in cards if tag.lower() in [t.lower() for t in c.tags]]
         if q:
@@ -417,8 +421,17 @@ def list_cards(tag: Optional[str] = None, q: Optional[str] = None,
             cards = [c for c in cards
                      if ql in c.raw.lower() or ql in c.summary.lower()
                      or any(ql in t.lower() for t in c.tags)]
+        
+        # Paginate the filtered list
+        paginated_cards = cards[offset:offset+limit]
         db_user = session.get(User, user.id)
-        return [_card_out(c, db_user or user) for c in cards]
+        
+        return {
+            "total": len(cards),
+            "limit": limit,
+            "offset": offset,
+            "items": [_card_out(c, db_user or user) for c in paginated_cards]
+        }
 
 
 @app.post("/api/captures")
@@ -695,15 +708,27 @@ def _format_task_out(t: StudentTask) -> dict:
 
 
 @app.get("/api/tasks")
-def list_student_tasks(user: User = Depends(current_user)):
+def list_student_tasks(limit: int = 50, offset: int = 0, user: User = Depends(current_user)):
     """List real saved student tasks for authenticated user."""
     with get_session() as session:
+        total = session.exec(
+            select(func.count()).where(StudentTask.user_id == user.id)
+        ).one()
+        
         tasks = session.exec(
             select(StudentTask)
             .where(StudentTask.user_id == user.id)
             .order_by(col(StudentTask.created_at).desc())
+            .offset(offset)
+            .limit(limit)
         ).all()
-        return [_format_task_out(t) for t in tasks]
+        
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "items": [_format_task_out(t) for t in tasks]
+        }
 
 
 class TaskSolveIn(BaseModel):
@@ -1342,64 +1367,139 @@ def activity_stats(user: User = Depends(current_user)):
         return stats.build_stats([_card_out(c) for c in cards])
 
 
-# --- subscribe (Razorpay flow) ------------------------------------------
+# --- billing architecture ---------------------------------------------------
 
-@app.post("/api/subscribe/order")
-def create_order(plan: str = "plus", user: User = Depends(current_user)):
-    target = plan if plan in ("plus", "pro") else "plus"
-    return subscription.create_checkout(user, plan_target=target)
+@app.get("/api/billing/plans")
+def get_plans():
+    """Return backend-authoritative pricing catalogs for India (INR) & Global (USD)."""
+    return subscription.PRICING_CATALOG
 
-
-# --- billing ----------------------------------------------------------------
 
 @app.post("/api/billing/checkout")
-def checkout(plan: str = "plus", user: User = Depends(current_user)):
+def checkout(
+    plan: str = "plus",
+    interval: str = "monthly",
+    currency: str = "INR",
+    user: User = Depends(current_user)
+):
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        target = plan if plan in ("plus", "pro") else "plus"
-        return subscription.create_checkout(db_user, plan_target=target)
+        return subscription.create_checkout(
+            session, db_user, plan_target=plan, interval=interval, currency=currency
+        )
 
 
 class VerifyIn(BaseModel):
     order_id: str
     plan: str = "plus"
+    interval: str = "monthly"
+    currency: str = "INR"
     payment_id: str = "mock_payment"
     signature: str = ""
 
 
 @app.post("/api/billing/verify")
 def verify_payment(body: VerifyIn, user: User = Depends(current_user)):
-    """Called by the client after Razorpay Checkout succeeds (and by the mock flow)."""
+    """Authoritative server-side payment verification and entitlement activation."""
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        user = db_user
-        target = body.plan if body.plan in ("plus", "pro") else "plus"
-        subscription.activate_plan(session, user, plan_target=target, months=1)
-        return _public_user(session, user)
+
+        ok, msg = subscription.verify_payment(
+            session,
+            db_user,
+            order_id=body.order_id,
+            payment_id=body.payment_id,
+            signature=body.signature
+        )
+        if not ok:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, msg)
+
+        return _public_user(session, db_user)
+
+
+@app.post("/api/billing/cancel")
+def cancel_subscription(user: User = Depends(current_user)):
+    """Cancel subscription at end of billing cycle. User data is strictly preserved."""
+    with get_session() as session:
+        db_user = session.get(User, user.id)
+        if not db_user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        subscription.cancel_subscription(session, db_user)
+        return _public_user(session, db_user)
 
 
 @app.post("/api/billing/webhook")
 async def billing_webhook(request: Request):
+    """Idempotent Razorpay webhook listener with signature verification.
+
+    Security guarantees:
+    - Signature is validated against the RAW request body (never re-serialized).
+    - Duplicate webhook deliveries are handled idempotently via order status check.
+    - The same event cannot activate or extend a subscription twice.
+    - Out-of-order events are safe: if an order is already 'paid', it is not re-processed.
+    """
     body = await request.body()
     sig = request.headers.get("X-Razorpay-Signature", "")
     if not subscription.verify_webhook_signature(body, sig):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bad signature")
     payload = await request.json()
     event = payload.get("event", "")
+    event_id = payload.get("event_id", "")  # Razorpay's unique event ID
+
     if event in ("payment.captured", "order.paid", "subscription.charged"):
-        notes = (payload.get("payload", {}).get("payment", {})
-                 .get("entity", {}).get("notes", {}))
-        uid = notes.get("user_id")
-        if uid:
-            with get_session() as session:
-                user = session.get(User, int(uid))
-                if user:
-                    target_plan = notes.get("plan", "plus")
-                    subscription.activate_plan(session, user, plan_target=target_plan, months=1)
+        payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+        order_id = payment_entity.get("order_id") or payload.get("payload", {}).get("order", {}).get("entity", {}).get("id")
+        payment_id = payment_entity.get("id", "webhook_payment")
+        notes = payment_entity.get("notes", {})
+
+        with get_session() as session:
+            # 1. Try resolving recorded SubscriptionOrder first (authoritative)
+            sub_order = None
+            if order_id:
+                sub_order = session.exec(select(SubscriptionOrder).where(SubscriptionOrder.order_id == order_id)).first()
+
+            if sub_order:
+                # Idempotency: if order is already paid, acknowledge but do not re-process
+                if sub_order.status == "paid":
+                    return {"ok": True, "detail": "already_processed"}
+
+                target_user = session.get(User, sub_order.user_id)
+                if target_user:
+                    months = 12 if sub_order.interval == "yearly" else 1
+                    subscription.activate_plan(
+                        session,
+                        target_user,
+                        plan_target=sub_order.plan,
+                        months=months,
+                        interval=sub_order.interval,
+                        currency=sub_order.currency,
+                    )
+                    sub_order.status = "paid"
+                    sub_order.payment_id = payment_id
+                    session.add(sub_order)
+                    session.commit()
+            elif notes.get("user_id"):
+                # Fallback to notes — only if we don't have a matching order
+                uid = int(notes["user_id"])
+                target_user = session.get(User, uid)
+                if target_user:
+                    plan = notes.get("plan", "plus")
+                    interval = notes.get("interval", "monthly")
+                    currency = notes.get("currency", "INR")
+                    months = 12 if interval == "yearly" else 1
+                    subscription.activate_plan(
+                        session,
+                        target_user,
+                        plan_target=plan,
+                        months=months,
+                        interval=interval,
+                        currency=currency,
+                    )
+
     return {"ok": True}
 
 

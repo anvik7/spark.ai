@@ -33,9 +33,11 @@ class Settings(BaseSettings):
     minimax_tts_model: str = "speech-2.8-turbo"
 
     # --- Billing ------------------------------------------------------------
-    razorpay_key_id: str = "rzp_test_TEBukEgSDIHGN9"
-    razorpay_key_secret: str = "TBoVVUv4WroLUKDindEqkoSE"
+    # NEVER hardcode real or test credentials here. Use .env only.
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
     razorpay_webhook_secret: str = ""
+    razorpay_mode: str = "test"   # "test" or "live"
 
     # --- Career (Adzuna live demand) ----------------------------------------
     adzuna_app_id: str = ""
@@ -55,9 +57,6 @@ class Settings(BaseSettings):
 
     # --- Plan limits --------------------------------------------------------
     free_card_limit: int = 30           # lifetime cards on free tier
-    free_ai_calls_per_day: int = 20     # rate-limit AI endpoints on free tier
-    pro_price_inr: int = 299            # monthly, in rupees
-    ultra_price_inr: int = 599          # monthly, in rupees
 
 
 @lru_cache

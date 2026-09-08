@@ -1,0 +1,121 @@
+============================= test session starts =============================
+collecting ... collected 62 items
+
+tests/test_billing.py::TestPricingCatalog::test_inr_exists PASSED        [  1%]
+tests/test_billing.py::TestPricingCatalog::test_usd_exists PASSED        [  3%]
+tests/test_billing.py::TestPricingCatalog::test_inr_plus_monthly_price PASSED [  4%]
+tests/test_billing.py::TestPricingCatalog::test_inr_plus_yearly_price PASSED [  6%]
+tests/test_billing.py::TestPricingCatalog::test_inr_pro_monthly_price PASSED [  8%]
+tests/test_billing.py::TestPricingCatalog::test_inr_pro_yearly_price PASSED [  9%]
+tests/test_billing.py::TestPricingCatalog::test_usd_plus_monthly_price PASSED [ 11%]
+tests/test_billing.py::TestPricingCatalog::test_usd_plus_yearly_price PASSED [ 12%]
+tests/test_billing.py::TestPricingCatalog::test_usd_pro_monthly_price PASSED [ 14%]
+tests/test_billing.py::TestPricingCatalog::test_usd_pro_yearly_price PASSED [ 16%]
+tests/test_billing.py::TestPricingCatalog::test_inr_plus_annual_is_10_months PASSED [ 17%]
+tests/test_billing.py::TestPricingCatalog::test_inr_pro_annual_is_10_months PASSED [ 19%]
+tests/test_billing.py::TestPricingCatalog::test_usd_plus_annual_is_10_months PASSED [ 20%]
+tests/test_billing.py::TestPricingCatalog::test_usd_pro_annual_is_10_months PASSED [ 22%]
+tests/test_billing.py::TestPricingCatalog::test_no_old_usd_12_price PASSED [ 24%]
+tests/test_billing.py::TestPricingCatalog::test_no_old_usd_15_price PASSED [ 25%]
+tests/test_billing.py::TestTrialSystem::test_trial_is_active PASSED      [ 27%]
+tests/test_billing.py::TestTrialSystem::test_expired_trial_is_inactive PASSED [ 29%]
+tests/test_billing.py::TestTrialSystem::test_trial_exactly_14_days PASSED [ 30%]
+tests/test_billing.py::TestTrialSystem::test_paid_user_trial_inactive PASSED [ 32%]
+tests/test_billing.py::TestEntitlements::test_trial_entitlements PASSED  [ 33%]
+tests/test_billing.py::TestEntitlements::test_plus_entitlements PASSED   [ 35%]
+tests/test_billing.py::TestEntitlements::test_pro_entitlements PASSED    [ 37%]
+tests/test_billing.py::TestEntitlements::test_expired_entitlements PASSED [ 38%]
+tests/test_billing.py::TestEntitlements::test_cancelled_entitlements PASSED [ 40%]
+tests/test_billing.py::TestEntitlements::test_feature_access_trial FAILED [ 41%]
+tests/test_billing.py::TestEntitlements::test_feature_access_expired FAILED [ 43%]
+tests/test_billing.py::TestCheckout::test_mock_checkout_plus_inr PASSED  [ 45%]
+tests/test_billing.py::TestCheckout::test_mock_checkout_pro_usd_yearly PASSED [ 46%]
+tests/test_billing.py::TestCheckout::test_checkout_creates_order_record PASSED [ 48%]
+tests/test_billing.py::TestCheckout::test_live_mode_rejects_missing_credentials PASSED [ 50%]
+tests/test_billing.py::TestPaymentVerification::test_verify_valid_mock_payment PASSED [ 51%]
+tests/test_billing.py::TestPaymentVerification::test_verify_invalid_order PASSED [ 53%]
+tests/test_billing.py::TestPaymentVerification::test_verify_wrong_user PASSED [ 54%]
+tests/test_billing.py::TestPaymentVerification::test_verify_duplicate_payment_is_idempotent PASSED [ 56%]
+tests/test_billing.py::TestPaymentVerification::test_verify_invalid_signature PASSED [ 58%]
+tests/test_billing.py::TestPlanActivation::test_activate_plus_monthly PASSED [ 59%]
+tests/test_billing.py::TestPlanActivation::test_activate_pro_yearly PASSED [ 61%]
+tests/test_billing.py::TestPlanActivation::test_activate_extends_existing PASSED [ 62%]
+tests/test_billing.py::TestPlanActivation::test_renewal_extends_from_current_expiry PASSED [ 64%]
+tests/test_billing.py::TestCancelSubscription::test_cancel_sets_status PASSED [ 66%]
+tests/test_billing.py::TestCancelSubscription::test_cancel_preserves_plan PASSED [ 67%]
+tests/test_billing.py::TestCancelSubscription::test_cancel_preserves_plan_until PASSED [ 69%]
+tests/test_billing.py::TestWebhookSignature::test_valid_signature PASSED [ 70%]
+tests/test_billing.py::TestWebhookSignature::test_invalid_signature PASSED [ 72%]
+tests/test_billing.py::TestWebhookSignature::test_missing_signature PASSED [ 74%]
+tests/test_billing.py::TestWebhookSignature::test_test_mode_no_secret_accepts PASSED [ 75%]
+tests/test_billing.py::TestWebhookSignature::test_live_mode_no_secret_rejects PASSED [ 77%]
+tests/test_billing.py::TestWebhookDuplicateHandling::test_paid_order_not_reprocessed PASSED [ 79%]
+tests/test_billing.py::TestMissingCredentials::test_config_no_hardcoded_keys PASSED [ 80%]
+tests/test_billing.py::TestMissingCredentials::test_config_has_mode PASSED [ 82%]
+tests/test_billing.py::TestMissingCredentials::test_mock_fallback_in_test_mode PASSED [ 83%]
+tests/test_billing.py::TestQuotaEnforcement::test_expired_user_quota_denied PASSED [ 85%]
+tests/test_billing.py::TestQuotaEnforcement::test_trial_user_quota_allowed PASSED [ 87%]
+tests/test_billing.py::TestQuotaEnforcement::test_plus_user_quota_allowed PASSED [ 88%]
+tests/test_billing.py::TestStatusFunctions::test_is_active_paid PASSED   [ 90%]
+tests/test_billing.py::TestStatusFunctions::test_is_active_paid_expired PASSED [ 91%]
+tests/test_billing.py::TestStatusFunctions::test_get_current_plan PASSED [ 93%]
+tests/test_billing.py::TestStatusFunctions::test_get_effective_plan_trial FAILED [ 95%]
+tests/test_billing.py::TestStatusFunctions::test_get_effective_plan_expired FAILED [ 96%]
+tests/test_billing.py::TestStatusFunctions::test_get_subscription_status PASSED [ 98%]
+tests/test_billing.py::TestStatusFunctions::test_get_subscription_status_trial PASSED [100%]
+
+================================== FAILURES ===================================
+_________________ TestEntitlements.test_feature_access_trial __________________
+
+self = <tests.test_billing.TestEntitlements object at 0x000001EA19732E00>
+session = <sqlmodel.orm.session.Session object at 0x000001EA1C5A4C50>
+trial_user = User(email='trial@test.com', id=1, name='Trial User', plan='trial', trial_active=True, trial_expires_at=datetime.datet...t=datetime.datetime(2026, 9, 7, 20, 8, 46, 891732), subscription_status='trial', billing_currency='INR', digest_hour=8)
+
+    def test_feature_access_trial(self, session, trial_user):
+>       assert subscription.has_feature_access(trial_user, "ai_generation", session) is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: has_feature_access() takes 2 positional arguments but 3 were given
+
+tests\test_billing.py:274: TypeError
+________________ TestEntitlements.test_feature_access_expired _________________
+
+self = <tests.test_billing.TestEntitlements object at 0x000001EA19732CF0>
+session = <sqlmodel.orm.session.Session object at 0x000001EA1C684050>
+expired_user = User(email='expired@test.com', id=1, name='Expired User', plan='expired', trial_active=False, trial_expires_at=datetim...=datetime.datetime(2026, 8, 8, 20, 8, 47, 91016), subscription_status='expired', billing_currency='INR', digest_hour=8)
+
+    def test_feature_access_expired(self, session, expired_user):
+>       assert subscription.has_feature_access(expired_user, "ai_generation", session) is False
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: has_feature_access() takes 2 positional arguments but 3 were given
+
+tests\test_billing.py:277: TypeError
+______________ TestStatusFunctions.test_get_effective_plan_trial ______________
+
+self = <tests.test_billing.TestStatusFunctions object at 0x000001EA1C338510>
+trial_user = User(email='trial@test.com', id=1, name='Trial User', plan='trial', trial_active=True, trial_expires_at=datetime.datet...t=datetime.datetime(2026, 9, 7, 20, 8, 47, 947078), subscription_status='trial', billing_currency='INR', digest_hour=8)
+session = <sqlmodel.orm.session.Session object at 0x000001EA1C334B90>
+
+    def test_get_effective_plan_trial(self, trial_user, session):
+>       assert subscription.get_effective_plan(trial_user, session) in ("trial", "pro")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: get_effective_plan() takes 1 positional argument but 2 were given
+
+tests\test_billing.py:615: TypeError
+_____________ TestStatusFunctions.test_get_effective_plan_expired _____________
+
+self = <tests.test_billing.TestStatusFunctions object at 0x000001EA1C276570>
+expired_user = User(email='expired@test.com', id=1, name='Expired User', plan='expired', trial_active=False, trial_expires_at=datetim...datetime.datetime(2026, 8, 8, 20, 8, 47, 999471), subscription_status='expired', billing_currency='INR', digest_hour=8)
+session = <sqlmodel.orm.session.Session object at 0x000001EA1C37DA90>
+
+    def test_get_effective_plan_expired(self, expired_user, session):
+>       assert subscription.get_effective_plan(expired_user, session) == "expired"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: get_effective_plan() takes 1 positional argument but 2 were given
+
+tests\test_billing.py:618: TypeError
+=========================== short test summary info ===========================
+FAILED tests/test_billing.py::TestEntitlements::test_feature_access_trial - T...
+FAILED tests/test_billing.py::TestEntitlements::test_feature_access_expired
+FAILED tests/test_billing.py::TestStatusFunctions::test_get_effective_plan_trial
+FAILED tests/test_billing.py::TestStatusFunctions::test_get_effective_plan_expired
+======================== 4 failed, 58 passed in 2.98s =========================
