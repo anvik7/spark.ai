@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
+import React, { useEffect, useState, useCallback, Suspense, lazy, startTransition } from "react";
 import { api, setToken, hasToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
 import Avatar from "./components/Avatar.jsx";
@@ -82,7 +82,11 @@ export default function App() {
   const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
   if (currentPath.startsWith("/shared/capture/")) {
     const shareToken = currentPath.replace("/shared/capture/", "").trim();
-    return <SharedCapture shareToken={shareToken} />;
+    return (
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading Capture…</div>}>
+        <SharedCapture shareToken={shareToken} />
+      </Suspense>
+    );
   }
 
   useEffect(() => {
@@ -99,7 +103,12 @@ export default function App() {
   }, [user?.avatar_url]);
 
   useEffect(() => {
-    const onUnauthorized = () => { setUser(null); setShowAuth(true); };
+    const onUnauthorized = () => {
+      startTransition(() => {
+        setUser(null);
+        setShowAuth(true);
+      });
+    };
     window.addEventListener("spark:unauthorized", onUnauthorized);
     return () => window.removeEventListener("spark:unauthorized", onUnauthorized);
   }, []);
@@ -107,31 +116,39 @@ export default function App() {
   const refreshUser = () => api.me().then(setUser).catch(() => { });
 
   const handleNav = (targetTab) => {
-    setShowUpgrade(false);
-    setShowAccount(false);
-    setTab(targetTab);
-    localStorage.setItem("spark_active_tab", targetTab);
+    startTransition(() => {
+      setShowUpgrade(false);
+      setShowAccount(false);
+      setTab(targetTab);
+      localStorage.setItem("spark_active_tab", targetTab);
+    });
   };
 
   if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading Spark Workspace…</div>;
   if (!user) {
     return showAuth ? (
-      <Auth
-        onAuthed={(u) => {
-          setUser(u);
-          setShowAuth(false);
-          handleNav("tasks");
-        }}
-        onBackToHome={() => setShowAuth(false)}
-        initialMode={authMode}
-      />
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading Spark…</div>}>
+        <Auth
+          onAuthed={(u) => {
+            startTransition(() => {
+              setUser(u);
+              setShowAuth(false);
+              handleNav("tasks");
+            });
+          }}
+          onBackToHome={() => setShowAuth(false)}
+          initialMode={authMode}
+        />
+      </Suspense>
     ) : (
-      <Landing
-        onGetStarted={() => { setAuthMode("signup"); setShowAuth(true); }}
-        onLogin={() => { setAuthMode("login"); setShowAuth(true); }}
-        theme={theme}
-        onChangeTheme={handleChangeTheme}
-      />
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading Spark…</div>}>
+        <Landing
+          onGetStarted={() => { startTransition(() => { setAuthMode("signup"); setShowAuth(true); }); }}
+          onLogin={() => { startTransition(() => { setAuthMode("login"); setShowAuth(true); }); }}
+          theme={theme}
+          onChangeTheme={handleChangeTheme}
+        />
+      </Suspense>
     );
   }
 
