@@ -431,7 +431,7 @@ def _migrate() -> None:
                     print("[migrate] Adding razorpay_customer_id column to 'user' table...")
                     conn.execute(_sql('ALTER TABLE "user" ADD COLUMN razorpay_customer_id VARCHAR'))
                 # Upgrade legacy 'free' plans to 'trial' if trial is active
-                conn.execute(_sql('UPDATE "user" SET plan = \'trial\' WHERE plan = \'free\' AND (trial_active = TRUE OR trial_active = 1)'))
+                conn.execute(_sql('UPDATE "user" SET plan = \'trial\' WHERE plan = \'free\' AND trial_active = TRUE'))
 
             # 2. Card table schema sync
             if inspector.has_table("card"):
