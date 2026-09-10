@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "./api.js";
+import { Chakra } from "./Chakra.jsx";
 
 function loadRazorpay() {
   return new Promise((resolve, reject) => {
