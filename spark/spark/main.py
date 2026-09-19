@@ -1260,67 +1260,29 @@ def list_interview_history(user: User = Depends(current_user)):
 
 class TTSIn(BaseModel):
     text: str
+    emotion: Optional[str] = "neutral"
+    delivery: Optional[dict] = None
+    voice_id: Optional[str] = None
 
 
 @app.post("/api/tts")
 def tts_generate(body: TTSIn, user: User = Depends(current_user)):
-    """Generate speech audio from text via MiniMax, OpenAI TTS, or gTTS fallback.
+    """Generate speech audio from text via active TTS VoiceProvider (CurrentTTSProvider with fallback).
     Returns audio/mpeg on success, or json with available=False on failure."""
-    s = get_settings()
     text = body.text.strip()[:2000]
     if not text:
         return JSONResponse(status_code=200, content={"available": False, "reason": "Text is empty"})
 
-    # 1. MiniMax Speech
-    if s.minimax_api_key:
-        try:
-            r = httpx.post(
-                "https://api.minimax.io/v1/t2a_v2",
-                headers={"Authorization": f"Bearer {s.minimax_api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": s.minimax_tts_model or "speech-2.8-turbo",
-                    "text": text,
-                    "voice_setting": {"voice_id": "Friendly_Person"},
-                },
-                timeout=15,
-            )
-            if r.status_code == 200:
-                data = r.json()
-                hex_audio = data.get("data", {}).get("audio", {}).get("audio_file") or data.get("audio_file")
-                if hex_audio:
-                    return Response(content=bytes.fromhex(hex_audio), media_type="audio/mpeg")
-        except Exception as e:
-            print(f"[tts] MiniMax error: {e}")
-
-    # 2. OpenAI TTS
-    openai_key = getattr(s, "openai_api_key", None) or getattr(s, "openai_key", None)
-    if openai_key:
-        try:
-            r = httpx.post(
-                "https://api.openai.com/v1/audio/speech",
-                headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
-                json={"model": "tts-1", "input": text, "voice": "alloy"},
-                timeout=15,
-            )
-            if r.status_code == 200:
-                return Response(content=r.content, media_type="audio/mpeg")
-        except Exception as e:
-            print(f"[tts] OpenAI TTS error: {e}")
-
-    # 3. Reliable gTTS (Google Text-to-Speech) Fallback (0 API keys required)
-    try:
-        import io
-        import importlib
-        gtts_mod = importlib.import_module("gtts")
-        gTTS = getattr(gtts_mod, "gTTS")
-
-        tts_obj = gTTS(text=text, lang="en", tld="com")
-        buf = io.BytesIO()
-        tts_obj.write_to_fp(buf)
-        return Response(content=buf.getvalue(), media_type="audio/mpeg")
-    except Exception as e:
-        print(f"[tts] gTTS error: {e}")
-        return JSONResponse(status_code=200, content={"available": False, "reason": str(e)})
+    provider = get_tts_provider()
+    result = provider.synthesize(
+        text=text,
+        emotion=body.emotion or "neutral",
+        delivery=body.delivery,
+        voice_id=body.voice_id,
+    )
+    if result.available and result.audio_bytes:
+        return Response(content=result.audio_bytes, media_type=result.media_type)
+    return JSONResponse(status_code=200, content={"available": False, "reason": result.reason or "TTS unavailable"})
 
 
 # --- daily digest -----------------------------------------------------------

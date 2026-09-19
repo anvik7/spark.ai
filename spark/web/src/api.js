@@ -222,14 +222,20 @@ export const api = {
   getInterviewHistory: () => req("/interview/history"),
 
   // TTS Voice Synthesis
-  generateTTS: async (text) => {
+  generateTTS: async (text, options = {}) => {
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     headers["Content-Type"] = "application/json";
+    const body = { text };
+    if (options && typeof options === "object") {
+      if (options.emotion) body.emotion = options.emotion;
+      if (options.delivery) body.delivery = options.delivery;
+      if (options.voice_id) body.voice_id = options.voice_id;
+    }
     const res = await fetch(BASE + "/tts", {
       method: "POST",
       headers,
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") || "";
@@ -239,6 +245,7 @@ export const api = {
     }
     return null;
   },
+
 
   // Circles & Chat
   myCircles: () => req("/circles"),

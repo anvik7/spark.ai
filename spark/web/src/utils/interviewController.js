@@ -85,10 +85,13 @@ export function createInterviewController({
     const openingTurn = turns[turns.length - 1];
     const openingQuestion = openingTurn?.q || "Tell me about a project on your resume that best demonstrates your readiness for this role.";
 
-    await handleQuestionTurn(openingQuestion);
+    await handleQuestionTurn(openingQuestion, {
+      emotion: openingTurn?.emotion,
+      delivery: openingTurn?.delivery,
+    });
   }
 
-  async function handleQuestionTurn(questionText) {
+  async function handleQuestionTurn(questionText, options = {}) {
     if (!running) return;
 
     const q = String(questionText || "").trim();
@@ -106,6 +109,9 @@ export function createInterviewController({
 
     try {
       await tts.speakAdaptive(q, {
+        emotion: options.emotion,
+        delivery: options.delivery,
+        turnId: state.turnIndex,
         onStart: () => ui.onTTSStart?.(q),
         onEnd: () => ui.onTTSEnd?.(q),
         onError: (err) => ui.onTTSError?.(err),
@@ -163,7 +169,10 @@ export function createInterviewController({
     const latestTurn = turns[turns.length - 1];
     const nextQ = latestTurn?.q || "What was the most challenging technical decision you had to make in that situation?";
 
-    await handleQuestionTurn(nextQ);
+    await handleQuestionTurn(nextQ, {
+      emotion: latestTurn?.emotion,
+      delivery: latestTurn?.delivery,
+    });
   }
 
   async function conclude() {

@@ -205,20 +205,26 @@ export function createTTSManager({
     onEnd?.();
   }
 
-  async function speakAdaptive(text, { onStart, onEnd, onError } = {}) {
+  async function speakAdaptive(text, { onStart, onEnd, onError, emotion = "neutral", delivery = null, turnId = null } = {}) {
     const t = String(text || "");
     const cleaned = cleanForSpeech(t);
     if (!cleaned) return;
 
+    // Deduplication check: prevent duplicate synthesis if identical turn/text is active
+    if (state.isSpeaking && (turnId && state.lastTurnId === turnId)) {
+      return;
+    }
+
     stop();
 
     state.lastSpokenText = cleaned;
+    state.lastTurnId = turnId;
     state.isPaused = false;
     state.isSpeaking = true;
 
     // Try primary server-side TTS (100% reliable cross-platform MP3 playback for iOS / Android)
     try {
-      const audioUrl = await api.generateTTS(cleaned).catch(() => null);
+      const audioUrl = await api.generateTTS(cleaned, { emotion, delivery }).catch(() => null);
       if (audioUrl && state.isSpeaking) {
         onStart?.();
         const audio = new Audio(audioUrl);
@@ -239,14 +245,22 @@ export function createTTSManager({
             try {
               URL.revokeObjectURL(audioUrl);
             } catch (e) {}
-            speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+            if (state.isSpeaking) {
+              speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+            } else {
+              resolve(false);
+            }
           };
           audio.play().catch(() => {
             state.currentAudio = null;
             try {
               URL.revokeObjectURL(audioUrl);
             } catch (e) {}
-            speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+            if (state.isSpeaking) {
+              speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+            } else {
+              resolve(false);
+            }
           });
         });
       }
@@ -255,8 +269,10 @@ export function createTTSManager({
     }
 
     // Fallback: Browser SpeechSynthesis
-    onStart?.();
-    await speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+    if (state.isSpeaking) {
+      onStart?.();
+      await speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+    }
   }
 
   function stop() {
