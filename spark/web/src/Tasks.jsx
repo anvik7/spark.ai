@@ -114,6 +114,7 @@ export default function Tasks() {
   const [busy, setBusy] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [err, setErr] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
   // Solved Student Tasks from database
   const [tasks, setTasks] = useState([]);
@@ -144,6 +145,13 @@ export default function Tasks() {
 
   const fileInputRef = useRef();
   const textareaRef = useRef();
+  const isSubmittingRef = useRef(false);
+  const abortControllerRef = useRef(null);
+
+  const isMac = typeof navigator !== "undefined" && (
+    (navigator.platform && navigator.platform.toUpperCase().indexOf("MAC") >= 0) ||
+    (navigator.userAgentData?.platform === "macOS")
+  );
 
   const onTranscript = useCallback((t) => {
     setPromptText((prev) => (prev ? prev.trim() + " " + t.trim() : t.trim()));
@@ -186,23 +194,54 @@ export default function Tasks() {
     setFilePreviewUrl(null);
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleSelectFile(file);
+  };
+
   const handleSolveTask = async (e) => {
     e?.preventDefault();
-    const input = promptText.trim();
+    if (isSubmittingRef.current || busy) return;
+
+    const voiceAddition = (interim || "").trim();
+    const input = (promptText + (voiceAddition ? " " + voiceAddition : "")).trim();
     if (!input && !selectedFile) {
       setErr("Please type a question or attach a file.");
       return;
     }
 
+    if (listening) {
+      stop();
+    }
+
+    isSubmittingRef.current = true;
     setBusy(true);
     setErr("");
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       let createdTask;
       if (selectedFile) {
-        createdTask = await api.uploadTaskFile(selectedFile, input, "");
+        createdTask = await api.uploadTaskFile(selectedFile, input, "", { signal: controller.signal });
       } else {
-        createdTask = await api.solveTask(input, "");
+        createdTask = await api.solveTask(input, "", { signal: controller.signal });
       }
 
       if (createdTask) {
@@ -213,9 +252,21 @@ export default function Tasks() {
       }
     } catch (error) {
       console.error("Solve task error:", error);
-      setErr(error.message || "Failed to solve question. Please try again.");
+      if (error.code === "ABORTED" || error.name === "AbortError") {
+        setErr("Request cancelled.");
+      } else {
+        setErr(error.message || "Failed to solve question. Please try again.");
+      }
     } finally {
+      isSubmittingRef.current = false;
       setBusy(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -251,9 +302,9 @@ export default function Tasks() {
     }
   };
 
-  const handleFollowupSubmit = async (e, taskId) => {
+  const handleFollowupSubmit = async (e, taskId, explicitText = null) => {
     e?.preventDefault();
-    const followupText = (followupInputs[taskId] || "").trim();
+    const followupText = (explicitText !== null ? explicitText : (followupInputs[taskId] || "")).trim();
     if (!followupText) return;
 
     setFollowupBusy((prev) => ({ ...prev, [taskId]: true }));
@@ -282,32 +333,58 @@ export default function Tasks() {
       {/* Universal Minimal Composer */}
       <form
         onSubmit={handleSolveTask}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
           background: "var(--surface)",
-          border: "1.5px solid var(--line)",
+          border: isDragging ? "2px dashed var(--marigold)" : "1.5px solid var(--line)",
           borderRadius: "var(--r)",
           padding: "14px 16px",
-          boxShadow: "var(--sh-sm)",
+          boxShadow: isDragging ? "0 0 12px rgba(245, 158, 11, 0.25)" : "var(--sh-sm)",
           marginBottom: 24,
+          transition: "all .15s ease",
         }}
       >
         <textarea
           ref={textareaRef}
           value={promptText}
-          onChange={(e) => setPromptText(e.target.value)}
-          placeholder="Ask anything"
+          onChange={(e) => {
+            setPromptText(e.target.value);
+            if (err) setErr("");
+          }}
+          onKeyDown={(e) => {
+            // Respect IME composition (East Asian transliteration, etc.)
+            if (e.nativeEvent?.isComposing || e.isComposing || e.keyCode === 229) {
+              return;
+            }
+
+            if (e.key === "Enter") {
+              const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+              // Shift+Enter without Ctrl/Cmd: insert newline, do NOT submit
+              if (e.shiftKey && !isCtrlOrCmd) {
+                return;
+              }
+              // Enter, Ctrl+Enter, or Cmd+Enter: submit
+              e.preventDefault();
+              handleSolveTask(e);
+            }
+          }}
+          placeholder="Ask anything or attach/drop problem image, PDF, DOCX"
           rows={3}
           style={{
             width: "100%",
+            minHeight: 76,
             border: "none",
             outline: "none",
             fontSize: 15,
-            lineHeight: 1.5,
+            lineHeight: 1.55,
             fontFamily: "var(--sans)",
             background: "transparent",
             resize: "vertical",
             color: "var(--ink)",
             boxSizing: "border-box",
+            padding: "2px 0",
           }}
         />
 
@@ -326,8 +403,10 @@ export default function Tasks() {
                 style={{ maxHeight: 120, borderRadius: 8, border: "1px solid var(--line)", display: "block" }}
               />
             ) : (
-              <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)" }}>
-                📄 {selectedFile.name}
+              <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                <span>{selectedFile.name.endsWith(".docx") ? "📝" : selectedFile.name.endsWith(".pdf") ? "📄" : "📑"}</span>
+                <span style={{ fontWeight: 600 }}>{selectedFile.name}</span>
+                <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>({Math.round(selectedFile.size / 1024)} KB)</span>
               </div>
             )}
             <button
@@ -356,16 +435,45 @@ export default function Tasks() {
           </div>
         )}
 
-        {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>{err}</div>}
+        {busy && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, marginBottom: 10, fontSize: 13, color: "var(--marigold-dark)", fontWeight: 600 }}>
+            <span className="spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid var(--marigold)", borderTopColor: "transparent", borderRadius: "50%" }} />
+            <span>Thinking and deriving solution…</span>
+          </div>
+        )}
+
+        {err && (
+          <div className="err" style={{ marginBottom: 10, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span>{err}</span>
+            {err !== "Request cancelled." && (promptText.trim() || selectedFile) && (
+              <button
+                type="button"
+                onClick={handleSolveTask}
+                style={{
+                  background: "transparent",
+                  border: "1px solid currentColor",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  color: "inherit",
+                }}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Minimal Icon-First Composer Controls */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {/* "+" Icon Attachment Control */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Attach photo or document"
+              title="Attach photo or document (Image, PDF, DOCX, TXT)"
               style={{
                 width: 38,
                 height: 38,
@@ -386,7 +494,7 @@ export default function Tasks() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf,text/plain"
+              accept="image/*,application/pdf,text/plain,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               style={{ display: "none" }}
               onChange={(e) => handleSelectFile(e.target.files?.[0])}
             />
@@ -412,32 +520,68 @@ export default function Tasks() {
             >
               🎙️
             </button>
+
+            {/* Keyboard Shortcut Hint */}
+            <span style={{ fontSize: 11.5, color: "var(--ink-faint)", userSelect: "none" }}>
+              {isMac ? "⌘ Enter to send" : "Ctrl Enter to send"} · Shift Enter for newline
+            </span>
           </div>
 
-          {/* Send / Arrow Icon Button */}
-          <button
-            type="submit"
-            disabled={busy || (!promptText.trim() && !selectedFile)}
-            title="Send"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: "50%",
-              border: "none",
-              background: busy || (!promptText.trim() && !selectedFile) ? "var(--line)" : "var(--p-gradient)",
-              color: "#FFFFFF",
-              fontSize: 16,
-              fontWeight: 700,
-              cursor: busy || (!promptText.trim() && !selectedFile) ? "not-allowed" : "pointer",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all .15s ease",
-            }}
-          >
-            {busy ? "…" : "↑"}
-          </button>
+          {/* Send / Stop Button */}
+          {busy ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              title="Stop generating"
+              style={{
+                height: 38,
+                padding: "0 14px",
+                borderRadius: 19,
+                border: "1.5px solid #EF4444",
+                background: "#FEF2F2",
+                color: "#DC2626",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all .15s ease",
+              }}
+            >
+              <span style={{ display: "inline-block", width: 8, height: 8, background: "#DC2626", borderRadius: 2 }} />
+              <span>Stop</span>
+            </button>
+          ) : (() => {
+            const hasContent = !!promptText.trim() || !!(interim || "").trim() || !!selectedFile;
+            const canSubmit = !busy && hasContent;
+            return (
+              <button
+                type="submit"
+                onClick={handleSolveTask}
+                disabled={!canSubmit}
+                title="Send"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  border: "none",
+                  background: canSubmit ? "var(--p-gradient)" : "var(--line)",
+                  color: canSubmit ? "#FFFFFF" : "var(--ink-faint)",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  cursor: canSubmit ? "pointer" : "not-allowed",
+                  boxShadow: canSubmit ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all .15s ease",
+                }}
+              >
+                ↑
+              </button>
+            );
+          })()}
         </div>
       </form>
 
@@ -642,6 +786,36 @@ export default function Tasks() {
                         Follow-up Discussion
                       </span>
 
+                      {/* Quick Follow-up Action Pills */}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                        {[
+                          { label: "✨ Simplify", query: "Can you explain this in simpler terms with an intuitive example?" },
+                          { label: "🔍 Explain More", query: "Can you explain the reasoning and derivation in more detail?" },
+                          { label: "💻 Code version", query: "Can you provide a runnable code implementation with comments for this?" },
+                          { label: "📝 Key Points", query: "What are the key takeaways, edge cases, and pitfalls to watch out for?" },
+                        ].map((action, aIdx) => (
+                          <button
+                            key={aIdx}
+                            type="button"
+                            disabled={followupBusy[task.id]}
+                            onClick={() => handleFollowupSubmit(null, task.id, action.query)}
+                            style={{
+                              fontSize: 12,
+                              padding: "4px 10px",
+                              borderRadius: 14,
+                              border: "1px solid var(--line)",
+                              background: "var(--surface-2)",
+                              color: "var(--ink-soft)",
+                              cursor: followupBusy[task.id] ? "not-allowed" : "pointer",
+                              fontWeight: 600,
+                              transition: "all .15s ease",
+                            }}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+
                       {task.thread && task.thread.length > 0 && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                           {task.thread.map((msg, mIdx) => (
@@ -659,7 +833,7 @@ export default function Tasks() {
                               }}
                             >
                               <div style={{ fontSize: 10.5, fontWeight: 700, marginBottom: 2, opacity: 0.8 }}>
-                                {msg.role === "user" ? "You" : "Spark"}
+                                {msg.role === "user" ? "You" : "SparkDhi"}
                               </div>
                               <div style={{ whiteSpace: "pre-wrap" }}>{renderStepWithCode(msg.content)}</div>
                             </div>

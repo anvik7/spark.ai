@@ -12,7 +12,7 @@ export function hasToken() {
   return !!token;
 }
 
-async function req(path, { method = "GET", body, form } = {}) {
+async function req(path, { method = "GET", body, form, timeoutMs = 60000, signal } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -24,7 +24,41 @@ async function req(path, { method = "GET", body, form } = {}) {
     payload = JSON.stringify(body);
   }
 
-  const res = await fetch(BASE + path, { method, headers, body: payload });
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = timeoutMs > 0 ? setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs) : null;
+
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort());
+  }
+
+  let res;
+  try {
+    res = await fetch(BASE + path, { method, headers, body: payload, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      const timeoutErr = new Error("Request timed out. Please try again.");
+      timeoutErr.status = 408;
+      timeoutErr.code = "REQUEST_TIMEOUT";
+      throw timeoutErr;
+    }
+    if (err.name === "AbortError") {
+      const abortErr = new Error("Request cancelled.");
+      abortErr.status = 0;
+      abortErr.code = "ABORTED";
+      throw abortErr;
+    }
+    const netErr = new Error(err.message || "Network connection failed. Please check your internet connection.");
+    netErr.status = 0;
+    netErr.code = "NETWORK_ERROR";
+    throw netErr;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
   const text = await res.text();
   const contentType = res.headers.get("content-type") || "";
 
@@ -49,10 +83,21 @@ async function req(path, { method = "GET", body, form } = {}) {
       setToken("");
       window.dispatchEvent(new Event("spark:unauthorized"));
     }
-    const errMsg = data.error?.message || data.message || data.detail || (typeof data === "string" ? data : `Request failed (${res.status})`);
+    let errMsg = data.error?.message || data.message || data.detail || (typeof data === "string" ? data : "");
+    if (res.status === 400 && !errMsg) {
+      errMsg = "Invalid request. Please check your question or file.";
+    } else if ((res.status === 401 || res.status === 403) && !errMsg) {
+      errMsg = "Session expired. Please log in again.";
+    } else if (res.status === 429) {
+      errMsg = data.error?.message || "You're sending tasks too quickly. Please wait a moment.";
+    } else if (res.status >= 500 && !errMsg) {
+      errMsg = "SparkDhi encountered an issue processing your task. Please try again.";
+    } else if (!errMsg) {
+      errMsg = `Request failed (${res.status})`;
+    }
     const err = new Error(errMsg);
     err.status = res.status;
-    err.code = data.error?.code || "API_ERROR";
+    err.code = data.error?.code || (res.status === 429 ? "RATE_LIMITED" : "API_ERROR");
     throw err;
   }
 
@@ -144,13 +189,13 @@ export const api = {
   createStudyFromCapture: (captureId) => req(`/study/active-sessions/from-capture/${captureId}`, { method: "POST" }),
 
   getTasks: () => req("/tasks").then(res => res.items || res),
-  solveTask: (prompt, subject_hint = "") => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint } }),
-  uploadTaskFile: (file, prompt = "", subject_hint = "") => {
+  solveTask: (prompt, subject_hint = "", options = {}) => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint }, ...options }),
+  uploadTaskFile: (file, prompt = "", subject_hint = "", options = {}) => {
     const f = new FormData();
     f.append("file", file);
     if (prompt) f.append("prompt", prompt);
     if (subject_hint) f.append("subject_hint", subject_hint);
-    return req("/tasks/upload-solve", { method: "POST", form: f });
+    return req("/tasks/upload-solve", { method: "POST", form: f, ...options });
   },
   postTaskFollowup: (taskId, followupText) => req(`/tasks/${taskId}/followup`, { method: "POST", body: { followup_text: followupText } }),
   regenerateTask: (taskId) => req(`/tasks/${taskId}/regenerate`, { method: "POST" }),

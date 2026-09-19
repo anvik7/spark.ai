@@ -70,8 +70,8 @@ def _openrouter(text: str) -> dict:
     model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
     headers = {
         "Authorization": f"Bearer {key}",
-        "HTTP-Referer": "https://spark.ai",
-        "X-Title": "Spark AI Student Workspace",
+        "HTTP-Referer": "https://sparkdhi.ai",
+        "X-Title": "SparkDhi Student Workspace",
         "Content-Type": "application/json",
     }
     r = httpx.post("https://openrouter.ai/api/v1/chat/completions",
@@ -375,8 +375,8 @@ def _openrouter_text(prompt: str) -> str:
     model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
     headers = {
         "Authorization": f"Bearer {key}",
-        "HTTP-Referer": "https://spark.ai",
-        "X-Title": "Spark AI Student Workspace",
+        "HTTP-Referer": "https://sparkdhi.ai",
+        "X-Title": "SparkDhi Student Workspace",
         "Content-Type": "application/json",
     }
     r = httpx.post(
@@ -412,21 +412,134 @@ def _complete_text(prompt: str) -> str:
     raise RuntimeError("No LLM provider configured (set OPENROUTER_API_KEY, XAI_API_KEY, GROK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
 
 
+def _openrouter_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    key = settings.openrouter_api_key
+    if not key:
+        raise RuntimeError("OPENROUTER_API_KEY is missing on server.")
+    base_model = settings.openrouter_model or settings.llm_model or "google/gemini-2.0-flash-001"
+    model = "google/gemini-2.0-flash-001" if "llama-3.3-70b-instruct" in base_model else base_model
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "HTTP-Referer": "https://sparkdhi.ai",
+        "X-Title": "SparkDhi Student Workspace",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                ],
+            }
+        ],
+    }
+    r = httpx.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45)
+    r.raise_for_status()
+    data = r.json()
+    if "choices" in data and len(data["choices"]) > 0:
+        return data["choices"][0]["message"]["content"].strip()
+    raise RuntimeError("OpenRouter vision API returned a malformed response.")
+
+
+def _gemini_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    model = settings.llm_model or "gemini-2.0-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+            ]
+        }]
+    }
+    r = httpx.post(url, json=payload, timeout=45)
+    r.raise_for_status()
+    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+
+def _anthropic_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    model = settings.llm_model or "claude-haiku-4-5-20251001"
+    headers = {
+        "x-api-key": settings.anthropic_api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "max_tokens": 1500,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": prompt},
+            ],
+        }],
+    }
+    r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=45)
+    r.raise_for_status()
+    return r.json()["content"][0]["text"].strip()
+
+
+def _xai_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    key = settings.xai_api_key or settings.grok_api_key
+    model = "grok-2-vision-1212"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+            ],
+        }],
+    }
+    r = httpx.post("https://api.x.ai/v1/chat/completions", headers=headers, json=payload, timeout=45)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"].strip()
+
+
+def _complete_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    p = settings.llm_provider
+    if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
+        return _openrouter_vision(prompt, image_b64, mime_type)
+    if p == "gemini" and settings.gemini_api_key:
+        return _gemini_vision(prompt, image_b64, mime_type)
+    if p == "anthropic" and settings.anthropic_api_key:
+        return _anthropic_vision(prompt, image_b64, mime_type)
+    if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
+        return _xai_vision(prompt, image_b64, mime_type)
+    raise RuntimeError("No vision-capable LLM provider configured.")
+
+
 _SOLVE_TASK_PROMPT = (
-    "You are Spark AI, an expert academic tutor, software engineer, and technical problem solver. "
-    "Solve the following student question/task step-by-step: \"{prompt}\". "
+    "You are SparkDhi, a sharp, truthful, and highly capable AI reasoning partner and technical tutor. "
+    "Solve the following question/task: \"{prompt}\". "
     "Subject Hint: {subject_hint}.\n\n"
-    "ACCURACY & FORMATTING REQUIREMENTS:\n"
-    "1. For Coding & Programming Questions: Provide complete, runnable code solutions inside clean markdown code blocks (e.g. ```python ... ``` or ```javascript ... ```). Include line-by-line explanations, edge case handling, and complexity analysis (Time & Space complexity).\n"
-    "2. For Mathematics & Science: Provide exact mathematical working, algebraic derivations, line-by-line calculations, and explicit final answers.\n"
-    "3. For Practice Problems: Include 2 to 3 genuine practice exercises with explicit solutions. Format each item as: 'Problem: <exercise question> | Answer: <explicit solution>'\n"
-    "4. Return STRICT JSON with keys:\n"
+    "RESPONSE PHILOSOPHY & ACCURACY REQUIREMENTS:\n"
+    "1. Structure & Clarity:\n"
+    "   - Direct Answer: 1–3 clear sentences stating the explicit answer, conclusion, or code summary immediately. For simple or factual questions, answer directly and concisely without forced boilerplate.\n"
+    "   - Step-by-step Explanation: Clear, logical reasoning and derivations without exposing private chain-of-thought.\n"
+    "   - Examples / Code: Include complete, runnable code inside clean markdown code blocks (e.g. ```python ... ```) only when relevant.\n"
+    "   - Key Takeaways & Pitfalls: Highlight core principles, edge cases, or complexity analysis (Time & Space) where helpful.\n"
+    "   - Follow-up Suggestions / Practice: 2 to 3 sharp practice problems or thoughtful follow-up questions formatted as: 'Problem: <question> | Answer: <explicit solution>'.\n"
+    "2. Return STRICT JSON with keys:\n"
     "- \"subject\": string (e.g. 'Coding', 'Mathematics', 'Physics', 'Chemistry', 'Writing', 'Economics', 'Research', 'General Academic')\n"
     "- \"title\": string (short concise title, <=10 words)\n"
-    "- \"solution\": string (explicit final answer, main code solution summary, or result)\n"
-    "- \"steps\": array of 3-6 strings (numbered explicit step-by-step technical/mathematical/analytical steps with code/math working)\n"
-    "- \"formulas\": array of 1-3 strings (exact algorithms, complexity metrics, or core formulas used, e.g. 'Time Complexity: O(n log n)', 'Space Complexity: O(1)')\n"
-    "- \"intuition\": string (1-2 sentences explaining intuitive technical or mathematical reasoning)\n"
+    "- \"solution\": string (direct answer: 1–3 sentences with explicit conclusion or solution summary)\n"
+    "- \"steps\": array of 2-6 strings (numbered explicit step-by-step technical/analytical/mathematical derivations with code/working where appropriate)\n"
+    "- \"formulas\": array of strings (exact formulas, time/space complexity metrics, or core rules used, e.g. 'Time Complexity: O(n log n)')\n"
+    "- \"intuition\": string (1-2 sentences explaining intuitive reasoning, key takeaway, or pitfall to avoid)\n"
     "- \"practice\": array of 2-3 strings (format: 'Problem: <exercise question> | Answer: <explicit solution>')\n"
 )
 
@@ -481,13 +594,16 @@ def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> dict | None:
     return None
 
 
-def solve_student_task(prompt: str, subject_hint: str = "") -> dict:
-    """Solve an academic question or task using real LLM execution or exact SymPy solver."""
-    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:3000], subject_hint=subject_hint or "General")
+def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | None = None, mime_type: str = "image/jpeg") -> dict:
+    """Solve an academic question or task using real LLM execution, vision model, or exact SymPy solver."""
+    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:12000], subject_hint=subject_hint or "General")
 
-    # 1. Try LLM Provider
+    # 1. Try LLM Provider (Vision if image attached, otherwise Text)
     try:
-        raw_text = _complete_text(p_text)
+        if image_b64:
+            raw_text = _complete_vision(p_text, image_b64, mime_type)
+        else:
+            raw_text = _complete_text(p_text)
         parsed = _extract_json(raw_text)
         if parsed and isinstance(parsed, dict) and "solution" in parsed:
             if "practice" in parsed and isinstance(parsed["practice"], list):
@@ -598,13 +714,14 @@ def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict]
     """Answer a follow-up question for an ongoing student task thread."""
     history = "\n".join(f"{m.get('role','user').capitalize()}: {m.get('content','')}" for m in (thread or [])[-6:])
     p_text = (
-        f"You are Spark AI, a top-tier academic tutor.\n"
+        f"You are SparkDhi, a sharp, truthful, and highly capable AI reasoning partner.\n"
         f"ORIGINAL TASK: \"{task_prompt}\"\n"
         f"INITIAL SOLUTION: \"{task_solution}\"\n"
         f"PAST CONVERSATION:\n{history}\n\n"
         f"STUDENT FOLLOW-UP QUESTION: \"{followup_text}\"\n\n"
-        "Provide a direct, concise, and clear answer to the student's follow-up question. "
-        "Explain step-by-step if needed."
+        "Provide a direct, truthful, and sharp answer to the student's follow-up question. "
+        "Use step-by-step explanation or clean runnable code if relevant. "
+        "For simple questions, answer concisely without boilerplate."
     )
     try:
         return _complete_text(p_text)
@@ -614,7 +731,7 @@ def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict]
 
 
 _CHAPTERING_PROMPT = (
-    "You are Spark AI Active Learning Engine. "
+    "You are SparkDhi Active Learning Engine. "
     "You are processing ACTUAL LEARNING MATERIAL TEXT for topic: \"{title}\".\n"
     "STRICT ANTI-HALLUCINATION REQUIREMENT: Use ONLY information contained in the provided material text below. "
     "Do NOT infer concepts or lessons merely from the title. Do NOT invent concepts, examples, facts, or explanations that are not supported by the source content.\n\n"
@@ -775,7 +892,7 @@ def generate_concept_chapters(transcript_text: str, title: str = "Active Study S
 
 
 _ACTIVE_RECALL_PROMPT = (
-    "You are Spark AI Active Learning Evaluator. "
+    "You are SparkDhi Active Learning Evaluator. "
     "Evaluate the learner's self-explanation response for chapter: \"{chapter_title}\".\n\n"
     "CHAPTER TRANSCRIPT CONTENT:\n\"{transcript_segment}\"\n\n"
     "LEARNER ACTIVE RECALL RESPONSE:\n\"{user_response}\"\n\n"
