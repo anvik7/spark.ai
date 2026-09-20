@@ -162,6 +162,19 @@ export default function Interview({ onNavigate, user }) {
         aiEvaluateInterview: (sessId) => api.evaluateInterview(sessId),
         ui: {
           onStatusChange: (s) => setStatus(s),
+          onSessionStarted: (newSess) => {
+            if (newSess) {
+              setSession(newSess);
+              localStorage.setItem("spark_active_interview_id", newSess.id);
+              setHistory((prev) => [newSess, ...prev.filter((h) => h.id !== newSess.id)]);
+            }
+          },
+          onSessionChange: (newSess) => {
+            if (newSess) {
+              setSession(newSess);
+              localStorage.setItem("spark_active_interview_id", newSess.id);
+            }
+          },
           onInterviewerSpeaking: (q) => {
             stopListeningMic();
             setCurrentQuestion(q);
@@ -241,6 +254,7 @@ export default function Interview({ onNavigate, user }) {
   // Handlers
   const handleStartInterview = async (e) => {
     e?.preventDefault();
+    if (busy) return;
     if (!targetRole.trim()) {
       setErr("Please specify your target role.");
       return;
@@ -267,6 +281,7 @@ export default function Interview({ onNavigate, user }) {
 
   const handleSubmitAnswer = async (e) => {
     e?.preventDefault();
+    if (busy) return;
     const ans = answerInput.trim();
     if (!ans) {
       setErr("Please provide an answer to submit.");

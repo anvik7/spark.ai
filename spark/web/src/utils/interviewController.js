@@ -55,6 +55,11 @@ export function createInterviewController({
   async function start() {
     stopAll();
     running = true;
+    state.turnIndex = 0;
+    state.previousQuestions = [];
+    state.previousAnswers = [];
+    state.currentQuestion = "";
+    state.latestAnswer = "";
 
     try {
       await tts.ensureVoicesLoaded();
@@ -81,17 +86,23 @@ export function createInterviewController({
     }
 
     state.session = sess;
+
+    // Immediately notify UI of active session so question card renders without delay
+    ui.onSessionStarted?.(sess);
+    ui.onSessionChange?.(sess);
+
     const turns = sess?.turns || [];
     const openingTurn = turns[turns.length - 1];
     const openingQuestion = openingTurn?.q || "Tell me about a project on your resume that best demonstrates your readiness for this role.";
 
-    await handleQuestionTurn(openingQuestion, {
+    // Trigger turn handling with asynchronous TTS (does not block UI rendering)
+    handleQuestionTurn(openingQuestion, {
       emotion: openingTurn?.emotion,
       delivery: openingTurn?.delivery,
     });
   }
 
-  async function handleQuestionTurn(questionText, options = {}) {
+  function handleQuestionTurn(questionText, options = {}) {
     if (!running) return;
 
     const q = String(questionText || "").trim();
@@ -99,7 +110,8 @@ export function createInterviewController({
 
     state.currentQuestion = q;
     state.previousQuestions.push(q);
-    state.turnIndex += 1;
+    const currentTurnId = state.turnIndex + 1;
+    state.turnIndex = currentTurnId;
 
     // Stop candidate recording while interviewer speaks to avoid audio feedback
     stt.stopListening();
@@ -107,29 +119,52 @@ export function createInterviewController({
     setStatus("speaking");
     ui.onInterviewerSpeaking?.(q);
 
-    try {
-      await tts.speakAdaptive(q, {
-        emotion: options.emotion,
-        delivery: options.delivery,
-        turnId: state.turnIndex,
-        onStart: () => ui.onTTSStart?.(q),
-        onEnd: () => ui.onTTSEnd?.(q),
-        onError: (err) => ui.onTTSError?.(err),
-      });
-    } catch (e) {
-      ui.onTTSError?.(e);
-    }
+    // Asynchronous TTS: audio synthesis and playback must not block UI question rendering
+    (async () => {
+      try {
+        await tts.speakAdaptive(q, {
+          emotion: options.emotion,
+          delivery: options.delivery,
+          turnId: currentTurnId,
+          onStart: () => {
+            if (running && state.turnIndex === currentTurnId) {
+              ui.onTTSStart?.(q);
+            }
+          },
+          onEnd: () => {
+            if (running && state.turnIndex === currentTurnId) {
+              ui.onTTSEnd?.(q);
+            }
+          },
+          onError: (err) => {
+            if (running && state.turnIndex === currentTurnId) {
+              ui.onTTSError?.(err);
+            }
+          },
+        });
+      } catch (e) {
+        if (running && state.turnIndex === currentTurnId) {
+          ui.onTTSError?.(e);
+        }
+      }
 
-    if (!running) return;
+      if (!running || state.turnIndex !== currentTurnId) return;
 
-    // Echo dissipation cooldown before opening candidate mic
-    await new Promise((resolve) => setTimeout(resolve, 400));
+      // Echo dissipation cooldown before opening candidate mic
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
-    if (!running) return;
+      if (!running || state.turnIndex !== currentTurnId) return;
 
-    // After interviewer finishes speaking, open candidate listening window
-    setStatus("listening");
-    ui.onCandidateListening?.();
+      // After interviewer finishes speaking, open candidate listening window
+      setStatus("listening");
+      ui.onCandidateListening?.();
+    })().catch((err) => {
+      console.warn("[handleQuestionTurn] async TTS execution notice:", err);
+      if (running && state.turnIndex === currentTurnId) {
+        setStatus("listening");
+        ui.onCandidateListening?.();
+      }
+    });
   }
 
   async function submitAnswer(answerText) {
@@ -157,6 +192,8 @@ export function createInterviewController({
     }
 
     state.session = updatedSess;
+    ui.onSessionChange?.(updatedSess);
+    ui.onSessionStarted?.(updatedSess);
 
     if (updatedSess.status === "completed") {
       setStatus("completed");
@@ -169,7 +206,7 @@ export function createInterviewController({
     const latestTurn = turns[turns.length - 1];
     const nextQ = latestTurn?.q || "What was the most challenging technical decision you had to make in that situation?";
 
-    await handleQuestionTurn(nextQ, {
+    handleQuestionTurn(nextQ, {
       emotion: latestTurn?.emotion,
       delivery: latestTurn?.delivery,
     });
