@@ -1,13 +1,814 @@
-"""LLM adapter. The product's value is the workflow, not the model — so the
-model sits behind one interface. Runs offline via a deterministic 'mock' that
-still produces useful tags/summaries, and swaps to Gemini/Groq/Anthropic by
-setting llm_provider + the matching key. Pick ONE for production."""
+"""LLM adapter and resilient multi-provider router.
+Provides a unified abstraction over OpenRouter, Groq, and Gemini (plus xAI, Anthropic, and offline Mock)
+with bounded timeouts, automatic provider fallback, Pydantic schema validation for structured outputs,
+and safe log/error sanitization.
+"""
 import json
 import re
+import time
+from typing import Any, Optional
 import httpx
+from pydantic import BaseModel, Field, ValidationError
+
 from .config import get_settings
 
 settings = get_settings()
+
+# --- Global Deadlines & Timeouts --------------------------------------------
+DEFAULT_GLOBAL_DEADLINE = 35.0          # Max total seconds across all provider attempts
+DEFAULT_PER_ATTEMPT_TIMEOUT = 18.0      # Max seconds for a single provider attempt
+MIN_REMAINING_FOR_ATTEMPT = 2.0         # Minimum seconds remaining to justify starting a new network attempt
+
+# --- Exceptions -------------------------------------------------------------
+
+class LLMError(Exception):
+    """Base exception for LLM operations."""
+    pass
+
+class LLMAuthError(LLMError):
+    """Authentication or authorization failure (HTTP 401/403). Non-retryable for this provider."""
+    pass
+
+class LLMRateLimitError(LLMError):
+    """Rate limit exceeded (HTTP 429). Retryable via fallback."""
+    pass
+
+class LLMTimeoutError(LLMError):
+    """Provider network or execution timeout."""
+    pass
+
+class LLMProviderError(LLMError):
+    """Upstream provider error (HTTP 5xx, gateway error, network drop)."""
+    pass
+
+class LLMInvalidOutputError(LLMError):
+    """Provider response was empty, invalid JSON, or failed schema validation."""
+    pass
+
+class AIServiceUnavailableError(RuntimeError):
+    """Raised when all configured AI providers fail or are unavailable.
+    Subclasses RuntimeError for full backwards compatibility with existing callers.
+    """
+    pass
+
+# --- Structured Output Schemas (Pydantic v2) --------------------------------
+
+class TaskSolutionSchema(BaseModel):
+    subject: str = "General Academic"
+    icon: str = "📚"
+    title: str
+    solution: str
+    steps: list[str]
+    formulas: list[str] = Field(default_factory=list)
+    intuition: str = ""
+    practice: list[str] = Field(default_factory=list)
+
+class StudyQuizItemSchema(BaseModel):
+    question_type: str = "mcq"
+    question_text: str
+    options: list[str] = Field(default_factory=list)
+    correct_answer: str = ""
+    explanation: str = ""
+    concept_tag: str = ""
+
+class StudyChapterSchema(BaseModel):
+    title: str
+    start_time: int = 0
+    end_time: int = 0
+    duration_seconds: int = 0
+    transcript_segment: str = ""
+    short_explanation: str = ""
+    key_concepts: list[str] = Field(default_factory=list)
+    learning_objective: str = ""
+    difficulty: str = "Beginner"
+    recall_prompt: str = ""
+    quiz: list[StudyQuizItemSchema] = Field(default_factory=list)
+
+class StudyMindmapNodeSchema(BaseModel):
+    node_key: str
+    label: str
+    parent_key: Optional[str] = None
+    concept_tag: str = ""
+    depth: int = 0
+
+class StudyChaptersSchema(BaseModel):
+    subject: str = "General Academic"
+    chapters: list[StudyChapterSchema]
+    mindmap_nodes: list[StudyMindmapNodeSchema] = Field(default_factory=list)
+
+class ActiveRecallSchema(BaseModel):
+    understanding_score: int
+    understood_concepts: list[str] = Field(default_factory=list)
+    missing_concepts: list[str] = Field(default_factory=list)
+    misconceptions: list[str] = Field(default_factory=list)
+    recommendation: str = ""
+
+# --- Safe Logging & JSON Extraction -----------------------------------------
+
+def _sanitize_log(msg: str) -> str:
+    """Sanitize message to ensure no API keys, Bearer tokens, or secrets are leaked."""
+    patterns = [
+        r"sk-[a-zA-Z0-9_\-]{8,}",
+        r"gsk_[a-zA-Z0-9_\-]{8,}",
+        r"AIza[a-zA-Z0-9_\-]{20,}",
+        r"Bearer\s+[^\s'\"]+",
+    ]
+    sanitized = str(msg)
+    for p in patterns:
+        sanitized = re.sub(p, "[REDACTED]", sanitized)
+    return sanitized
+
+def _log_attempt(provider: str, attempt: int, status_code: str, latency_ms: float, error_category: Optional[str] = None) -> None:
+    """Log minimal diagnostic info without exposing prompt content, headers, or tokens."""
+    cat_part = f" category={error_category}" if error_category else ""
+    print(f"[llm_router] provider={provider} attempt={attempt} status={status_code} latency={latency_ms:.1f}ms{cat_part}")
+
+def _clean_json_text(raw: str) -> str:
+    """Strip markdown fences (```json ... ```) and leading/trailing whitespace."""
+    s = raw.strip()
+    if s.startswith("```"):
+        nl = s.find("\n")
+        if nl != -1:
+            s = s[nl + 1:]
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+    return s
+
+def _extract_and_validate_json(raw: str, schema: Optional[type[BaseModel]] = None) -> dict:
+    """Extract JSON object from string and validate against Pydantic schema if provided."""
+    cleaned = _clean_json_text(raw)
+    parsed = None
+
+    # Try direct parsing first
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        # Search for first outermost JSON object
+        m = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if m:
+            try:
+                parsed = json.loads(m.group(0))
+            except Exception as e:
+                raise LLMInvalidOutputError(f"Malformed JSON in response: {_sanitize_log(str(e))}")
+        else:
+            raise LLMInvalidOutputError("No JSON object found in response.")
+
+    if not isinstance(parsed, dict):
+        raise LLMInvalidOutputError(f"Expected JSON object, got {type(parsed).__name__}")
+
+    if schema is not None:
+        try:
+            validated = schema.model_validate(parsed)
+            return validated.model_dump()
+        except ValidationError as ve:
+            raise LLMInvalidOutputError(f"Schema validation failed: {_sanitize_log(str(ve))}")
+
+    return parsed
+
+def _extract_json(s: str) -> dict:
+    """Backward-compatible JSON extractor: returns dict or empty dict on failure."""
+    try:
+        return _extract_and_validate_json(s)
+    except Exception:
+        m = re.search(r"\{.*\}", s, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                return {}
+        return {}
+
+def _extract_json_array(text: str):
+    """Backward-compatible JSON array extractor."""
+    s, e = text.find("["), text.rfind("]")
+    if s == -1 or e == -1 or e < s:
+        return None
+    try:
+        return json.loads(text[s:e + 1])
+    except Exception:
+        return None
+
+# --- Provider Adapters ------------------------------------------------------
+
+class BaseLLMProvider:
+    """Internal provider adapter interface."""
+    name: str = "base"
+    supports_vision: bool = False
+
+    def is_configured(self) -> bool:
+        raise NotImplementedError
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        raise NotImplementedError
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        raise NotImplementedError("Vision not supported by this provider.")
+
+
+class OpenRouterAdapter(BaseLLMProvider):
+    name = "openrouter"
+    supports_vision = True
+
+    def is_configured(self) -> bool:
+        s = get_settings()
+        return bool(s.openrouter_api_key)
+
+    def _get_headers(self) -> dict:
+        s = get_settings()
+        return {
+            "Authorization": f"Bearer {s.openrouter_api_key}",
+            "HTTP-Referer": "https://sparkdhi.ai",
+            "X-Title": "SparkDhi Student Workspace",
+            "Content-Type": "application/json",
+        }
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        s = get_settings()
+        if not s.openrouter_api_key:
+            raise LLMAuthError("OpenRouter API key is not configured.")
+        model = s.openrouter_model or s.llm_model or "meta-llama/llama-3.3-70b-instruct"
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://openrouter.ai/api/v1/chat/completions", headers=self._get_headers(), json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(f"OpenRouter timed out after {timeout:.1f}s") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"OpenRouter network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("OpenRouter authentication failed (HTTP 401/403).")
+        if r.status_code == 429:
+            raise LLMRateLimitError("OpenRouter rate limit exceeded (HTTP 429).")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"OpenRouter server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"OpenRouter returned HTTP {r.status_code}.")
+
+        try:
+            data = r.json()
+        except Exception as e:
+            raise LLMInvalidOutputError(f"OpenRouter returned non-JSON response: {_sanitize_log(str(e))}")
+
+        choices = data.get("choices")
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            raise LLMInvalidOutputError("OpenRouter returned empty choices.")
+        content = choices[0].get("message", {}).get("content")
+        if content is None or not str(content).strip():
+            raise LLMInvalidOutputError("OpenRouter returned empty content.")
+        return str(content).strip()
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        s = get_settings()
+        if not s.openrouter_api_key:
+            raise LLMAuthError("OpenRouter API key is not configured.")
+        base_model = s.openrouter_model or s.llm_model or "google/gemini-2.0-flash-001"
+        model = "google/gemini-2.0-flash-001" if "llama-3.3-70b-instruct" in base_model else base_model
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                    ],
+                }
+            ],
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://openrouter.ai/api/v1/chat/completions", headers=self._get_headers(), json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(f"OpenRouter vision timed out after {timeout:.1f}s") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"OpenRouter vision network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("OpenRouter authentication failed (HTTP 401/403).")
+        if r.status_code == 429:
+            raise LLMRateLimitError("OpenRouter rate limit exceeded (HTTP 429).")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"OpenRouter server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"OpenRouter vision returned HTTP {r.status_code}.")
+
+        try:
+            data = r.json()
+        except Exception as e:
+            raise LLMInvalidOutputError(f"OpenRouter vision returned non-JSON response: {_sanitize_log(str(e))}")
+
+        choices = data.get("choices")
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            raise LLMInvalidOutputError("OpenRouter vision returned empty choices.")
+        content = choices[0].get("message", {}).get("content")
+        if content is None or not str(content).strip():
+            raise LLMInvalidOutputError("OpenRouter vision returned empty content.")
+        return str(content).strip()
+
+
+class GroqAdapter(BaseLLMProvider):
+    name = "groq"
+    supports_vision = False
+
+    def is_configured(self) -> bool:
+        s = get_settings()
+        return bool(s.groq_api_key)
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        s = get_settings()
+        if not s.groq_api_key:
+            raise LLMAuthError("Groq API key is not configured.")
+        model = s.llm_model or "llama-3.3-70b-versatile"
+        headers = {
+            "Authorization": f"Bearer {s.groq_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(f"Groq timed out after {timeout:.1f}s") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"Groq network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("Groq authentication failed (HTTP 401/403).")
+        if r.status_code == 429:
+            raise LLMRateLimitError("Groq rate limit exceeded (HTTP 429).")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"Groq server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"Groq returned HTTP {r.status_code}.")
+
+        try:
+            data = r.json()
+        except Exception as e:
+            raise LLMInvalidOutputError(f"Groq returned non-JSON response: {_sanitize_log(str(e))}")
+
+        choices = data.get("choices")
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            raise LLMInvalidOutputError("Groq returned empty choices.")
+        content = choices[0].get("message", {}).get("content")
+        if content is None or not str(content).strip():
+            raise LLMInvalidOutputError("Groq returned empty content.")
+        return str(content).strip()
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        raise LLMProviderError("Groq does not support vision processing.")
+
+
+class GeminiAdapter(BaseLLMProvider):
+    name = "gemini"
+    supports_vision = True
+
+    def is_configured(self) -> bool:
+        s = get_settings()
+        return bool(s.gemini_api_key)
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        s = get_settings()
+        if not s.gemini_api_key:
+            raise LLMAuthError("Gemini API key is not configured.")
+        model = s.llm_model or "gemini-2.0-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={s.gemini_api_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post(url, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(f"Gemini timed out after {timeout:.1f}s") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"Gemini network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (400, 401, 403):
+            txt = r.text
+            if "API_KEY_INVALID" in txt or r.status_code in (401, 403):
+                raise LLMAuthError("Gemini authentication failed (API key invalid).")
+            raise LLMProviderError(f"Gemini returned HTTP {r.status_code}.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("Gemini rate limit exceeded (HTTP 429).")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"Gemini server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"Gemini returned HTTP {r.status_code}.")
+
+        try:
+            data = r.json()
+        except Exception as e:
+            raise LLMInvalidOutputError(f"Gemini returned non-JSON response: {_sanitize_log(str(e))}")
+
+        candidates = data.get("candidates")
+        if not candidates or not isinstance(candidates, list) or len(candidates) == 0:
+            raise LLMInvalidOutputError("Gemini returned no candidates.")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts or not isinstance(parts, list) or len(parts) == 0 or "text" not in parts[0]:
+            raise LLMInvalidOutputError("Gemini candidate has no text part.")
+        content = parts[0].get("text")
+        if content is None or not str(content).strip():
+            raise LLMInvalidOutputError("Gemini returned empty text.")
+        return str(content).strip()
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        s = get_settings()
+        if not s.gemini_api_key:
+            raise LLMAuthError("Gemini API key is not configured.")
+        model = s.llm_model or "gemini-2.0-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={s.gemini_api_key}"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+                ]
+            }]
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post(url, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(f"Gemini vision timed out after {timeout:.1f}s") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"Gemini vision network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("Gemini authentication failed.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("Gemini rate limit exceeded.")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"Gemini server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"Gemini returned HTTP {r.status_code}.")
+
+        try:
+            data = r.json()
+        except Exception as e:
+            raise LLMInvalidOutputError(f"Gemini vision non-JSON response: {_sanitize_log(str(e))}")
+
+        candidates = data.get("candidates")
+        if not candidates or not isinstance(candidates, list) or len(candidates) == 0:
+            raise LLMInvalidOutputError("Gemini vision returned no candidates.")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts or not isinstance(parts, list) or len(parts) == 0 or "text" not in parts[0]:
+            raise LLMInvalidOutputError("Gemini vision candidate has no text part.")
+        content = parts[0].get("text")
+        if content is None or not str(content).strip():
+            raise LLMInvalidOutputError("Gemini vision returned empty text.")
+        return str(content).strip()
+
+
+class XAIAdapter(BaseLLMProvider):
+    name = "xai"
+    supports_vision = True
+
+    def is_configured(self) -> bool:
+        s = get_settings()
+        return bool(s.xai_api_key or s.grok_api_key)
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        s = get_settings()
+        key = s.xai_api_key or s.grok_api_key
+        if not key:
+            raise LLMAuthError("xAI/Grok API key is not configured.")
+        model = s.llm_model or "grok-2-latest"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://api.x.ai/v1/chat/completions", headers=headers, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError("xAI request timed out") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"xAI network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("xAI authentication failed.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("xAI rate limit exceeded.")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"xAI server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"xAI returned HTTP {r.status_code}.")
+
+        data = r.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise LLMInvalidOutputError("xAI returned empty choices.")
+        return str(choices[0].get("message", {}).get("content", "")).strip()
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        s = get_settings()
+        key = s.xai_api_key or s.grok_api_key
+        if not key:
+            raise LLMAuthError("xAI API key is not configured.")
+        model = "grok-2-vision-1212"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                ],
+            }],
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://api.x.ai/v1/chat/completions", headers=headers, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError("xAI vision timed out") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"xAI vision network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("xAI authentication failed.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("xAI rate limit exceeded.")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"xAI server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"xAI vision returned HTTP {r.status_code}.")
+
+        data = r.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise LLMInvalidOutputError("xAI vision returned empty choices.")
+        return str(choices[0].get("message", {}).get("content", "")).strip()
+
+
+class AnthropicAdapter(BaseLLMProvider):
+    name = "anthropic"
+    supports_vision = True
+
+    def is_configured(self) -> bool:
+        s = get_settings()
+        return bool(s.anthropic_api_key)
+
+    def complete_text(self, prompt: str, timeout: float) -> str:
+        s = get_settings()
+        if not s.anthropic_api_key:
+            raise LLMAuthError("Anthropic API key is not configured.")
+        model = s.llm_model or "claude-haiku-4-5-20251001"
+        headers = {"x-api-key": s.anthropic_api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+        payload = {"model": model, "max_tokens": 800, "messages": [{"role": "user", "content": prompt}]}
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError("Anthropic request timed out") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"Anthropic network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("Anthropic authentication failed.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("Anthropic rate limit exceeded.")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"Anthropic server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"Anthropic returned HTTP {r.status_code}.")
+
+        data = r.json()
+        content = data.get("content", [])
+        if not content or "text" not in content[0]:
+            raise LLMInvalidOutputError("Anthropic returned empty content.")
+        return str(content[0]["text"]).strip()
+
+    def complete_vision(self, prompt: str, image_b64: str, mime_type: str = "image/jpeg", timeout: float = 30.0) -> str:
+        s = get_settings()
+        if not s.anthropic_api_key:
+            raise LLMAuthError("Anthropic API key is not configured.")
+        model = s.llm_model or "claude-haiku-4-5-20251001"
+        headers = {"x-api-key": s.anthropic_api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "max_tokens": 1500,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        }
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError("Anthropic vision timed out") from te
+        except httpx.RequestError as re_err:
+            raise LLMProviderError(f"Anthropic vision network error: {_sanitize_log(str(re_err))}") from re_err
+
+        if r.status_code in (401, 403):
+            raise LLMAuthError("Anthropic authentication failed.")
+        if r.status_code == 429:
+            raise LLMRateLimitError("Anthropic rate limit exceeded.")
+        if r.status_code >= 500:
+            raise LLMProviderError(f"Anthropic server error (HTTP {r.status_code}).")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"Anthropic vision returned HTTP {r.status_code}.")
+
+        data = r.json()
+        content = data.get("content", [])
+        if not content or "text" not in content[0]:
+            raise LLMInvalidOutputError("Anthropic vision returned empty content.")
+        return str(content[0]["text"]).strip()
+
+
+# --- Model Router -----------------------------------------------------------
+
+class ModelRouter:
+    """Manages provider fallback, deadlines, and schema validation."""
+
+    def __init__(self):
+        self.providers: dict[str, BaseLLMProvider] = {
+            "openrouter": OpenRouterAdapter(),
+            "groq": GroqAdapter(),
+            "gemini": GeminiAdapter(),
+            "xai": XAIAdapter(),
+            "anthropic": AnthropicAdapter(),
+        }
+
+    def has_configured_real_providers(self) -> bool:
+        """Returns True if any real (non-mock) provider is configured and llm_provider is not 'mock'."""
+        s = get_settings()
+        if s.llm_provider and s.llm_provider.lower() == "mock":
+            return False
+        return any(p.is_configured() for p in self.providers.values())
+
+    def get_candidate_providers(self, vision: bool = False) -> list[BaseLLMProvider]:
+        """Determine ordered candidate providers respecting preferences and configuration."""
+        s = get_settings()
+        pref = (s.llm_provider or "").lower().strip()
+
+        # Default fallback chain: OpenRouter -> Groq -> Gemini
+        default_order = ["openrouter", "groq", "gemini"]
+
+        if pref in ["xai", "grok"]:
+            order = ["xai", "openrouter", "groq", "gemini"]
+        elif pref == "anthropic":
+            order = ["anthropic", "openrouter", "groq", "gemini"]
+        elif pref in default_order:
+            # Prioritize configured preference at head of chain
+            order = [pref] + [p for p in default_order if p != pref]
+        else:
+            order = default_order
+
+        candidates: list[BaseLLMProvider] = []
+        for name in order:
+            prov = self.providers.get(name)
+            if prov and prov.is_configured():
+                if vision and not prov.supports_vision:
+                    continue
+                candidates.append(prov)
+        return candidates
+
+    def generate_text(
+        self,
+        prompt: str,
+        vision: bool = False,
+        image_b64: Optional[str] = None,
+        mime_type: str = "image/jpeg",
+        deadline: float = DEFAULT_GLOBAL_DEADLINE,
+        attempt_timeout: float = DEFAULT_PER_ATTEMPT_TIMEOUT,
+    ) -> str:
+        """Execute text/vision completion across candidate providers with deadline-bounded fallback."""
+        candidates = self.get_candidate_providers(vision=vision)
+        if not candidates:
+            raise AIServiceUnavailableError("No AI providers are configured or available.")
+
+        start_time = time.time()
+
+        for attempt_idx, provider in enumerate(candidates, 1):
+            elapsed = time.time() - start_time
+            remaining = deadline - elapsed
+            if remaining < MIN_REMAINING_FOR_ATTEMPT:
+                _log_attempt(provider.name, attempt_idx, "skipped", 0.0, "deadline_exceeded")
+                break
+
+            current_timeout = min(attempt_timeout, remaining)
+            t0 = time.time()
+            try:
+                if vision and image_b64:
+                    result = provider.complete_vision(prompt, image_b64, mime_type=mime_type, timeout=current_timeout)
+                else:
+                    result = provider.complete_text(prompt, timeout=current_timeout)
+
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "success", duration_ms)
+                return result
+
+            except LLMAuthError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "auth_error", duration_ms, "auth_failure")
+                # Permanent auth failure: skip provider immediately without retry
+                continue
+            except LLMRateLimitError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "rate_limit", duration_ms, "rate_limited")
+                continue
+            except LLMTimeoutError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "timeout", duration_ms, "timeout")
+                continue
+            except (LLMProviderError, LLMInvalidOutputError) as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "provider_error", duration_ms, "server_error")
+                continue
+            except Exception as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "unexpected_error", duration_ms, "unknown")
+                continue
+
+        raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.")
+
+    def generate_structured(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        vision: bool = False,
+        image_b64: Optional[str] = None,
+        mime_type: str = "image/jpeg",
+        deadline: float = DEFAULT_GLOBAL_DEADLINE,
+        attempt_timeout: float = DEFAULT_PER_ATTEMPT_TIMEOUT,
+    ) -> dict:
+        """Execute structured JSON completion validated against schema with fallback on malformed output."""
+        candidates = self.get_candidate_providers(vision=vision)
+        if not candidates:
+            raise AIServiceUnavailableError("No AI providers are configured or available.")
+
+        start_time = time.time()
+
+        for attempt_idx, provider in enumerate(candidates, 1):
+            elapsed = time.time() - start_time
+            remaining = deadline - elapsed
+            if remaining < MIN_REMAINING_FOR_ATTEMPT:
+                _log_attempt(provider.name, attempt_idx, "skipped", 0.0, "deadline_exceeded")
+                break
+
+            current_timeout = min(attempt_timeout, remaining)
+            t0 = time.time()
+            try:
+                if vision and image_b64:
+                    raw_text = provider.complete_vision(prompt, image_b64, mime_type=mime_type, timeout=current_timeout)
+                else:
+                    raw_text = provider.complete_text(prompt, timeout=current_timeout)
+
+                # Validate structured output against Pydantic schema
+                validated_data = _extract_and_validate_json(raw_text, schema=schema)
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "success", duration_ms)
+                return validated_data
+
+            except LLMInvalidOutputError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "invalid_output", duration_ms, "malformed_output")
+                # Trigger fallback to next candidate provider!
+                continue
+            except LLMAuthError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "auth_error", duration_ms, "auth_failure")
+                continue
+            except LLMRateLimitError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "rate_limit", duration_ms, "rate_limited")
+                continue
+            except LLMTimeoutError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "timeout", duration_ms, "timeout")
+                continue
+            except LLMProviderError as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "provider_error", duration_ms, "server_error")
+                continue
+            except Exception as e:
+                duration_ms = (time.time() - t0) * 1000
+                _log_attempt(provider.name, attempt_idx, "unexpected_error", duration_ms, "unknown")
+                continue
+
+        raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.")
+
+
+_GLOBAL_ROUTER: Optional[ModelRouter] = None
+
+def get_model_router() -> ModelRouter:
+    """Return singleton ModelRouter instance."""
+    global _GLOBAL_ROUTER
+    if _GLOBAL_ROUTER is None:
+        _GLOBAL_ROUTER = ModelRouter()
+    return _GLOBAL_ROUTER
+
+
+# --- Prompts ----------------------------------------------------------------
 
 _PROMPT = (
     "You organise a personal knowledge card. Given a note, return STRICT JSON "
@@ -15,7 +816,6 @@ _PROMPT = (
     'kebab-case topic tags, no # symbol). Note:\n\n{text}'
 )
 
-# Lightweight keyword map so the offline mock still feels intelligent.
 _MOCK_TOPICS = {
     "startup": ["startups", "business"], "fund": ["fundraising", "startups"],
     "market": ["marketing", "growth"], "upsc": ["upsc", "polity"],
@@ -26,124 +826,6 @@ _MOCK_TOPICS = {
     "ai": ["ai", "ml"], "health": ["health"],
 }
 
-
-def _mock(text: str) -> dict:
-    low = text.lower()
-    tags: list[str] = []
-    for key, vals in _MOCK_TOPICS.items():
-        if key in low:
-            tags.extend(vals)
-    if not tags:
-        words = re.findall(r"[a-zA-Z]{5,}", low)
-        tags = [w for w in dict.fromkeys(words)][:3] or ["note"]
-    tags = list(dict.fromkeys(tags))[:5]
-    first = re.split(r"[.!?\n]", text.strip())[0][:120].strip()
-    return {"summary": first or "Saved note", "tags": tags}
-
-
-def _extract_json(s: str) -> dict:
-    m = re.search(r"\{.*\}", s, re.DOTALL)
-    return json.loads(m.group(0)) if m else {}
-
-
-def enrich(text: str) -> dict:
-    """Return {'summary': str, 'tags': [str]} for a raw note."""
-    p = settings.llm_provider
-    try:
-        if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
-            return _openrouter(text)
-        if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
-            return _xai(text)
-        if p == "gemini" and settings.gemini_api_key:
-            return _gemini(text)
-        if p == "groq" and settings.groq_api_key:
-            return _groq(text)
-        if p == "anthropic" and settings.anthropic_api_key:
-            return _anthropic(text)
-    except Exception as e:  # never let tagging take down ingestion
-        print(f"[llm] provider '{p}' failed, falling back to mock: {e}")
-    return _mock(text)
-
-
-def _openrouter(text: str) -> dict:
-    key = settings.openrouter_api_key
-    model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "HTTP-Referer": "https://sparkdhi.ai",
-        "X-Title": "SparkDhi Student Workspace",
-        "Content-Type": "application/json",
-    }
-    r = httpx.post("https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json={"model": model, "messages": [
-            {"role": "user", "content": _PROMPT.format(text=text)}]},
-        timeout=30)
-    r.raise_for_status()
-    out = r.json()["choices"][0]["message"]["content"]
-    return _normalise(_extract_json(out), text)
-
-
-def _xai(text: str) -> dict:
-    key = settings.xai_api_key or settings.grok_api_key
-    model = settings.llm_model or "grok-2-latest"
-    r = httpx.post("https://api.x.ai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [
-            {"role": "user", "content": _PROMPT.format(text=text)}],
-            "response_format": {"type": "json_object"}}, timeout=30)
-    r.raise_for_status()
-    out = r.json()["choices"][0]["message"]["content"]
-    return _normalise(_extract_json(out), text)
-
-
-def _gemini(text: str) -> dict:
-    model = settings.llm_model or "gemini-2.0-flash"
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={settings.gemini_api_key}")
-    r = httpx.post(url, json={"contents": [{"parts": [
-        {"text": _PROMPT.format(text=text)}]}]}, timeout=30)
-    r.raise_for_status()
-    out = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return _normalise(_extract_json(out), text)
-
-
-def _groq(text: str) -> dict:
-    model = settings.llm_model or "llama-3.3-70b-versatile"
-    r = httpx.post("https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-        json={"model": model, "messages": [
-            {"role": "user", "content": _PROMPT.format(text=text)}],
-            "response_format": {"type": "json_object"}}, timeout=30)
-    r.raise_for_status()
-    out = r.json()["choices"][0]["message"]["content"]
-    return _normalise(_extract_json(out), text)
-
-
-def _anthropic(text: str) -> dict:
-    model = settings.llm_model or "claude-haiku-4-5-20251001"
-    r = httpx.post("https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": settings.anthropic_api_key,
-                 "anthropic-version": "2023-06-01"},
-        json={"model": model, "max_tokens": 300, "messages": [
-            {"role": "user", "content": _PROMPT.format(text=text)}]}, timeout=30)
-    r.raise_for_status()
-    out = r.json()["content"][0]["text"]
-    return _normalise(_extract_json(out), text)
-
-
-def _normalise(d: dict, text: str) -> dict:
-    summary = (d.get("summary") or "").strip()
-    tags = [str(t).lstrip("#").lower().strip() for t in d.get("tags", []) if t]
-    if not summary or not tags:
-        fb = _mock(text)
-        summary = summary or fb["summary"]
-        tags = tags or fb["tags"]
-    return {"summary": summary[:200], "tags": tags[:5]}
-
-
-# --- synthesis ("connect the dots" across saved cards) ----------------------
-
 _SYNTH_PROMPT = (
     "You are a study assistant. The user asked: \"{q}\". Using ONLY their saved "
     "notes below, write a tight structured briefing (<=180 words): a one-line "
@@ -151,89 +833,12 @@ _SYNTH_PROMPT = (
     "contradictions or gaps. Plain English. Notes:\n\n{notes}"
 )
 
-
-def synthesize(query: str, notes: list[str]) -> str:
-    """Draft a connected summary from matching cards. Offline-safe."""
-    joined = "\n".join(f"- {n}" for n in notes[:25])[:6000]
-    p = settings.llm_provider
-    prompt = _SYNTH_PROMPT.format(q=query, notes=joined)
-    try:
-        if p == "gemini" and settings.gemini_api_key:
-            return _gemini_text(prompt)
-        if p == "groq" and settings.groq_api_key:
-            return _groq_text(prompt)
-        if p == "anthropic" and settings.anthropic_api_key:
-            return _anthropic_text(prompt)
-    except Exception as e:
-        print(f"[llm] synth provider '{p}' failed, using mock: {e}")
-    # Mock: a readable digest so the feature works with no keys.
-    head = f"On \"{query}\", you have {len(notes)} related note(s)."
-    bullets = "\n".join(f"• {n[:140]}" for n in notes[:5])
-    return f"{head}\n{bullets}" if bullets else f"No saved notes match \"{query}\" yet."
-
-
-# --- draft (write a piece of content FROM saved cards) -----------------------
-
 _DRAFT_PROMPT = (
     "You are a writing assistant. The user wants you to: \"{instruction}\". "
     "Using ONLY the source notes below as raw material, write the requested piece "
     "directly — no preamble, no explanation, just the finished text, ready to use. "
     "Keep it under 200 words unless the instruction asks for more. Notes:\n\n{notes}"
 )
-
-
-def draft(instruction: str, notes: list[str]) -> str:
-    """Generate a piece of writing (post, paragraph, summary) FROM saved cards,
-    rather than just answering a question about them. Offline-safe."""
-    joined = "\n".join(f"- {n}" for n in notes[:25])[:6000]
-    p = settings.llm_provider
-    prompt = _DRAFT_PROMPT.format(instruction=instruction, notes=joined)
-    try:
-        if p == "gemini" and settings.gemini_api_key:
-            return _gemini_text(prompt)
-        if p == "groq" and settings.groq_api_key:
-            return _groq_text(prompt)
-        if p == "anthropic" and settings.anthropic_api_key:
-            return _anthropic_text(prompt)
-    except Exception as e:
-        print(f"[llm] draft provider '{p}' failed, using mock: {e}")
-    if not notes:
-        return f"I don't have any saved notes to draft \"{instruction}\" from yet — capture a few first."
-    return f"[Draft based on {len(notes)} note(s)]\n" + " ".join(n[:200] for n in notes[:3])
-
-
-def _gemini_text(prompt: str) -> str:
-    model = settings.llm_model or "gemini-2.0-flash"
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={settings.gemini_api_key}")
-    r = httpx.post(url, json={"contents": [{"parts": [{"text": prompt}]}]},
-                   timeout=40)
-    r.raise_for_status()
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-
-def _groq_text(prompt: str) -> str:
-    model = settings.llm_model or "llama-3.3-70b-versatile"
-    r = httpx.post("https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=40)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
-
-
-def _anthropic_text(prompt: str) -> str:
-    model = settings.llm_model or "claude-haiku-4-5-20251001"
-    r = httpx.post("https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": settings.anthropic_api_key,
-                 "anthropic-version": "2023-06-01"},
-        json={"model": model, "max_tokens": 500,
-              "messages": [{"role": "user", "content": prompt}]}, timeout=40)
-    r.raise_for_status()
-    return r.json()["content"][0]["text"].strip()
-
-
-# --- career: learning plan for skill gaps -----------------------------------
 
 _PLAN_PROMPT = (
     "A developer needs to close these skill gaps for the job market: {skills}. "
@@ -243,51 +848,6 @@ _PLAN_PROMPT = (
     "prove it). No prose outside the JSON array."
 )
 
-
-def learning_plan(gaps: list[dict]) -> list[dict]:
-    """Draft a per-gap learning plan. Offline-safe (templated fallback)."""
-    if not gaps:
-        return []
-    names = ", ".join(g["skill"] for g in gaps)
-    prompt = _PLAN_PROMPT.format(skills=names)
-    p = settings.llm_provider
-    try:
-        if p == "gemini" and settings.gemini_api_key:
-            raw = _gemini_text(prompt)
-        elif p == "groq" and settings.groq_api_key:
-            raw = _groq_text(prompt)
-        elif p == "anthropic" and settings.anthropic_api_key:
-            raw = _anthropic_text(prompt)
-        else:
-            raise RuntimeError("no provider")
-        arr = _extract_json_array(raw)
-        if arr:
-            return arr
-    except Exception as e:
-        print(f"[llm] learning_plan provider '{p}' failed, using template: {e}")
-
-    # Templated fallback so the feature works with zero keys.
-    return [{
-        "skill": g["skill"],
-        "why": f"High market demand ({int(g['demand']*100)}%) and currently a gap.",
-        "plan": f"Spend ~3 hours on a focused {g['skill']} tutorial, then apply it once.",
-        "project": f"Add {g['skill']} to a small existing project.",
-    } for g in gaps]
-
-
-def _extract_json_array(text: str):
-    import json as _json
-    s, e = text.find("["), text.rfind("]")
-    if s == -1 or e == -1 or e < s:
-        return None
-    try:
-        return _json.loads(text[s:e + 1])
-    except Exception:
-        return None
-
-
-# --- rich metadata enrichment (knowledge-object fields) ----------------------
-
 _FULL_PROMPT = (
     "Organise this into a knowledge card. Return STRICT JSON with keys: "
     "title (<=8 words, no surrounding quotes), summary (<=25 words), "
@@ -296,231 +856,6 @@ _FULL_PROMPT = (
     "idea is to grasp), importance (integer 1-10, how worth revisiting later). "
     "Content:\n\n{text}"
 )
-
-
-def _complete(prompt: str) -> str:
-    p = settings.llm_provider
-    if p == "gemini" and settings.gemini_api_key:
-        model = settings.llm_model or "gemini-2.0-flash"
-        r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/"
-                       f"{model}:generateContent?key={settings.gemini_api_key}",
-                       json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
-        r.raise_for_status()
-        return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    if p == "groq" and settings.groq_api_key:
-        r = httpx.post("https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-            json={"model": settings.llm_model or "llama-3.3-70b-versatile",
-                  "messages": [{"role": "user", "content": prompt}],
-                  "response_format": {"type": "json_object"}}, timeout=30)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
-    if p == "anthropic" and settings.anthropic_api_key:
-        r = httpx.post("https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": settings.anthropic_api_key,
-                     "anthropic-version": "2023-06-01"},
-            json={"model": settings.llm_model or "claude-haiku-4-5-20251001",
-                  "max_tokens": 400,
-                  "messages": [{"role": "user", "content": prompt}]}, timeout=30)
-        r.raise_for_status()
-        return r.json()["content"][0]["text"]
-    raise RuntimeError("no LLM provider configured")
-
-
-def _fallback_title(text: str) -> str:
-    words = (text or "").strip().split()
-    return " ".join(words[:7]) or "Untitled"
-
-
-def enrich_full(text: str, source_type: str = "text") -> dict:
-    """Full knowledge-object metadata, with graceful offline fallback."""
-    base = _mock(text)
-    try:
-        d = _extract_json(_complete(_FULL_PROMPT.format(text=(text or "")[:6000])))
-    except Exception as e:
-        print(f"[llm] enrich_full fell back to mock: {e}")
-        d = {}
-    title = (str(d.get("title") or "").strip().strip('"')) or _fallback_title(text)
-    summary = (str(d.get("summary") or "").strip()) or base["summary"]
-    tags = [str(t).lstrip("#").lower().strip() for t in d.get("tags", []) if t] or base["tags"]
-    topic = (str(d.get("topic") or "").strip().lower()) or (tags[0] if tags else "general")
-    try:
-        difficulty = max(1, min(5, int(d.get("difficulty", 2))))
-    except Exception:
-        difficulty = 2
-    try:
-        importance = max(1, min(10, int(d.get("importance", 5))))
-    except Exception:
-        importance = 5
-    return {"title": title[:80], "summary": summary[:200], "tags": tags[:5],
-            "topic": topic[:30], "difficulty": difficulty, "importance": importance}
-
-
-def _xai_text(prompt: str) -> str:
-    key = settings.xai_api_key or settings.grok_api_key
-    model = settings.llm_model or "grok-2-latest"
-    r = httpx.post("https://api.x.ai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=45)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
-
-
-def _openrouter_text(prompt: str) -> str:
-    key = settings.openrouter_api_key
-    if not key:
-        raise RuntimeError("OPENROUTER_API_KEY is missing on server.")
-
-    model = settings.openrouter_model or settings.llm_model or "meta-llama/llama-3.3-70b-instruct"
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "HTTP-Referer": "https://sparkdhi.ai",
-        "X-Title": "SparkDhi Student Workspace",
-        "Content-Type": "application/json",
-    }
-    r = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=45,
-    )
-    if r.status_code == 401:
-        raise RuntimeError("Invalid OpenRouter API Key.")
-    if r.status_code == 429:
-        raise RuntimeError("OpenRouter API rate limit exceeded.")
-    r.raise_for_status()
-
-    data = r.json()
-    if "choices" in data and len(data["choices"]) > 0:
-        return data["choices"][0]["message"]["content"].strip()
-    raise RuntimeError("OpenRouter API returned a malformed response.")
-
-
-def _complete_text(prompt: str) -> str:
-    p = settings.llm_provider
-    if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
-        return _openrouter_text(prompt)
-    if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
-        return _xai_text(prompt)
-    if p == "gemini" and settings.gemini_api_key:
-        return _gemini_text(prompt)
-    if p == "groq" and settings.groq_api_key:
-        return _groq_text(prompt)
-    if p == "anthropic" and settings.anthropic_api_key:
-        return _anthropic_text(prompt)
-    raise RuntimeError("No LLM provider configured (set OPENROUTER_API_KEY, XAI_API_KEY, GROK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY).")
-
-
-def _openrouter_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
-    key = settings.openrouter_api_key
-    if not key:
-        raise RuntimeError("OPENROUTER_API_KEY is missing on server.")
-    base_model = settings.openrouter_model or settings.llm_model or "google/gemini-2.0-flash-001"
-    model = "google/gemini-2.0-flash-001" if "llama-3.3-70b-instruct" in base_model else base_model
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "HTTP-Referer": "https://sparkdhi.ai",
-        "X-Title": "SparkDhi Student Workspace",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
-                ],
-            }
-        ],
-    }
-    r = httpx.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45)
-    r.raise_for_status()
-    data = r.json()
-    if "choices" in data and len(data["choices"]) > 0:
-        return data["choices"][0]["message"]["content"].strip()
-    raise RuntimeError("OpenRouter vision API returned a malformed response.")
-
-
-def _gemini_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
-    model = settings.llm_model or "gemini-2.0-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
-            ]
-        }]
-    }
-    r = httpx.post(url, json=payload, timeout=45)
-    r.raise_for_status()
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-
-def _anthropic_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
-    model = settings.llm_model or "claude-haiku-4-5-20251001"
-    headers = {
-        "x-api-key": settings.anthropic_api_key,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "max_tokens": 1500,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": mime_type,
-                        "data": image_b64,
-                    },
-                },
-                {"type": "text", "text": prompt},
-            ],
-        }],
-    }
-    r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=45)
-    r.raise_for_status()
-    return r.json()["content"][0]["text"].strip()
-
-
-def _xai_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
-    key = settings.xai_api_key or settings.grok_api_key
-    model = "grok-2-vision-1212"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
-            ],
-        }],
-    }
-    r = httpx.post("https://api.x.ai/v1/chat/completions", headers=headers, json=payload, timeout=45)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
-
-
-def _complete_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
-    p = settings.llm_provider
-    if (p == "openrouter" or settings.openrouter_api_key) and settings.openrouter_api_key:
-        return _openrouter_vision(prompt, image_b64, mime_type)
-    if p == "gemini" and settings.gemini_api_key:
-        return _gemini_vision(prompt, image_b64, mime_type)
-    if p == "anthropic" and settings.anthropic_api_key:
-        return _anthropic_vision(prompt, image_b64, mime_type)
-    if (p in ["xai", "grok"] or settings.xai_api_key or settings.grok_api_key) and (settings.xai_api_key or settings.grok_api_key):
-        return _xai_vision(prompt, image_b64, mime_type)
-    raise RuntimeError("No vision-capable LLM provider configured.")
-
 
 _SOLVE_TASK_PROMPT = (
     "You are SparkDhi, a sharp, truthful, and highly capable AI reasoning partner and technical tutor. "
@@ -543,8 +878,73 @@ _SOLVE_TASK_PROMPT = (
     "- \"practice\": array of 2-3 strings (format: 'Problem: <exercise question> | Answer: <explicit solution>')\n"
 )
 
+_CHAPTERING_PROMPT = (
+    "You are SparkDhi Active Learning Engine. "
+    "You are processing ACTUAL LEARNING MATERIAL TEXT for topic: \"{title}\".\n"
+    "STRICT ANTI-HALLUCINATION REQUIREMENT: Use ONLY information contained in the provided material text below. "
+    "Do NOT infer concepts or lessons merely from the title. Do NOT invent concepts, examples, facts, or explanations that are not supported by the source content.\n\n"
+    "ACTUAL LEARNING MATERIAL:\n\"{transcript}\"\n\n"
+    "TASK:\n"
+    "1. Detect natural concept topic boundaries directly from the text.\n"
+    "2. Divide into 2 to 6 natural concept micro-chapters based on actual content covered.\n"
+    "3. For EACH chapter generate:\n"
+    "   - \"title\": concise concept topic name\n"
+    "   - \"start_time\": 0\n"
+    "   - \"end_time\": 0\n"
+    "   - \"transcript_segment\": actual text excerpt for this chapter\n"
+    "   - \"short_explanation\": 2-3 sentence core summary of the actual concept taught\n"
+    "   - \"key_concepts\": array of 2-4 string concept keywords directly from material\n"
+    "   - \"learning_objective\": clear objective statement grounded in material\n"
+    "   - \"difficulty\": \"Beginner\", \"Medium\", or \"Advanced\"\n"
+    "   - \"recall_prompt\": active-recall prompt asking learner to explain concept in their own words\n"
+    "   - \"quiz\": array of 2-4 questions grounded ONLY in this chapter's actual content (each with: \"question_type\": \"mcq\", \"question_text\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correct_answer\", \"explanation\", \"concept_tag\")\n"
+    "4. Generate \"mindmap_nodes\": array of concepts extracted directly from material for graph visualization (each with: \"node_key\", \"label\", \"parent_key\", \"concept_tag\", \"depth\").\n\n"
+    "Return STRICT JSON with keys: \"subject\", \"chapters\", \"mindmap_nodes\"."
+)
 
-def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> dict | None:
+_ACTIVE_RECALL_PROMPT = (
+    "You are SparkDhi Active Learning Evaluator. "
+    "Evaluate the learner's self-explanation response for chapter: \"{chapter_title}\".\n\n"
+    "CHAPTER TRANSCRIPT CONTENT:\n\"{transcript_segment}\"\n\n"
+    "LEARNER ACTIVE RECALL RESPONSE:\n\"{user_response}\"\n\n"
+    "EVALUATION CRITERIA:\n"
+    "1. Calculate an \"understanding_score\" integer from 0 to 100 based on accuracy and completeness.\n"
+    "2. List \"understood_concepts\" (array of strings concepts correctly described).\n"
+    "3. List \"missing_concepts\" (array of strings important ideas omitted or incomplete).\n"
+    "4. List \"misconceptions\" (array of strings inaccurate or mistaken points, if any).\n"
+    "5. Provide a constructive 1-2 sentence \"recommendation\" highlighting strengths and guidance for next steps.\n\n"
+    "Return STRICT JSON with keys: \"understanding_score\", \"understood_concepts\", \"missing_concepts\", \"misconceptions\", \"recommendation\"."
+)
+
+# --- Offline / Deterministic Helpers ----------------------------------------
+
+def _mock(text: str) -> dict:
+    low = text.lower()
+    tags: list[str] = []
+    for key, vals in _MOCK_TOPICS.items():
+        if key in low:
+            tags.extend(vals)
+    if not tags:
+        words = re.findall(r"[a-zA-Z]{5,}", low)
+        tags = [w for w in dict.fromkeys(words)][:3] or ["note"]
+    tags = list(dict.fromkeys(tags))[:5]
+    first = re.split(r"[.!?\n]", text.strip())[0][:120].strip()
+    return {"summary": first or "Saved note", "tags": tags}
+
+def _normalise(d: dict, text: str) -> dict:
+    summary = (d.get("summary") or "").strip()
+    tags = [str(t).lstrip("#").lower().strip() for t in d.get("tags", []) if t]
+    if not summary or not tags:
+        fb = _mock(text)
+        summary = summary or fb["summary"]
+        tags = tags or fb["tags"]
+    return {"summary": summary[:200], "tags": tags[:5]}
+
+def _fallback_title(text: str) -> str:
+    words = (text or "").strip().split()
+    return " ".join(words[:7]) or "Untitled"
+
+def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> Optional[dict]:
     """Exact mathematical & algebraic solver using SymPy for offline accuracy."""
     try:
         import sympy as sp
@@ -564,12 +964,11 @@ def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> dict | None:
             factored = sp.factor(eq)
 
             sols_str = ", ".join(f"x = {s}" for s in sols)
-            
             steps = [
                 f"Write equation in standard form: {eq} = 0",
                 f"Factorize expression: {factored} = 0",
                 f"Solve linear factors for x: {sols_str}",
-                f"Verify solutions by substituting back into original equation.",
+                "Verify solutions by substituting back into original equation.",
             ]
 
             return {
@@ -590,39 +989,17 @@ def _sympy_algebraic_solver(prompt: str, subject_hint: str = "") -> dict | None:
                 ],
             }
     except Exception as e:
-        print(f"[sympy_solver] parsing skipped: {e}")
+        print(f"[sympy_solver] parsing skipped: {_sanitize_log(str(e))}")
     return None
 
-
-def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | None = None, mime_type: str = "image/jpeg") -> dict:
-    """Solve an academic question or task using real LLM execution, vision model, or exact SymPy solver."""
-    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:12000], subject_hint=subject_hint or "General")
-
-    # 1. Try LLM Provider (Vision if image attached, otherwise Text)
-    try:
-        if image_b64:
-            raw_text = _complete_vision(p_text, image_b64, mime_type)
-        else:
-            raw_text = _complete_text(p_text)
-        parsed = _extract_json(raw_text)
-        if parsed and isinstance(parsed, dict) and "solution" in parsed:
-            if "practice" in parsed and isinstance(parsed["practice"], list):
-                parsed["practice"] = [str(pr).strip() for pr in parsed["practice"] if pr]
-            return parsed
-    except Exception as e:
-        print(f"[solve_student_task] LLM execution error: {e}")
-
-    # 2. Try Exact SymPy Mathematical Engine
-    sympy_res = _sympy_algebraic_solver(prompt, subject_hint)
-    if sympy_res:
-        return sympy_res
-
-    # 3. Dynamic Fallback Generator for Coding & Academic queries
+def _offline_dynamic_task_solver(prompt: str, subject_hint: str = "") -> dict:
+    """Offline heuristic task solver for local development and test runs without API keys."""
     low = (prompt or "").lower()
-    is_coding = subject_hint.lower() == "coding" or any(k in low for k in ["code", "python", "javascript", "js", "ts", "typescript", "java", "c++", "cpp", "sql", "function", "array", "algorithm", "string", "loop", "debug", "write a function"])
+    is_coding = subject_hint.lower() == "coding" or any(
+        k in low for k in ["code", "python", "javascript", "js", "ts", "typescript", "java", "c++", "cpp", "sql", "function", "array", "algorithm", "string", "loop", "debug", "write a function"]
+    )
 
     if is_coding:
-        # Detect target programming language
         lang = "python"
         if "javascript" in low or " js " in low or "node" in low:
             lang = "javascript"
@@ -635,7 +1012,6 @@ def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | Non
         elif "sql" in low:
             lang = "sql"
 
-        # Generate runnable code based on problem keywords
         if "reverse" in low and "string" in low:
             if lang == "python":
                 code_snippet = "def reverse_string(s: str) -> str:\n    # Optimized Pythonic string reversal using slice\n    return s[::-1]\n\n# Test execution\nprint(reverse_string('spark_ai'))  # Output: ia_kraps"
@@ -657,7 +1033,6 @@ def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | Non
                 code_snippet = "function binarySearch(arr, target) {\n  let left = 0, right = arr.length - 1;\n  while (left <= right) {\n    let mid = Math.floor((left + right) / 2);\n    if (arr[mid] === target) return mid;\n    if (arr[mid] < target) left = mid + 1;\n    else right = mid - 1;\n  }\n  return -1;\n}"
             proc_title = "Binary Search Algorithm Solution"
         else:
-            # Generic runnable code template tailored to prompt
             clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', prompt.strip()[:30]).lower().strip('_') or "solve_task"
             if lang == "python":
                 code_snippet = f"def {clean_name}(data):\n    \"\"\"Optimal solution for: {prompt.strip()[:80]}\"\"\"\n    if not data:\n        return None\n    result = []\n    for item in data:\n        if item is not None:\n            result.append(item)\n    return result\n\n# Example Test\nprint({clean_name}([1, 2, 3, None, 5]))"
@@ -688,7 +1063,6 @@ def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | Non
             ],
         }
 
-    # 4. Fallback Generator for General Academic & Science queries
     clean_p = prompt.strip()[:60]
     return {
         "subject": subject_hint.capitalize() if subject_hint else "General Academic",
@@ -703,76 +1077,19 @@ def solve_student_task(prompt: str, subject_hint: str = "", image_b64: str | Non
         "formulas": [
             "Analytical Framework: Problem Identification ➔ Structural Decomposition ➔ Synthesis",
         ],
-        "intuition": f"Decomposing complex queries into logical steps ensures clarity and academic rigor.",
+        "intuition": "Decomposing complex queries into logical steps ensures clarity and academic rigor.",
         "practice": [
             f"Problem: What is the first step when tackling {clean_p}? | Answer: Identify baseline definitions and given conditions.",
         ],
     }
 
-
-def solve_task_followup(task_prompt: str, task_solution: str, thread: list[dict], followup_text: str) -> str:
-    """Answer a follow-up question for an ongoing student task thread."""
-    history = "\n".join(f"{m.get('role','user').capitalize()}: {m.get('content','')}" for m in (thread or [])[-6:])
-    p_text = (
-        f"You are SparkDhi, a sharp, truthful, and highly capable AI reasoning partner.\n"
-        f"ORIGINAL TASK: \"{task_prompt}\"\n"
-        f"INITIAL SOLUTION: \"{task_solution}\"\n"
-        f"PAST CONVERSATION:\n{history}\n\n"
-        f"STUDENT FOLLOW-UP QUESTION: \"{followup_text}\"\n\n"
-        "Provide a direct, truthful, and sharp answer to the student's follow-up question. "
-        "Use step-by-step explanation or clean runnable code if relevant. "
-        "For simple questions, answer concisely without boilerplate."
-    )
-    try:
-        return _complete_text(p_text)
-    except Exception as e:
-        print(f"[llm] solve_task_followup LLM error: {e}")
-        return f"Explanation for '{followup_text}': Contextual clarification based on initial solution '{task_solution[:60]}'."
-
-
-_CHAPTERING_PROMPT = (
-    "You are SparkDhi Active Learning Engine. "
-    "You are processing ACTUAL LEARNING MATERIAL TEXT for topic: \"{title}\".\n"
-    "STRICT ANTI-HALLUCINATION REQUIREMENT: Use ONLY information contained in the provided material text below. "
-    "Do NOT infer concepts or lessons merely from the title. Do NOT invent concepts, examples, facts, or explanations that are not supported by the source content.\n\n"
-    "ACTUAL LEARNING MATERIAL:\n\"{transcript}\"\n\n"
-    "TASK:\n"
-    "1. Detect natural concept topic boundaries directly from the text.\n"
-    "2. Divide into 2 to 6 natural concept micro-chapters based on actual content covered.\n"
-    "3. For EACH chapter generate:\n"
-    "   - \"title\": concise concept topic name\n"
-    "   - \"start_time\": 0\n"
-    "   - \"end_time\": 0\n"
-    "   - \"transcript_segment\": actual text excerpt for this chapter\n"
-    "   - \"short_explanation\": 2-3 sentence core summary of the actual concept taught\n"
-    "   - \"key_concepts\": array of 2-4 string concept keywords directly from material\n"
-    "   - \"learning_objective\": clear objective statement grounded in material\n"
-    "   - \"difficulty\": \"Beginner\", \"Medium\", or \"Advanced\"\n"
-    "   - \"recall_prompt\": active-recall prompt asking learner to explain concept in their own words\n"
-    "   - \"quiz\": array of 2-4 questions grounded ONLY in this chapter's actual content (each with: \"question_type\": \"mcq\", \"question_text\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correct_answer\", \"explanation\", \"concept_tag\")\n"
-    "4. Generate \"mindmap_nodes\": array of concepts extracted directly from material for graph visualization (each with: \"node_key\", \"label\", \"parent_key\", \"concept_tag\", \"depth\").\n\n"
-    "Return STRICT JSON with keys: \"subject\", \"chapters\", \"mindmap_nodes\"."
-)
-
-
-def generate_concept_chapters(transcript_text: str, title: str = "Active Study Session") -> dict:
-    """Analyze learning transcript and generate natural concept-based micro-chapters, quizzes, and mindmap."""
-    p_text = _CHAPTERING_PROMPT.format(title=title[:200], transcript=(transcript_text or "")[:25000])
-    try:
-        raw_text = _complete_text(p_text)
-        parsed = _extract_json(raw_text)
-        if parsed and isinstance(parsed, dict) and "chapters" in parsed and len(parsed["chapters"]) > 0:
-            return parsed
-    except Exception as e:
-        print(f"[llm] generate_concept_chapters LLM error: {e}")
-
-    # Dynamic Heuristic Text Chapter Generator (derived directly from source transcript)
+def _heuristic_concept_chapters(transcript_text: str, title: str = "Active Study Session") -> dict:
+    """Offline heuristic chapter generator derived directly from source transcript."""
     raw_text = (transcript_text or "").strip()
     words = raw_text.split()
     total_words = max(50, len(words))
-    est_duration = max(300, int(total_words / 2.5))  # ~150 words/min
+    est_duration = max(300, int(total_words / 2.5))
 
-    # Extract distinct non-trivial key terms from text
     stop_words = {
         "the", "a", "an", "in", "on", "of", "and", "or", "to", "is", "are", "was", "were", "for", "with", "this", "that", "from", "by", "at", "it", "as", "be", "has", "have", "had",
         "going", "just", "like", "want", "here", "there", "you", "your", "we", "our", "us", "they", "them", "their", "what", "which", "who", "whom", "where", "when", "why", "how",
@@ -781,19 +1098,18 @@ def generate_concept_chapters(transcript_text: str, title: str = "Active Study S
         "thing", "things", "way", "lot", "kind", "sort", "basically", "actually", "literally", "yeah", "okay", "alright", "hello", "welcome", "today", "now", "also", "into", "about"
     }
     clean_words = [w.strip(".,!?:;\"'()[]{}").capitalize() for w in words if len(w.strip(".,!?:;\"'()[]{}")) > 3 and w.lower() not in stop_words]
-    freq = {}
+    freq: dict[str, int] = {}
     for w in clean_words:
         freq[w] = freq.get(w, 0) + 1
     top_terms = [k for k, v in sorted(freq.items(), key=lambda item: item[1], reverse=True)[:9]]
-    
+
     if len(top_terms) < 6:
         top_terms.extend(["Concept Principles", "Analytical Framework", "System Interactions", "Practical Execution", "Problem Solving", "Key Synthesis"])
 
-    # Intelligently split into 3 concept chapters based on word chunks
     chunk_size = max(1, len(words) // 3)
     chap1_text = " ".join(words[:chunk_size]) or raw_text[:500]
-    chap2_text = " ".join(words[chunk_size:chunk_size*2]) or raw_text[500:1000]
-    chap3_text = " ".join(words[chunk_size*2:]) or raw_text[1000:]
+    chap2_text = " ".join(words[chunk_size:chunk_size * 2]) or raw_text[500:1000]
+    chap3_text = " ".join(words[chunk_size * 2:]) or raw_text[1000:]
 
     t1_end = int(est_duration * 0.33)
     t2_end = int(est_duration * 0.67)
@@ -801,7 +1117,6 @@ def generate_concept_chapters(transcript_text: str, title: str = "Active Study S
     c1_tags = top_terms[0:3]
     c2_tags = top_terms[3:6]
     c3_tags = top_terms[6:9] if len(top_terms) >= 9 else top_terms[0:3]
-
     clean_title = title[:40] if title else top_terms[0]
 
     return {
@@ -890,45 +1205,15 @@ def generate_concept_chapters(transcript_text: str, title: str = "Active Study S
         ],
     }
 
-
-_ACTIVE_RECALL_PROMPT = (
-    "You are SparkDhi Active Learning Evaluator. "
-    "Evaluate the learner's self-explanation response for chapter: \"{chapter_title}\".\n\n"
-    "CHAPTER TRANSCRIPT CONTENT:\n\"{transcript_segment}\"\n\n"
-    "LEARNER ACTIVE RECALL RESPONSE:\n\"{user_response}\"\n\n"
-    "EVALUATION CRITERIA:\n"
-    "1. Calculate an \"understanding_score\" integer from 0 to 100 based on accuracy and completeness.\n"
-    "2. List \"understood_concepts\" (array of strings concepts correctly described).\n"
-    "3. List \"missing_concepts\" (array of strings important ideas omitted or incomplete).\n"
-    "4. List \"misconceptions\" (array of strings inaccurate or mistaken points, if any).\n"
-    "5. Provide a constructive 1-2 sentence \"recommendation\" highlighting strengths and guidance for next steps.\n\n"
-    "Return STRICT JSON with keys: \"understanding_score\", \"understood_concepts\", \"missing_concepts\", \"misconceptions\", \"recommendation\"."
-)
-
-
-def evaluate_active_recall(chapter_title: str, transcript_segment: str, user_recall_text: str) -> dict:
-    """Evaluate learner active recall response using LLM or intelligent heuristic parser."""
-    p_text = _ACTIVE_RECALL_PROMPT.format(
-        chapter_title=chapter_title[:100],
-        transcript_segment=(transcript_segment or "")[:3000],
-        user_response=(user_recall_text or "")[:2000],
-    )
-    try:
-        raw_text = _complete_text(p_text)
-        parsed = _extract_json(raw_text)
-        if parsed and isinstance(parsed, dict) and "understanding_score" in parsed:
-            return parsed
-    except Exception as e:
-        print(f"[llm] evaluate_active_recall LLM error: {e}")
-
-    # Heuristic evaluation fallback based on user response depth and keyword matching
+def _heuristic_active_recall(user_recall_text: str) -> dict:
+    """Offline heuristic active recall evaluation."""
     length = len((user_recall_text or "").strip().split())
     if length > 25:
         score = 85
         recom = "Great job explaining the concept! You captured the main ideas well. Keep building on this understanding."
         understood = ["Core Definition", "Primary Mechanism"]
-        missing = []
-        misconceptions = []
+        missing: list[str] = []
+        misconceptions: list[str] = []
     elif length >= 8:
         score = 70
         recom = "Good recall effort! You understand the primary idea, but try to include key relationships and details next time."
@@ -949,3 +1234,282 @@ def evaluate_active_recall(chapter_title: str, transcript_segment: str, user_rec
         "misconceptions": misconceptions,
         "recommendation": recom,
     }
+
+# --- Backward-Compatible Internal Callers -----------------------------------
+
+def _complete_text(prompt: str) -> str:
+    router = get_model_router()
+    return router.generate_text(prompt)
+
+def _complete_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    router = get_model_router()
+    return router.generate_text(prompt, vision=True, image_b64=image_b64, mime_type=mime_type)
+
+def _complete(prompt: str) -> str:
+    return _complete_text(prompt)
+
+def _openrouter(text: str) -> dict:
+    adapter = OpenRouterAdapter()
+    raw = adapter.complete_text(_PROMPT.format(text=text), timeout=30.0)
+    return _normalise(_extract_json(raw), text)
+
+def _groq(text: str) -> dict:
+    adapter = GroqAdapter()
+    raw = adapter.complete_text(_PROMPT.format(text=text), timeout=30.0)
+    return _normalise(_extract_json(raw), text)
+
+def _gemini(text: str) -> dict:
+    adapter = GeminiAdapter()
+    raw = adapter.complete_text(_PROMPT.format(text=text), timeout=30.0)
+    return _normalise(_extract_json(raw), text)
+
+def _xai(text: str) -> dict:
+    adapter = XAIAdapter()
+    raw = adapter.complete_text(_PROMPT.format(text=text), timeout=30.0)
+    return _normalise(_extract_json(raw), text)
+
+def _anthropic(text: str) -> dict:
+    adapter = AnthropicAdapter()
+    raw = adapter.complete_text(_PROMPT.format(text=text), timeout=30.0)
+    return _normalise(_extract_json(raw), text)
+
+def _openrouter_text(prompt: str) -> str:
+    return OpenRouterAdapter().complete_text(prompt, timeout=45.0)
+
+def _groq_text(prompt: str) -> str:
+    return GroqAdapter().complete_text(prompt, timeout=40.0)
+
+def _gemini_text(prompt: str) -> str:
+    return GeminiAdapter().complete_text(prompt, timeout=40.0)
+
+def _xai_text(prompt: str) -> str:
+    return XAIAdapter().complete_text(prompt, timeout=45.0)
+
+def _anthropic_text(prompt: str) -> str:
+    return AnthropicAdapter().complete_text(prompt, timeout=40.0)
+
+def _openrouter_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    return OpenRouterAdapter().complete_vision(prompt, image_b64, mime_type=mime_type, timeout=45.0)
+
+def _gemini_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    return GeminiAdapter().complete_vision(prompt, image_b64, mime_type=mime_type, timeout=45.0)
+
+def _xai_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    return XAIAdapter().complete_vision(prompt, image_b64, mime_type=mime_type, timeout=45.0)
+
+def _anthropic_vision(prompt: str, image_b64: str, mime_type: str = "image/jpeg") -> str:
+    return AnthropicAdapter().complete_vision(prompt, image_b64, mime_type=mime_type, timeout=45.0)
+
+
+# --- Public High-Level APIs -------------------------------------------------
+
+def enrich(text: str) -> dict:
+    """Return {'summary': str, 'tags': [str]} for a raw note. Never raises."""
+    if not text or not text.strip():
+        return {"summary": "Empty note", "tags": ["note"]}
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            raw = router.generate_text(_PROMPT.format(text=text))
+            d = _extract_json(raw)
+            return _normalise(d, text)
+        except Exception as e:
+            print(f"[llm] enrich failed, falling back to mock: {_sanitize_log(str(e))}")
+    return _mock(text)
+
+
+def enrich_full(text: str, source_type: str = "text") -> dict:
+    """Full knowledge-object metadata, with graceful offline fallback."""
+    base = _mock(text)
+    router = get_model_router()
+    d = {}
+    if router.has_configured_real_providers():
+        try:
+            raw = router.generate_text(_FULL_PROMPT.format(text=(text or "")[:6000]))
+            d = _extract_json(raw)
+        except Exception as e:
+            print(f"[llm] enrich_full fell back to mock: {_sanitize_log(str(e))}")
+
+    title = (str(d.get("title") or "").strip().strip('"')) or _fallback_title(text)
+    summary = (str(d.get("summary") or "").strip()) or base["summary"]
+    tags = [str(t).lstrip("#").lower().strip() for t in d.get("tags", []) if t] or base["tags"]
+    topic = (str(d.get("topic") or "").strip().lower()) or (tags[0] if tags else "general")
+    try:
+        difficulty = max(1, min(5, int(d.get("difficulty", 2))))
+    except Exception:
+        difficulty = 2
+    try:
+        importance = max(1, min(10, int(d.get("importance", 5))))
+    except Exception:
+        importance = 5
+    return {
+        "title": title[:80],
+        "summary": summary[:200],
+        "tags": tags[:5],
+        "topic": topic[:30],
+        "difficulty": difficulty,
+        "importance": importance,
+    }
+
+
+def synthesize(query: str, notes: list[str]) -> str:
+    """Draft a connected summary from matching cards. Offline-safe."""
+    joined = "\n".join(f"- {n}" for n in notes[:25])[:6000]
+    prompt = _SYNTH_PROMPT.format(q=query, notes=joined)
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            return router.generate_text(prompt)
+        except Exception as e:
+            print(f"[llm] synth failed, using mock: {_sanitize_log(str(e))}")
+    head = f"On \"{query}\", you have {len(notes)} related note(s)."
+    bullets = "\n".join(f"• {n[:140]}" for n in notes[:5])
+    return f"{head}\n{bullets}" if bullets else f"No saved notes match \"{query}\" yet."
+
+
+def draft(instruction: str, notes: list[str]) -> str:
+    """Generate a piece of writing FROM saved cards. Offline-safe."""
+    joined = "\n".join(f"- {n}" for n in notes[:25])[:6000]
+    prompt = _DRAFT_PROMPT.format(instruction=instruction, notes=joined)
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            return router.generate_text(prompt)
+        except Exception as e:
+            print(f"[llm] draft failed, using mock: {_sanitize_log(str(e))}")
+    if not notes:
+        return f"I don't have any saved notes to draft \"{instruction}\" from yet — capture a few first."
+    return f"[Draft based on {len(notes)} note(s)]\n" + " ".join(n[:200] for n in notes[:3])
+
+
+def learning_plan(gaps: list[dict]) -> list[dict]:
+    """Draft a per-gap learning plan. Offline-safe (templated fallback)."""
+    if not gaps:
+        return []
+    names = ", ".join(g["skill"] for g in gaps)
+    prompt = _PLAN_PROMPT.format(skills=names)
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            raw = router.generate_text(prompt)
+            arr = _extract_json_array(raw)
+            if arr:
+                return arr
+        except Exception as e:
+            print(f"[llm] learning_plan failed, using template: {_sanitize_log(str(e))}")
+    return [{
+        "skill": g["skill"],
+        "why": f"High market demand ({int(g['demand']*100)}%) and currently a gap.",
+        "plan": f"Spend ~3 hours on a focused {g['skill']} tutorial, then apply it once.",
+        "project": f"Add {g['skill']} to a small existing project.",
+    } for g in gaps]
+
+
+def solve_student_task(
+    prompt: str,
+    subject_hint: str = "",
+    image_b64: Optional[str] = None,
+    mime_type: str = "image/jpeg",
+) -> dict:
+    """Solve an academic question or task using resilient multi-provider router or offline solver."""
+    p_text = _SOLVE_TASK_PROMPT.format(prompt=(prompt or "")[:12000], subject_hint=subject_hint or "General")
+    router = get_model_router()
+
+    # 1. Real Provider Route: Attempt router if any real providers are configured
+    if router.has_configured_real_providers():
+        try:
+            parsed = router.generate_structured(
+                prompt=p_text,
+                schema=TaskSolutionSchema,
+                vision=bool(image_b64),
+                image_b64=image_b64,
+                mime_type=mime_type,
+            )
+            # Ensure practice strings are formatted cleanly
+            if "practice" in parsed and isinstance(parsed["practice"], list):
+                parsed["practice"] = [str(pr).strip() for pr in parsed["practice"] if pr]
+            return parsed
+        except (AIServiceUnavailableError, LLMError) as e:
+            # In production with configured providers, do NOT fabricate fake mock solutions on failure
+            raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.") from e
+        except Exception as e:
+            raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.") from e
+
+    # 2. Offline / Local Dev mode (when no API keys are configured, or llm_provider == 'mock'):
+    # Check exact SymPy symbolic solver for mathematical queries
+    sympy_res = _sympy_algebraic_solver(prompt, subject_hint)
+    if sympy_res:
+        return sympy_res
+
+    # Dynamic fallback generator for coding and general academic queries
+    return _offline_dynamic_task_solver(prompt, subject_hint)
+
+
+def solve_task_followup(
+    task_prompt: str,
+    task_solution: str,
+    thread: list[dict],
+    followup_text: str,
+) -> str:
+    """Answer a follow-up question for an ongoing student task thread."""
+    history = "\n".join(f"{m.get('role','user').capitalize()}: {m.get('content','')}" for m in (thread or [])[-6:])
+    p_text = (
+        f"You are SparkDhi, a sharp, truthful, and highly capable AI reasoning partner.\n"
+        f"ORIGINAL TASK: \"{task_prompt}\"\n"
+        f"INITIAL SOLUTION: \"{task_solution}\"\n"
+        f"PAST CONVERSATION:\n{history}\n\n"
+        f"STUDENT FOLLOW-UP QUESTION: \"{followup_text}\"\n\n"
+        "Provide a direct, truthful, and sharp answer to the student's follow-up question. "
+        "Use step-by-step explanation or clean runnable code if relevant. "
+        "For simple questions, answer concisely without boilerplate."
+    )
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            return router.generate_text(p_text)
+        except Exception as e:
+            raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.") from e
+    return f"Explanation for '{followup_text}': Contextual clarification based on initial solution '{task_solution[:60]}'."
+
+
+def generate_concept_chapters(
+    transcript_text: str,
+    title: str = "Active Study Session",
+) -> dict:
+    """Analyze learning transcript and generate natural concept-based micro-chapters, quizzes, and mindmap."""
+    p_text = _CHAPTERING_PROMPT.format(title=title[:200], transcript=(transcript_text or "")[:25000])
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            parsed = router.generate_structured(p_text, schema=StudyChaptersSchema)
+            if parsed and "chapters" in parsed and len(parsed["chapters"]) > 0:
+                return parsed
+        except Exception as e:
+            print(f"[llm] generate_concept_chapters LLM error, using heuristic fallback: {_sanitize_log(str(e))}")
+
+    # Offline / heuristic fallback
+    return _heuristic_concept_chapters(transcript_text, title)
+
+
+def evaluate_active_recall(
+    chapter_title: str,
+    transcript_segment: str,
+    user_recall_text: str,
+) -> dict:
+    """Evaluate learner active recall response using LLM or intelligent heuristic parser."""
+    p_text = _ACTIVE_RECALL_PROMPT.format(
+        chapter_title=chapter_title[:100],
+        transcript_segment=(transcript_segment or "")[:3000],
+        user_response=(user_recall_text or "")[:2000],
+    )
+    router = get_model_router()
+    if router.has_configured_real_providers():
+        try:
+            parsed = router.generate_structured(p_text, schema=ActiveRecallSchema)
+            if parsed and "understanding_score" in parsed:
+                return parsed
+        except Exception as e:
+            print(f"[llm] evaluate_active_recall LLM error, using heuristic fallback: {_sanitize_log(str(e))}")
+
+    # Offline / heuristic fallback
+    return _heuristic_active_recall(user_recall_text)
