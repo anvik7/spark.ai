@@ -18,7 +18,23 @@ from .config import get_settings
 from .models import User, get_session
 
 settings = get_settings()
-_JWT_SECRET = os.environ.get("JWT_SECRET") or secrets.token_hex(32)
+
+
+def _resolve_jwt_secret() -> str:
+    raw = (os.environ.get("JWT_SECRET") or "").strip()
+    env = (os.environ.get("ENVIRONMENT") or os.environ.get("ENV") or os.environ.get("SPARK_ENV") or "").strip().lower()
+    is_production = env in ("production", "prod") or bool(os.environ.get("RENDER"))
+
+    if is_production:
+        insecure_placeholders = {"change-me-in-production", "secret", "jwt-secret", "dev-secret", "test-secret"}
+        if not raw or raw in insecure_placeholders:
+            raise RuntimeError("FATAL: JWT_SECRET must be configured with a secure key in production.")
+        return raw
+
+    return raw or secrets.token_hex(32)
+
+
+_JWT_SECRET = _resolve_jwt_secret()
 _JWT_ALG = "HS256"
 _TOKEN_TTL = 60 * 60 * 24 * 30  # 30 days
 _bearer = HTTPBearer(auto_error=True)

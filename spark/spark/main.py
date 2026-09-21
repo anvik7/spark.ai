@@ -50,10 +50,30 @@ app.include_router(leaderboard_router)
 app.include_router(study_logs_router)
 app.include_router(study_engine_router)
 app.include_router(circles_router)
+def _get_allowed_origins() -> list[str]:
+    import os
+    raw = os.environ.get("ALLOWED_ORIGINS", "")
+    if raw.strip():
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    return [
+        "https://sparkdhi.ai",
+        "https://www.sparkdhi.ai",
+        "https://spark-ai.onrender.com",
+        "https://spark-web.onrender.com",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
+
+
+_cors_origins = _get_allowed_origins()
+_cors_allow_credentials = False if _cors_origins == ["*"] else True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
