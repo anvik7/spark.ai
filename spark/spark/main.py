@@ -292,7 +292,7 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
     if (
         not filename
         or "/" in filename
-        or "\" in filename
+        or "\\" in filename
         or ".." in filename
         or Path(filename).name != filename
     ):
