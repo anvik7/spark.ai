@@ -12,6 +12,7 @@ import httpx
 
 from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile, status)
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +26,7 @@ except ImportError:
 
 from . import career, embeddings, interview, llm, memory, stats, subscription
 from .auth import (current_user, find_by_email, get_or_create_user, make_token,
-                   verify_password)
+                   verify_password, _user_id_from_token)
 from .config import get_settings
 from .ingest import build_card_fields
 from .models import Card, CardEmbedding, InterviewSession, StudentTask, StudySession, User, UserCareerProfile, SubscriptionOrder, get_session, init_db
@@ -268,14 +269,80 @@ def update_avatar_preset(body: AvatarPresetIn, user: User = Depends(current_user
         return _public_user(session, db_user)
 
 
+_upload_bearer = HTTPBearer(auto_error=False)
+
+
+def authenticated_upload_user(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_upload_bearer),
+) -> User:
+    if not creds or not creds.credentials:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    uid = _user_id_from_token(creds.credentials)
+    with get_session() as session:
+        user = session.get(User, uid)
+        if not user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
+        session.expunge(user)
+        return user
+
+
 @app.get("/api/uploads/{filename}")
-def serve_upload(filename: str):
-    for folder in [_UPLOAD_FILES_DIR, _UPLOAD_DIR, _UPLOAD_DIR / "avatars"]:
-        fp = folder / filename
-        if fp.exists() and fp.is_file():
-            return FileResponse(fp)
-    # Return 200 OK empty image/response for missing legacy files to prevent browser console 404 spam
-    return Response(content=b"", media_type="image/png")
+def serve_upload(filename: str, user: User = Depends(authenticated_upload_user)):
+    # 1. Path safety: reject traversal characters, slashes, or malformed filenames
+    if (
+        not filename
+        or "/" in filename
+        or "\" in filename
+        or ".." in filename
+        or Path(filename).name != filename
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid filename")
+
+    # 2. Path resolution: verify file exists strictly inside upload storage directories
+    found_path: Optional[Path] = None
+    for folder in [_UPLOAD_FILES_DIR, _UPLOAD_DIR]:
+        base = folder.resolve()
+        candidate = (base / filename).resolve()
+        if candidate.is_relative_to(base) and candidate.is_file():
+            found_path = candidate
+            break
+
+    if not found_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+
+    # 3. Ownership / Authorization: verify database relationship or public authorization
+    target_url = f"/api/uploads/{filename}"
+    is_admin = getattr(user, "role", None) in ("admin", "founder")
+
+    with get_session() as session:
+        # Check student task attachments
+        task_matches = session.exec(
+            select(StudentTask).where(
+                (StudentTask.image_url == target_url) |
+                (StudentTask.image_url == filename) |
+                (StudentTask.image_url == f"api/uploads/{filename}")
+            )
+        ).all()
+        if task_matches:
+            if any(t.user_id == user.id for t in task_matches) or is_admin:
+                return FileResponse(found_path)
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+
+        # Check card attachments (files, voice notes, PDFs, images)
+        card_matches = session.exec(
+            select(Card).where(
+                (Card.source_url == target_url) |
+                (Card.source_url == filename) |
+                (Card.source_url == f"api/uploads/{filename}")
+            )
+        ).all()
+        if card_matches:
+            if any(c.user_id == user.id or c.is_public for c in card_matches) or is_admin:
+                return FileResponse(found_path)
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+
+    # File exists on disk but has no authorized database association for this user
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
 
 
 @app.get("/assets/fonts/{font_name}")
