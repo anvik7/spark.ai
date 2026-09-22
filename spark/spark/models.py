@@ -26,6 +26,7 @@ class User(SQLModel, table=True):
     hashed_password: Optional[str] = None
     name: str = ""
     avatar_url: Optional[str] = None
+    role: str = Field(default="user", index=True)  # "user", "founder", "admin"
     plan: str = "trial"  # "trial", "plus", "pro", "expired"
     plan_until: Optional[datetime] = None
     trial_active: bool = True
@@ -88,142 +89,6 @@ class CardEmbedding(SQLModel, table=True):
     card_id: int = Field(primary_key=True, foreign_key="card.id")
     vector: str = ""
     dim: int = 0
-
-
-class StudySession(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    card_id: Optional[int] = Field(default=None, foreign_key="card.id")
-    subject: str = "General"
-    material: str = ""
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    ended_at: Optional[datetime] = None
-    duration_seconds: int = 0
-    was_focused: bool = False
-    ambient_sound: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyMediaSource(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    source_type: str = "document"  # "video_file", "audio_file", "youtube_url", "document", "paper_id", "capture_id"
-    title: str = ""
-    description: str = ""
-    file_path: Optional[str] = None
-    url: Optional[str] = None
-    duration_seconds: int = 0
-    transcript_text: str = ""
-    status: str = "UPLOADING"  # "UPLOADING", "PROCESSING", "ANALYZING", "CHAPTERING", "GENERATING_QUESTIONS", "READY", "FAILED"
-    error_message: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyActiveSession(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    source_id: int = Field(index=True, foreign_key="studymediasource.id")
-    title: str = ""
-    subject: str = "General Academic"
-    current_chapter_index: int = 0
-    current_time_seconds: float = 0.0
-    completed_chapters_count: int = 0
-    total_chapters_count: int = 0
-    overall_mastery_percent: float = 0.0
-    status: str = "in_progress"  # "in_progress", "completed"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyChapter(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
-    chapter_index: int = 0
-    title: str = ""
-    start_time: float = 0.0
-    end_time: float = 0.0
-    duration_seconds: float = 0.0
-    transcript_segment: str = ""
-    short_explanation: str = ""
-    key_concepts_json: str = "[]"
-    learning_objective: str = ""
-    difficulty: str = "Medium"
-    status: str = "unstarted"  # "locked", "unstarted", "in_progress", "completed"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyQuestion(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
-    question_type: str = "mcq"  # "mcq", "true_false", "short_answer"
-    question_text: str = ""
-    options_json: str = "[]"
-    correct_answer: str = ""
-    explanation: str = ""
-    difficulty: str = "Medium"
-    concept_tag: str = "General"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyAttempt(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
-    question_id: int = Field(index=True, foreign_key="studyquestion.id")
-    user_answer: str = ""
-    is_correct: bool = False
-    score: float = 0.0
-    time_taken_seconds: int = 0
-    attempt_number: int = 1
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class ActiveRecallEvaluation(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    chapter_id: int = Field(index=True, foreign_key="studychapter.id")
-    user_response_text: str = ""
-    understanding_score: int = 0  # 0 to 100
-    understood_concepts_json: str = "[]"
-    missing_concepts_json: str = "[]"
-    misconceptions_json: str = "[]"
-    recommendation: str = ""
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class ConceptMastery(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
-    concept_name: str = ""
-    mastery_score: float = 0.0  # 0 to 100
-    status: str = "Learning"  # "Mastered", "Learning", "Needs Review"
-    attempts_count: int = 0
-    correct_count: int = 0
-    last_evaluated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StudyMindMapNode(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: int = Field(index=True, foreign_key="studyactivesession.id")
-    node_key: str = ""
-    label: str = ""
-    parent_key: Optional[str] = None
-    chapter_id: Optional[int] = None
-    concept_tag: str = ""
-    mastery_status: str = "Learning"  # "Mastered", "Learning", "Needs Review"
-    depth: int = 0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class UserGoal(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    goal_type: str = "daily"
-    target_hours: float
-    active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class QuestionPaper(SQLModel, table=True):
@@ -392,6 +257,25 @@ class InterviewSession(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class PasswordResetToken(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    token_hash: str = Field(index=True)
+    expires_at: datetime = Field(index=True)
+    used: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RoleAuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    granted_by: str = Field(default="system")
+    role_granted: str = Field(default="user")
+    previous_role: str = Field(default="user")
+    reason: str = Field(default="")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate()
@@ -430,8 +314,12 @@ def _migrate() -> None:
                 if "razorpay_customer_id" not in user_cols:
                     print("[migrate] Adding razorpay_customer_id column to 'user' table...")
                     conn.execute(_sql('ALTER TABLE "user" ADD COLUMN razorpay_customer_id VARCHAR'))
+                if "role" not in user_cols:
+                    print("[migrate] Adding role column to 'user' table...")
+                    conn.execute(_sql('ALTER TABLE "user" ADD COLUMN role VARCHAR DEFAULT \'user\''))
                 # Upgrade legacy 'free' plans to 'trial' if trial is active
-                conn.execute(_sql('UPDATE "user" SET plan = \'trial\' WHERE plan = \'free\' AND trial_active = TRUE'))
+                bool_true = "TRUE" if engine.dialect.name == "postgresql" else "1"
+                conn.execute(_sql(f'UPDATE "user" SET plan = \'trial\' WHERE plan = \'free\' AND trial_active = {bool_true}'))
 
             # 2. Card table schema sync
             if inspector.has_table("card"):
@@ -447,24 +335,6 @@ def _migrate() -> None:
                     if col_name not in card_cols:
                         print(f"[migrate] Adding {col_name} column to 'card' table...")
                         conn.execute(_sql(f'ALTER TABLE card ADD COLUMN {col_name} {col_ddl}'))
-
-            # 3. UserGoal table schema sync
-            if inspector.has_table("usergoal"):
-                goal_cols = {c["name"] for c in inspector.get_columns("usergoal")}
-                if "active" not in goal_cols:
-                    print("[migrate] Adding active column to 'usergoal' table...")
-                    if engine.dialect.name == "postgresql":
-                        conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT TRUE"))
-                    else:
-                        conn.execute(_sql("ALTER TABLE usergoal ADD COLUMN active BOOLEAN DEFAULT 1"))
-
-            # 4. StudySession table schema sync
-            if inspector.has_table("studysession"):
-                session_cols = {c["name"] for c in inspector.get_columns("studysession")}
-                if "material" not in session_cols:
-                    print("[migrate] Adding material column to 'studysession' table...")
-                    conn.execute(_sql("ALTER TABLE studysession ADD COLUMN material VARCHAR DEFAULT ''"))
-
             # 5. CircleMessage table schema sync
             if inspector.has_table("circlemessage"):
                 msg_cols = {c["name"] for c in inspector.get_columns("circlemessage")}
@@ -552,6 +422,16 @@ def _migrate() -> None:
             if not inspector.has_table("subscriptionorder"):
                 print("[migrate] Creating 'subscriptionorder' table...")
                 SubscriptionOrder.__table__.create(conn)
+
+            # Auto-migrate passwordresettoken table
+            if not inspector.has_table("passwordresettoken"):
+                print("[migrate] Creating 'passwordresettoken' table...")
+                PasswordResetToken.__table__.create(conn)
+
+            # Auto-migrate roleauditlog table
+            if not inspector.has_table("roleauditlog"):
+                print("[migrate] Creating 'roleauditlog' table...")
+                RoleAuditLog.__table__.create(conn)
 
     except Exception as e:
         print(f"[migrate] Schema migration notice: {e}")
