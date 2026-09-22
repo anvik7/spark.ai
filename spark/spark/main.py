@@ -29,12 +29,9 @@ from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password, _user_id_from_token)
 from .config import get_settings
 from .ingest import build_card_fields
-from .models import Card, CardEmbedding, InterviewSession, StudentTask, StudySession, User, UserCareerProfile, SubscriptionOrder, get_session, init_db
+from .models import Card, CardEmbedding, InterviewSession, StudentTask, User, UserCareerProfile, SubscriptionOrder, get_session, init_db
 from .srs import due_cards, schedule
-from .routes.goals import router as goals_router
 from .leaderboard import router as leaderboard_router
-from .routes.study_logs import router as study_logs_router
-from .routes.study_engine import router as study_engine_router
 from .routes.circles import router as circles_router
 settings = get_settings()
 
@@ -45,10 +42,7 @@ async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
 app = FastAPI(title=settings.app_name, lifespan=_lifespan)
-app.include_router(goals_router)
 app.include_router(leaderboard_router)
-app.include_router(study_logs_router)
-app.include_router(study_engine_router)
 app.include_router(circles_router)
 def _get_allowed_origins() -> list[str]:
     import os
@@ -544,11 +538,6 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         if emb:
             session.delete(emb)
 
-        # Unlink any StudySession referencing this card
-        study_sessions = session.exec(select(StudySession).where(StudySession.card_id == card_id)).all()
-        for s in study_sessions:
-            s.card_id = None
-            session.add(s)
 
         # Delete media file from disk if present
         if card.source_url and card.source_url.startswith("/api/uploads/"):

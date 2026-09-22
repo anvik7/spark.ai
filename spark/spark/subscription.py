@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 from sqlmodel import select, col, func
 import httpx
 from .config import get_settings
-from .models import User, Card, UsageDay, StudyMediaSource, SubscriptionOrder
+from .models import User, Card, UsageDay, StudentTask, SubscriptionOrder
 
 settings = get_settings()
 
@@ -229,6 +229,29 @@ def get_plan_limits(user: User) -> dict:
     return limits
 
 
+
+def count_user_uploads(session, user_id: int) -> int:
+    """Count user uploaded files across active non-Study modules (Task attachments and File/Voice Captures)."""
+    try:
+        task_uploads = session.exec(
+            select(func.count()).where(StudentTask.user_id == user_id, StudentTask.image_url.is_not(None))
+        ).one() or 0
+    except Exception:
+        task_uploads = 0
+
+    try:
+        card_uploads = session.exec(
+            select(func.count()).where(
+                Card.user_id == user_id,
+                col(Card.kind).in_(["file", "voice"])
+            )
+        ).one() or 0
+    except Exception:
+        card_uploads = 0
+
+    return task_uploads + card_uploads
+
+
 def get_user_entitlements(user: User, session) -> dict:
     """Full user entitlement state returned via /api/me to the frontend."""
     limits = get_plan_limits(user)
@@ -241,9 +264,7 @@ def get_user_entitlements(user: User, session) -> dict:
 
     downloads_month = 0
 
-    uploads_count = session.exec(
-        select(func.count()).where(StudyMediaSource.user_id == user.id)
-    ).one()
+    uploads_count = count_user_uploads(session, user.id)
 
     storage_used = 0
 
@@ -284,10 +305,6 @@ def get_user_entitlements(user: User, session) -> dict:
             "tasks_ai": has_feature_access(user, "tasks_ai"),
             "coding_answers": has_feature_access(user, "coding_answers"),
             "capture_ai": has_feature_access(user, "capture_ai"),
-            "study_intelligence": has_feature_access(user, "study_intelligence"),
-            "active_recall": has_feature_access(user, "active_recall"),
-            "quizzes": has_feature_access(user, "quizzes"),
-            "mastery_tracking": has_feature_access(user, "mastery_tracking"),
             "career_intelligence": has_feature_access(user, "career_intelligence"),
             "cover_letters": has_feature_access(user, "cover_letters"),
             "ai_coaching": has_feature_access(user, "ai_coaching"),
@@ -348,9 +365,7 @@ def check_upload_quota(session, user: User, file_size: int) -> Tuple[bool, str]:
         return False, "Your 14-day full access trial has ended. Please choose a paid plan (Plus or Pro) to upload files."
 
     limits = get_plan_limits(user)
-    uploads_count = session.exec(
-        select(func.count()).where(StudyMediaSource.user_id == user.id)
-    ).one()
+    uploads_count = count_user_uploads(session, user.id)
 
     if limits["max_uploads"] is not None and uploads_count >= limits["max_uploads"]:
         return False, f"Upload limit reached ({limits['max_uploads']} files). Upgrade to Pro for high-capacity storage."
@@ -564,7 +579,7 @@ def activate_plan(
 
 def cancel_subscription(session, user: User) -> None:
     """Cancel subscription at end of current billing period.
-    Never deletes user data (tasks, captures, study sessions, chat, career profiles remain safe).
+    Never deletes user data (tasks, captures, chat, career profiles remain safe).
     """
     user.subscription_status = "cancelled"
     session.add(user)
