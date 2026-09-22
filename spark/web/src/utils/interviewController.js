@@ -61,9 +61,8 @@ export function createInterviewController({
     state.currentQuestion = "";
     state.latestAnswer = "";
 
-    try {
-      await tts.ensureVoicesLoaded();
-    } catch (e) {}
+    // Prime Web Speech voices asynchronously in background without blocking turn start
+    tts.ensureVoicesLoaded?.().catch?.(() => {});
 
     setStatus("thinking");
 
@@ -116,7 +115,7 @@ export function createInterviewController({
     // Stop candidate recording while interviewer speaks to avoid audio feedback
     stt.stopListening();
 
-    setStatus("speaking");
+    // Notify UI of the new question text immediately
     ui.onInterviewerSpeaking?.(q);
 
     // Asynchronous TTS: audio synthesis and playback must not block UI question rendering
@@ -128,6 +127,7 @@ export function createInterviewController({
           turnId: currentTurnId,
           onStart: () => {
             if (running && state.turnIndex === currentTurnId) {
+              setStatus("speaking");
               ui.onTTSStart?.(q);
             }
           },
@@ -239,8 +239,10 @@ export function createInterviewController({
       resume: () => tts.resume(),
       replay: () => tts.replay(),
       stop: () => tts.stop(),
+      unlockAudio: () => tts.unlockAudio?.(),
       isSpeaking: () => tts.isSpeaking(),
     },
+    unlockAudio: () => tts.unlockAudio?.(),
     stt: {
       startListening: (opts) => stt.startListening(opts),
       stopListening: () => stt.stopListening(),

@@ -260,6 +260,9 @@ export default function Interview({ onNavigate, user }) {
       return;
     }
 
+    // Synchronously unlock audio within direct user gesture for iOS Safari
+    ttsManagerRef.current?.unlockAudio?.();
+
     setBusy(true);
     setErr("");
 
@@ -288,6 +291,9 @@ export default function Interview({ onNavigate, user }) {
       return;
     }
 
+    // Synchronously unlock audio within direct user gesture for iOS Safari
+    ttsManagerRef.current?.unlockAudio?.();
+
     stopListeningMic();
     sttManagerRef.current?.reset();
     baseAnswerRef.current = "";
@@ -314,10 +320,34 @@ export default function Interview({ onNavigate, user }) {
         if (updatedSess.status === "completed") {
           setStatus("completed");
         } else {
-          setStatus("speaking");
           const turns = updatedSess.turns || [];
           const lastTurn = turns[turns.length - 1];
-          if (lastTurn?.q) setCurrentQuestion(lastTurn.q);
+          if (lastTurn?.q) {
+            setCurrentQuestion(lastTurn.q);
+            if (voiceEnabled && ttsManagerRef.current) {
+              ttsManagerRef.current.speakAdaptive(lastTurn.q, {
+                emotion: lastTurn.emotion,
+                delivery: lastTurn.delivery,
+                turnId: turns.length,
+                onStart: () => {
+                  setStatus("speaking");
+                },
+                onEnd: () => {
+                  setStatus("listening");
+                  if (sttManagerRef.current?.isSupported) {
+                    startListeningMic();
+                  }
+                },
+                onError: () => {
+                  setStatus("listening");
+                },
+              }).catch(() => {
+                setStatus("listening");
+              });
+            } else {
+              setStatus("listening");
+            }
+          }
         }
       }
     } catch (error) {
@@ -624,7 +654,10 @@ export default function Interview({ onNavigate, user }) {
           {controller && session.status !== "completed" && (
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <button
-                onClick={() => controller.tts.replay()}
+                onClick={() => {
+                  ttsManagerRef.current?.unlockAudio?.();
+                  controller.tts.replay();
+                }}
                 style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
               >
                 🔄 Replay Question Voice

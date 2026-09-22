@@ -1,5 +1,9 @@
 import { api } from "../api.js";
 
+// Silent 48-byte WAV for iOS Safari media unlocking
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 // Natural Voice TTS Manager (Server-Side Audio + Web Speech Fallback)
 export function createTTSManager({
   preferredLang = "en-US",
@@ -14,12 +18,47 @@ export function createTTSManager({
   const state = {
     currentUtterance: null,
     currentAudio: null,
+    audioContext: null,
+    unlockAudioEl: null,
     isSpeaking: false,
     isPaused: false,
     lastSpokenText: "",
   };
 
   const preferredLangLower = preferredLang.toLowerCase();
+
+  function unlockAudio() {
+    if (typeof window === "undefined") return;
+
+    // 1. Resume Web Audio AudioContext if available/suspended
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        if (!state.audioContext) {
+          state.audioContext = new AudioCtx();
+        }
+        if (state.audioContext.state === "suspended") {
+          state.audioContext.resume().catch(() => {});
+        }
+      }
+    } catch (e) {}
+
+    // 2. Play silent audio element to unlock HTML5 media on iOS Safari
+    try {
+      if (!state.unlockAudioEl) {
+        const el = new Audio();
+        el.setAttribute("playsinline", "true");
+        el.setAttribute("webkit-playsinline", "true");
+        el.preload = "auto";
+        state.unlockAudioEl = el;
+      }
+      state.unlockAudioEl.src = SILENT_WAV;
+      const playPromise = state.unlockAudioEl.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+    } catch (e) {}
+  }
 
   function cleanForSpeech(text) {
     if (!text) return "";
@@ -152,8 +191,9 @@ export function createTTSManager({
     });
   }
 
-  async function speakBrowserSpeech(cleaned, { onStart, onEnd, onError }) {
+  async function speakBrowserSpeech(cleaned, { onStart, onEnd, onError } = {}) {
     if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      state.isSpeaking = false;
       onError?.(new Error("SpeechSynthesis not supported in this browser."));
       return;
     }
@@ -166,6 +206,7 @@ export function createTTSManager({
     const voice = pickBestVoice();
 
     const chunks = splitIntoSentences(cleaned);
+    let speechStarted = false;
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -180,6 +221,13 @@ export function createTTSManager({
       utter.rate = rate;
       utter.pitch = pitch;
       utter.volume = volume;
+
+      utter.onstart = () => {
+        if (!speechStarted) {
+          speechStarted = true;
+          onStart?.();
+        }
+      };
 
       const chunkDone = await new Promise((resolveChunk) => {
         utter.onend = () => resolveChunk(true);
@@ -222,14 +270,41 @@ export function createTTSManager({
     state.isPaused = false;
     state.isSpeaking = true;
 
-    // Try primary server-side TTS (100% reliable cross-platform MP3 playback for iOS / Android)
-    try {
-      const audioUrl = await api.generateTTS(cleaned, { emotion, delivery }).catch(() => null);
-      if (audioUrl && state.isSpeaking) {
+    let hasStarted = false;
+    const notifyStart = () => {
+      if (!hasStarted && state.isSpeaking) {
+        hasStarted = true;
         onStart?.();
+      }
+    };
+
+    // Try primary server-side TTS (Chatterbox /api/tts - MP3 audio)
+    try {
+      const audioUrl = await api.generateTTS(cleaned, { emotion, delivery }).catch((err) => {
+        console.warn("[TTS] api.generateTTS failed:", err?.message || err);
+        return null;
+      });
+
+      if (audioUrl && state.isSpeaking) {
         const audio = new Audio(audioUrl);
+        audio.setAttribute("playsinline", "true");
+        audio.setAttribute("webkit-playsinline", "true");
+        audio.preload = "auto";
         state.currentAudio = audio;
-        return new Promise((resolve) => {
+
+        return await new Promise((resolve) => {
+          let resolved = false;
+          const finish = (val) => {
+            if (!resolved) {
+              resolved = true;
+              resolve(val);
+            }
+          };
+
+          audio.onplay = () => {
+            notifyStart();
+          };
+
           audio.onended = () => {
             state.isSpeaking = false;
             state.lastSpeechEndedTs = Date.now();
@@ -238,40 +313,50 @@ export function createTTSManager({
               URL.revokeObjectURL(audioUrl);
             } catch (e) {}
             onEnd?.();
-            resolve(true);
+            finish(true);
           };
-          audio.onerror = () => {
+
+          audio.onerror = (e) => {
+            console.warn("[TTS] HTMLAudioElement error, falling back to Web Speech:", e);
             state.currentAudio = null;
             try {
               URL.revokeObjectURL(audioUrl);
-            } catch (e) {}
+            } catch (err) {}
             if (state.isSpeaking) {
-              speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
+              speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError }).then(finish);
             } else {
-              resolve(false);
+              finish(false);
             }
           };
-          audio.play().catch(() => {
-            state.currentAudio = null;
-            try {
-              URL.revokeObjectURL(audioUrl);
-            } catch (e) {}
-            if (state.isSpeaking) {
-              speakBrowserSpeech(cleaned, { onStart, onEnd, onError }).then(resolve);
-            } else {
-              resolve(false);
-            }
-          });
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                notifyStart();
+              })
+              .catch((playErr) => {
+                console.warn("[TTS] HTMLAudioElement play rejected, falling back to Web Speech:", playErr?.message || playErr);
+                state.currentAudio = null;
+                try {
+                  URL.revokeObjectURL(audioUrl);
+                } catch (err) {}
+                if (state.isSpeaking) {
+                  speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError }).then(finish);
+                } else {
+                  finish(false);
+                }
+              });
+          }
         });
       }
     } catch (e) {
-      console.warn("Server TTS playback error, falling back to Web Speech:", e);
+      console.warn("[TTS] Server TTS playback error, falling back to Web Speech:", e?.message || e);
     }
 
     // Fallback: Browser SpeechSynthesis
     if (state.isSpeaking) {
-      onStart?.();
-      await speakBrowserSpeech(cleaned, { onStart, onEnd, onError });
+      await speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError });
     }
   }
 
@@ -325,6 +410,7 @@ export function createTTSManager({
     pause,
     resume,
     replay,
+    unlockAudio,
     isSpeaking: () => state.isSpeaking || (Date.now() - (state.lastSpeechEndedTs || 0) < 500),
     ensureVoicesLoaded,
     getVoices: () => (typeof window !== "undefined" ? window.speechSynthesis?.getVoices?.() || [] : []),

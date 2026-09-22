@@ -232,18 +232,27 @@ export const api = {
       if (options.delivery) body.delivery = options.delivery;
       if (options.voice_id) body.voice_id = options.voice_id;
     }
-    const res = await fetch(BASE + "/tts", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("audio/")) {
-      const blob = await res.blob();
-      return URL.createObjectURL(blob);
+    try {
+      const res = await fetch(BASE + "/tts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        console.warn(`[generateTTS] Non-OK HTTP response: ${res.status}`);
+        return null;
+      }
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("audio/")) {
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+      }
+      console.warn("[generateTTS] Response content-type is not audio:", contentType);
+      return null;
+    } catch (err) {
+      console.error("[generateTTS] Network fetch failed:", err?.message || err);
+      return null;
     }
-    return null;
   },
 
 
