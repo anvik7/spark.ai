@@ -234,7 +234,7 @@ export default function Circles({ onOpenUpgrade, user }) {
             </span>
           </h1>
           <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-soft)" }}>
-            Connect, discover people, and share study captures & ideas.
+            Connect, discover people, and share captures & ideas.
           </p>
         </div>
 

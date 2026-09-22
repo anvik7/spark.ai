@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import html2canvas from "html2canvas";
 
-const TYPE_ICON = { idea: "💡", link: "🔗", "study note": "📚", insight: "✨", goal: "🎯", note: "📝", voice: "🎤", pdf: "📄" };
+const TYPE_ICON = { idea: "💡", link: "🔗", insight: "✨", goal: "🎯", note: "📝", voice: "🎤", pdf: "📄" };
 
 export function ShareCardPreview({ card }) {
   // Normalize fields from Spark Card object or custom object

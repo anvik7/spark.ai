@@ -10,7 +10,6 @@ import ModuleLoadingState from "./components/ui/ModuleLoadingState.jsx";
 const Home = lazy(() => import("./Home.jsx"));
 const Capture = lazy(() => import("./Capture.jsx"));
 const Tasks = lazy(() => import("./Tasks.jsx"));
-const Study = lazy(() => import("./Study.jsx"));
 const Career = lazy(() => import("./Career.jsx"));
 const Interview = lazy(() => import("./Interview.jsx"));
 const Circles = lazy(() => import("./Circles.jsx"));
@@ -25,7 +24,6 @@ const SharedCapture = lazy(() => import("./SharedCapture.jsx"));
 const Ico = {
   capture: <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />,
   tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
-  study: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
   circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
@@ -152,11 +150,10 @@ export default function App() {
     );
   }
 
-  // Exact 6 Global Modules Sequence (Tasks -> Capture -> Study -> Chat -> Career -> Coach)
+  // Exact 5 Global Modules Sequence (Tasks -> Capture -> Chat -> Career -> Coach)
   const navItems = [
     { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
     { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
-    { id: "study", label: "Study", shortLabel: "Study", icon: Ico.study },
     { id: "circles", label: "Chat", shortLabel: "Chat", icon: Ico.circles },
     { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
     { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach },
@@ -307,7 +304,7 @@ export default function App() {
         <header className="topbar-desktop">
           <div className="cmd-search-trigger" onClick={() => setShowCmdMenu(true)}>
             <span>🔍</span>
-            <span style={{ flex: 1 }}>Search captures, tasks, study materials...</span>
+            <span style={{ flex: 1 }}>Search captures, tasks...</span>
             <kbd style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 4, padding: "1px 5px", fontSize: 11 }}>⌘K</kbd>
           </div>
 
@@ -401,14 +398,6 @@ export default function App() {
                 </ModuleErrorBoundary>
               )}
 
-              {tab === "study" && (
-                <ModuleErrorBoundary moduleName="Study">
-                  <Suspense fallback={<ModuleLoadingState moduleName="Study" />}>
-                    <Study onOpenUpgrade={() => setShowUpgrade(true)} />
-                  </Suspense>
-                </ModuleErrorBoundary>
-              )}
-
               {tab === "circles" && (
                 <ModuleErrorBoundary moduleName="Chat">
                   <Suspense fallback={<ModuleLoadingState moduleName="Chat" />}>
@@ -437,7 +426,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation (Tasks | Capture | Study | Chat | Career | Coach) */}
+      {/* Mobile Bottom Navigation (Tasks | Capture | Chat | Career | Coach) */}
       <nav className="nav">
         {navItems.map((item) => (
           <NavBtn

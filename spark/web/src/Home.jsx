@@ -14,11 +14,6 @@ const Ico = {
       <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
     </svg>
   ),
-  study: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />
-    </svg>
-  ),
   chat: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
       <circle cx="8" cy="8" r="3" />
@@ -54,7 +49,6 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
   const [data, setData] = useState({
     tasks: [],
     captures: [],
-    studySessions: [],
     circles: [],
     careerProfile: null,
   });
@@ -69,27 +63,23 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
     const results = await Promise.allSettled([
       api.getTasks().catch(() => ({ tasks: [] })),
       api.getCaptures().catch(() => []),
-      api.getStudySessions().catch(() => []),
       api.myCircles().catch(() => []),
       api.getCareerProfile().catch(() => null),
     ]);
 
     const tasksRes = results[0].status === "fulfilled" ? results[0].value : [];
     const capturesRes = results[1].status === "fulfilled" ? results[1].value : [];
-    const studyRes = results[2].status === "fulfilled" ? results[2].value : [];
-    const circlesRes = results[3].status === "fulfilled" ? results[3].value : [];
-    const careerRes = results[4].status === "fulfilled" ? results[4].value : null;
+    const circlesRes = results[2].status === "fulfilled" ? results[2].value : [];
+    const careerRes = results[3].status === "fulfilled" ? results[3].value : null;
 
     // Defensive parsing
     const rawTasks = Array.isArray(tasksRes?.tasks) ? tasksRes.tasks : Array.isArray(tasksRes) ? tasksRes : [];
     const rawCaptures = Array.isArray(capturesRes) ? capturesRes : [];
-    const rawStudy = Array.isArray(studyRes) ? studyRes : [];
     const rawCircles = Array.isArray(circlesRes) ? circlesRes : [];
 
     setData({
       tasks: rawTasks,
       captures: rawCaptures,
-      studySessions: rawStudy,
       circles: rawCircles,
       careerProfile: careerRes && typeof careerRes === "object" ? careerRes : null,
     });
@@ -109,13 +99,11 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
   const hasAnyActivity =
     data.tasks.length > 0 ||
     data.captures.length > 0 ||
-    data.studySessions.length > 0 ||
     data.circles.length > 0 ||
     !!data.careerProfile?.target_role;
 
   const pendingTasks = data.tasks.filter((t) => !t.completed).slice(0, 3);
   const recentCaptures = data.captures.slice(0, 3);
-  const recentStudy = data.studySessions.slice(0, 3);
   const recentCircles = data.circles.slice(0, 3);
 
   return (
@@ -176,7 +164,7 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
                 maxWidth: 620,
               }}
             >
-              Welcome back, {firstName}. Spark brings your tasks, captured ideas, active study,
+              Welcome back, {firstName}. Spark brings your tasks, captured ideas,
               collaborative conversations, career preparation, and AI assistance together in one
               unified system.
             </p>
@@ -230,12 +218,6 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
             label="Capture"
             badge="Thoughts"
             onClick={() => onNavigate?.("capture")}
-          />
-          <QuickActionBtn
-            icon={Ico.study}
-            label="Study"
-            badge="Mastery"
-            onClick={() => onNavigate?.("study")}
           />
           <QuickActionBtn
             icon={Ico.chat}
@@ -402,53 +384,6 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
           ))}
         </ActivityCard>
 
-        {/* Card C: Study Sessions */}
-        <ActivityCard
-          title="Active Study"
-          icon={Ico.study}
-          actionLabel="Open study"
-          onAction={() => onNavigate?.("study")}
-          emptyState={
-            <EmptyStateItem
-              text="No study sessions recorded yet."
-              actionText="+ Start learning"
-              onAction={() => onNavigate?.("study")}
-            />
-          }
-        >
-          {recentStudy.map((s, idx) => (
-            <div
-              key={s.id || idx}
-              onClick={() => onNavigate?.("study")}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "8px 10px",
-                background: "var(--surface-2)",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                cursor: "pointer",
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ flex: 1, overflow: "hidden" }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.subject || s.title || "Study Session"}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--ink-soft)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.material ? s.material : s.date ? new Date(s.date).toLocaleDateString() : "Session in progress"}
-                </div>
-              </div>
-              {s.minutes ? (
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 6px", borderRadius: 4, marginLeft: 8 }}>
-                  {s.minutes}m
-                </span>
-              ) : null}
-            </div>
-          ))}
-        </ActivityCard>
-
         {/* Card D: Conversations & Career */}
         <ActivityCard
           title="Conversations & Career"
@@ -532,7 +467,6 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
             <StarterAction title="Ask or Solve a Task" icon="📋" onClick={() => onNavigate?.("tasks")} />
             <StarterAction title="Capture Ideas & Notes" icon="✏️" onClick={() => onNavigate?.("capture")} />
-            <StarterAction title="Start Active Learning" icon="📖" onClick={() => onNavigate?.("study")} />
             <StarterAction title="Start a Conversation" icon="👥" onClick={() => onNavigate?.("circles")} />
             <StarterAction title="Audit Career Readiness" icon="🎯" onClick={() => onNavigate?.("career")} />
             <StarterAction title="Practice with Coach" icon="💬" onClick={() => onNavigate?.("coach")} />
