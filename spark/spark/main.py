@@ -25,6 +25,7 @@ except ImportError:
     razorpay = None
 
 from . import career, embeddings, interview, llm, memory, stats, subscription
+from .tts import get_tts_provider
 from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password, _user_id_from_token)
 from .config import get_settings
