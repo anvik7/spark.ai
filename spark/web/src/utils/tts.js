@@ -195,6 +195,7 @@ export function createTTSManager({
     if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       state.isSpeaking = false;
       onError?.(new Error("SpeechSynthesis not supported in this browser."));
+      onEnd?.();
       return;
     }
 
@@ -202,61 +203,94 @@ export function createTTSManager({
       window.speechSynthesis.cancel();
     } catch (e) {}
 
-    await ensureVoicesLoaded();
-    const voice = pickBestVoice();
-
-    const chunks = splitIntoSentences(cleaned);
     let speechStarted = false;
+    try {
+      await ensureVoicesLoaded();
+      const voice = pickBestVoice();
+      const chunks = splitIntoSentences(cleaned);
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      if (!chunk || !state.isSpeaking) break;
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        if (!chunk || !state.isSpeaking) break;
 
-      const utter = new SpeechSynthesisUtterance(chunk);
-      state.currentUtterance = utter;
+        const UtterClass = (typeof window !== "undefined" && window.SpeechSynthesisUtterance) ? window.SpeechSynthesisUtterance : SpeechSynthesisUtterance;
+        const utter = new UtterClass(chunk);
+        state.currentUtterance = utter;
 
-      if (voice) utter.voice = voice;
-      utter.lang = utter.voice?.lang || preferredLang;
+        if (voice) utter.voice = voice;
+        utter.lang = utter.voice?.lang || preferredLang;
 
-      utter.rate = rate;
-      utter.pitch = pitch;
-      utter.volume = volume;
+        utter.rate = rate;
+        utter.pitch = pitch;
+        utter.volume = volume;
 
-      utter.onstart = () => {
-        if (!speechStarted) {
-          speechStarted = true;
-          onStart?.();
+        utter.onstart = () => {
+          if (!speechStarted && state.isSpeaking) {
+            speechStarted = true;
+            onStart?.();
+          }
+        };
+
+        const chunkDone = await new Promise((resolveChunk) => {
+          let settled = false;
+          let chunkTimer = null;
+
+          const done = (val) => {
+            if (!settled) {
+              settled = true;
+              if (chunkTimer) clearTimeout(chunkTimer);
+              resolveChunk(val);
+            }
+          };
+
+          // Hard timeout of 3000ms per utterance chunk
+          chunkTimer = setTimeout(() => {
+            console.warn("[TTS] Browser SpeechSynthesis utterance timed out (3000ms limit)");
+            try {
+              window.speechSynthesis.cancel();
+            } catch (e) {}
+            done(false);
+          }, 3000);
+
+          utter.onend = () => done(true);
+          utter.onerror = (e) => {
+            console.warn("[TTS] SpeechSynthesisUtterance error:", e);
+            done(false);
+          };
+
+          try {
+            window.speechSynthesis.speak(utter);
+          } catch (err) {
+            console.warn("[TTS] window.speechSynthesis.speak exception:", err);
+            done(false);
+          }
+        });
+
+        if (!chunkDone) {
+          await new Promise((r) => setTimeout(r, 120));
+        } else {
+          const isLast = i === chunks.length - 1;
+          if (!isLast) await new Promise((r) => setTimeout(r, 260));
         }
-      };
-
-      const chunkDone = await new Promise((resolveChunk) => {
-        utter.onend = () => resolveChunk(true);
-        utter.onerror = () => resolveChunk(false);
-        try {
-          window.speechSynthesis.speak(utter);
-        } catch (err) {
-          resolveChunk(false);
-        }
-      });
-
-      if (!chunkDone) {
-        await new Promise((r) => setTimeout(r, 120));
-      } else {
-        const isLast = i === chunks.length - 1;
-        if (!isLast) await new Promise((r) => setTimeout(r, 260));
       }
+    } catch (err) {
+      console.warn("[TTS] speakBrowserSpeech failure:", err?.message || err);
+      onError?.(err);
+    } finally {
+      state.isSpeaking = false;
+      state.lastSpeechEndedTs = Date.now();
+      state.currentUtterance = null;
+      onEnd?.();
     }
-
-    state.isSpeaking = false;
-    state.lastSpeechEndedTs = Date.now();
-    state.currentUtterance = null;
-    onEnd?.();
   }
 
   async function speakAdaptive(text, { onStart, onEnd, onError, emotion = "neutral", delivery = null, turnId = null } = {}) {
     const t = String(text || "");
     const cleaned = cleanForSpeech(t);
-    if (!cleaned) return;
+    if (!cleaned) {
+      onEnd?.();
+      return;
+    }
 
     // Deduplication check: prevent duplicate synthesis if identical turn/text is active
     if (state.isSpeaking && (turnId && state.lastTurnId === turnId)) {
@@ -278,86 +312,145 @@ export function createTTSManager({
       }
     };
 
-    // Try primary server-side TTS (Chatterbox /api/tts - MP3 audio)
-    try {
-      const audioUrl = await api.generateTTS(cleaned, { emotion, delivery }).catch((err) => {
-        console.warn("[TTS] api.generateTTS failed:", err?.message || err);
-        return null;
-      });
+    // Overall hard timeout safety (6000ms max wait) guaranteeing resolution
+    return await new Promise((resolveOverall) => {
+      let overallSettled = false;
+      let overallTimer = null;
 
-      if (audioUrl && state.isSpeaking) {
-        const audio = new Audio(audioUrl);
-        audio.setAttribute("playsinline", "true");
-        audio.setAttribute("webkit-playsinline", "true");
-        audio.preload = "auto";
-        state.currentAudio = audio;
+      const finishOverall = (success) => {
+        if (!overallSettled) {
+          overallSettled = true;
+          if (overallTimer) clearTimeout(overallTimer);
+          state.isSpeaking = false;
+          state.lastSpeechEndedTs = Date.now();
+          state.currentAudio = null;
+          onEnd?.();
+          resolveOverall(success);
+        }
+      };
 
-        return await new Promise((resolve) => {
-          let resolved = false;
-          const finish = (val) => {
-            if (!resolved) {
-              resolved = true;
-              resolve(val);
-            }
-          };
-
-          audio.onplay = () => {
-            notifyStart();
-          };
-
-          audio.onended = () => {
-            state.isSpeaking = false;
-            state.lastSpeechEndedTs = Date.now();
-            state.currentAudio = null;
-            try {
-              URL.revokeObjectURL(audioUrl);
-            } catch (e) {}
-            onEnd?.();
-            finish(true);
-          };
-
-          audio.onerror = (e) => {
-            console.warn("[TTS] HTMLAudioElement error, falling back to Web Speech:", e);
-            state.currentAudio = null;
-            try {
-              URL.revokeObjectURL(audioUrl);
-            } catch (err) {}
-            if (state.isSpeaking) {
-              speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError }).then(finish);
-            } else {
-              finish(false);
-            }
-          };
-
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                notifyStart();
-              })
-              .catch((playErr) => {
-                console.warn("[TTS] HTMLAudioElement play rejected, falling back to Web Speech:", playErr?.message || playErr);
-                state.currentAudio = null;
-                try {
-                  URL.revokeObjectURL(audioUrl);
-                } catch (err) {}
-                if (state.isSpeaking) {
-                  speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError }).then(finish);
-                } else {
-                  finish(false);
-                }
-              });
+      overallTimer = setTimeout(() => {
+        console.warn("[TTS] speakAdaptive hard timeout exceeded (6000ms limit)");
+        if (state.currentAudio) {
+          try {
+            state.currentAudio.pause();
+            state.currentAudio.currentTime = 0;
+          } catch (e) {}
+          state.currentAudio = null;
+        }
+        try {
+          if (typeof window !== "undefined" && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
           }
-        });
-      }
-    } catch (e) {
-      console.warn("[TTS] Server TTS playback error, falling back to Web Speech:", e?.message || e);
-    }
+        } catch (e) {}
+        finishOverall(false);
+      }, 6000);
 
-    // Fallback: Browser SpeechSynthesis
-    if (state.isSpeaking) {
-      await speakBrowserSpeech(cleaned, { onStart: notifyStart, onEnd, onError });
-    }
+      (async () => {
+        try {
+          // 1. Try primary server-side TTS (Chatterbox /api/tts - MP3/WAV audio)
+          let audioUrl = null;
+          try {
+            audioUrl = await Promise.race([
+              api.generateTTS(cleaned, { emotion, delivery }),
+              new Promise((resolve) => setTimeout(() => resolve(null), 4500)),
+            ]).catch((err) => {
+              console.warn("[TTS] api.generateTTS failed:", err?.message || err);
+              return null;
+            });
+          } catch (fetchErr) {
+            console.warn("[TTS] api.generateTTS network error:", fetchErr);
+            audioUrl = null;
+          }
+
+          if (audioUrl && state.isSpeaking && !overallSettled) {
+            const audio = new Audio(audioUrl);
+            audio.setAttribute("playsinline", "true");
+            audio.setAttribute("webkit-playsinline", "true");
+            audio.preload = "auto";
+            state.currentAudio = audio;
+
+            audio.onplay = () => {
+              notifyStart();
+            };
+
+            audio.onended = () => {
+              try {
+                URL.revokeObjectURL(audioUrl);
+              } catch (e) {}
+              finishOverall(true);
+            };
+
+            audio.onerror = (e) => {
+              console.warn("[TTS] HTMLAudioElement error, falling back to Web Speech:", e);
+              state.currentAudio = null;
+              try {
+                URL.revokeObjectURL(audioUrl);
+              } catch (err) {}
+              if (state.isSpeaking && !overallSettled) {
+                speakBrowserSpeech(cleaned, {
+                  onStart: notifyStart,
+                  onEnd: () => finishOverall(true),
+                  onError: (err) => {
+                    onError?.(err);
+                    finishOverall(false);
+                  },
+                }).catch(() => finishOverall(false));
+              } else {
+                finishOverall(false);
+              }
+            };
+
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  notifyStart();
+                })
+                .catch((playErr) => {
+                  console.warn("[TTS] HTMLAudioElement play rejected, falling back to Web Speech:", playErr?.message || playErr);
+                  state.currentAudio = null;
+                  try {
+                    URL.revokeObjectURL(audioUrl);
+                  } catch (err) {}
+                  if (state.isSpeaking && !overallSettled) {
+                    speakBrowserSpeech(cleaned, {
+                      onStart: notifyStart,
+                      onEnd: () => finishOverall(true),
+                      onError: (err) => {
+                        onError?.(err);
+                        finishOverall(false);
+                      },
+                    }).catch(() => finishOverall(false));
+                  } else {
+                    finishOverall(false);
+                  }
+                });
+            }
+            return;
+          }
+
+          // 2. Fallback: Browser SpeechSynthesis
+          if (state.isSpeaking && !overallSettled) {
+            await speakBrowserSpeech(cleaned, {
+              onStart: notifyStart,
+              onEnd: () => finishOverall(true),
+              onError: (err) => {
+                console.warn("[TTS] Browser speech fallback notice:", err?.message || err);
+                onError?.(err);
+                finishOverall(false);
+              },
+            });
+          } else {
+            finishOverall(false);
+          }
+        } catch (e) {
+          console.warn("[TTS] speakAdaptive execution error:", e?.message || e);
+          onError?.(e);
+          finishOverall(false);
+        }
+      })();
+    });
   }
 
   function stop() {

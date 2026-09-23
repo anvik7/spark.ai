@@ -112,13 +112,14 @@ export function createInterviewController({
     const currentTurnId = state.turnIndex + 1;
     state.turnIndex = currentTurnId;
 
-    // Stop candidate recording while interviewer speaks to avoid audio feedback
-    stt.stopListening();
-
-    // Notify UI of the new question text immediately
+    // 1. Notify UI of the new question text immediately (next question rendered)
     ui.onInterviewerSpeaking?.(q);
 
-    // Asynchronous TTS: audio synthesis and playback must not block UI question rendering
+    // 2. Immediately transition to listening-ready so candidate interaction is never blocked
+    setStatus("listening");
+    ui.onCandidateListening?.();
+
+    // 3. Attempt TTS asynchronously in the background
     (async () => {
       try {
         await tts.speakAdaptive(q, {
@@ -126,7 +127,9 @@ export function createInterviewController({
           delivery: options.delivery,
           turnId: currentTurnId,
           onStart: () => {
+            // Only transition to "speaking" if audio playback actually started and turn is current
             if (running && state.turnIndex === currentTurnId) {
+              stt.stopListening();
               setStatus("speaking");
               ui.onTTSStart?.(q);
             }
@@ -134,28 +137,37 @@ export function createInterviewController({
           onEnd: () => {
             if (running && state.turnIndex === currentTurnId) {
               ui.onTTSEnd?.(q);
+              setStatus("listening");
+              ui.onCandidateListening?.();
             }
           },
           onError: (err) => {
+            console.warn("[handleQuestionTurn] TTS error notice:", err?.message || err);
             if (running && state.turnIndex === currentTurnId) {
               ui.onTTSError?.(err);
+              setStatus("listening");
+              ui.onCandidateListening?.();
             }
           },
         });
       } catch (e) {
+        console.warn("[handleQuestionTurn] TTS catch notice:", e?.message || e);
         if (running && state.turnIndex === currentTurnId) {
-          ui.onTTSError?.(e);
+          setStatus("listening");
+          ui.onCandidateListening?.();
         }
       }
 
       if (!running || state.turnIndex !== currentTurnId) return;
 
-      // Echo dissipation cooldown before opening candidate mic
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // Echo dissipation cooldown if audio was actually speaking
+      if (state.status === "speaking") {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
 
       if (!running || state.turnIndex !== currentTurnId) return;
 
-      // After interviewer finishes speaking, open candidate listening window
+      // Ensure listening state after TTS routine finishes
       setStatus("listening");
       ui.onCandidateListening?.();
     })().catch((err) => {
@@ -188,6 +200,7 @@ export function createInterviewController({
       console.error("aiAnswerInterview error:", error);
       ui.onError?.(error);
       setStatus("listening");
+      ui.onCandidateListening?.();
       return;
     }
 

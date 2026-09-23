@@ -128,6 +128,8 @@ export default function Interview({ onNavigate, user }) {
           localStorage.setItem("spark_active_interview_id", activeSess.id);
           if (activeSess.status === "completed") {
             setStatus("completed");
+          } else {
+            setStatus("listening");
           }
         } else {
           setSession(null);
@@ -195,6 +197,17 @@ export default function Interview({ onNavigate, user }) {
             localStorage.setItem("spark_active_interview_id", evalSess.id);
             setStatus("completed");
             setHistory((prev) => [evalSess, ...prev.filter((h) => h.id !== evalSess.id)]);
+          },
+          onTTSStart: (q) => {
+            stopListeningMic();
+          },
+          onTTSEnd: (q) => {
+            if (voiceEnabled && sttManagerRef.current?.isSupported) {
+              startListeningMic();
+            }
+          },
+          onTTSError: (err) => {
+            console.warn("[Interview] Background TTS notice:", err?.message || err);
           },
           onError: (e) => setErr(e.message || "Interview error occurred."),
         },
@@ -324,12 +337,15 @@ export default function Interview({ onNavigate, user }) {
           const lastTurn = turns[turns.length - 1];
           if (lastTurn?.q) {
             setCurrentQuestion(lastTurn.q);
+            // Immediately transition to listening-ready so candidate is never blocked
+            setStatus("listening");
             if (voiceEnabled && ttsManagerRef.current) {
               ttsManagerRef.current.speakAdaptive(lastTurn.q, {
                 emotion: lastTurn.emotion,
                 delivery: lastTurn.delivery,
                 turnId: turns.length,
                 onStart: () => {
+                  stopListeningMic();
                   setStatus("speaking");
                 },
                 onEnd: () => {
@@ -338,10 +354,12 @@ export default function Interview({ onNavigate, user }) {
                     startListeningMic();
                   }
                 },
-                onError: () => {
+                onError: (err) => {
+                  console.warn("[Interview] TTS playback notice:", err?.message || err);
                   setStatus("listening");
                 },
-              }).catch(() => {
+              }).catch((e) => {
+                console.warn("[Interview] speakAdaptive catch notice:", e?.message || e);
                 setStatus("listening");
               });
             } else {
