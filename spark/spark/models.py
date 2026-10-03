@@ -76,6 +76,8 @@ class Card(SQLModel, table=True):
     due_on: date = Field(default_factory=date.today, index=True)
     is_public: bool = False
     share_token: Optional[str] = Field(default=None, index=True)
+    storage_key: Optional[str] = Field(default=None, index=True)
+
 
 
 class UsageDay(SQLModel, table=True):
@@ -166,6 +168,7 @@ class CircleMessage(SQLModel, table=True):
     content: str = ""
     message_type: str = "text"  # "text" | "sticker" | "image" | "capture"
     media_url: Optional[str] = None
+    storage_key: Optional[str] = Field(default=None, index=True)
     sticker_id: Optional[str] = None
     capture_id: Optional[int] = None
     capture_title: Optional[str] = None
@@ -219,6 +222,7 @@ class UserCareerProfile(SQLModel, table=True):
     target_company: str = ""
     job_description: str = ""
     last_analysis_json: Optional[str] = None
+    resume_storage_key: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -231,6 +235,7 @@ class StudentTask(SQLModel, table=True):
     title: str = ""
     prompt: str = ""
     image_url: Optional[str] = None
+    storage_key: Optional[str] = Field(default=None, index=True)
     solution: str = ""
     steps_json: str = "[]"
     formulas_json: str = "[]"
@@ -330,6 +335,7 @@ def _migrate() -> None:
                     "difficulty": "INTEGER DEFAULT 0",
                     "importance": "INTEGER DEFAULT 0",
                     "source_type": "VARCHAR DEFAULT 'text'",
+                    "storage_key": "VARCHAR",
                 }
                 for col_name, col_ddl in card_additions.items():
                     if col_name not in card_cols:
@@ -402,6 +408,7 @@ def _migrate() -> None:
                 msg_additions = {
                     "message_type": "VARCHAR DEFAULT 'text'",
                     "media_url": "VARCHAR",
+                    "storage_key": "VARCHAR",
                     "sticker_id": "VARCHAR",
                     "capture_id": "INTEGER",
                     "capture_title": "VARCHAR",
@@ -412,6 +419,20 @@ def _migrate() -> None:
                     if col_name not in msg_cols:
                         print(f"[migrate] Adding {col_name} column to 'circlemessage' table...")
                         conn.execute(_sql(f'ALTER TABLE circlemessage ADD COLUMN {col_name} {col_ddl}'))
+
+            # Auto-migrate studenttask table
+            if inspector.has_table("studenttask"):
+                task_cols = {c["name"] for c in inspector.get_columns("studenttask")}
+                if "storage_key" not in task_cols:
+                    print("[migrate] Adding storage_key column to 'studenttask' table...")
+                    conn.execute(_sql('ALTER TABLE studenttask ADD COLUMN storage_key VARCHAR'))
+
+            # Auto-migrate usercareerprofile table
+            if inspector.has_table("usercareerprofile"):
+                career_cols = {c["name"] for c in inspector.get_columns("usercareerprofile")}
+                if "resume_storage_key" not in career_cols:
+                    print("[migrate] Adding resume_storage_key column to 'usercareerprofile' table...")
+                    conn.execute(_sql('ALTER TABLE usercareerprofile ADD COLUMN resume_storage_key VARCHAR'))
 
             # Auto-migrate circlemessagereaction table
             if not inspector.has_table("circlemessagereaction"):

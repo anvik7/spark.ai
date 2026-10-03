@@ -24,10 +24,15 @@ try:
 except ImportError:
     razorpay = None
 
-from . import career, embeddings, interview, llm, memory, stats, subscription
+from . import career, content_understanding, embeddings, interview, llm, memory, stats, storage, subscription
+from .content_understanding import UnsupportedFileError
+from .storage import build_object_key, get_storage, guess_content_type
 from .tts import get_tts_provider
 from .auth import (current_user, find_by_email, get_or_create_user, make_token,
-                   verify_password, _user_id_from_token)
+                   verify_password, check_reset_rate_limit, create_password_reset_token,
+                   validate_reset_token, verify_and_consume_reset_token,
+                   is_founder, require_founder, _user_id_from_token)
+from .email_service import send_password_reset_email
 from .config import get_settings
 from .ingest import build_card_fields
 from .models import Card, CardEmbedding, InterviewSession, StudentTask, User, UserCareerProfile, SubscriptionOrder, get_session, init_db
@@ -172,6 +177,8 @@ def _public_user(session, user: User) -> dict:
     return {
         "id": user.id, "email": user.email, "name": user.name,
         "avatar_url": getattr(user, "avatar_url", "") or "",
+        "role": getattr(user, "role", "user") or "user",
+        "is_founder": is_founder(user),
         "plan": user.plan,
         "current_plan": entitlements["current_plan"],
         "effective_plan": entitlements["effective_plan"],
@@ -251,12 +258,139 @@ def login(body: LoginIn):
         return {"token": make_token(user), "user": _public_user(session, user)}
 
 
+# --- Password Recovery Endpoints ---
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class VerifyResetTokenIn(BaseModel):
+    token: str
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(body: ForgotPasswordIn):
+    """Initiate password recovery. Generates single-use reset token and sends email.
+
+    Always returns a generic success message to prevent account enumeration.
+    """
+    clean_email = str(body.email).strip().lower()
+
+    # Rate limiting protection (max 5 requests per 15 min per email)
+    if not check_reset_rate_limit(clean_email):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many password reset requests. Please wait 15 minutes before trying again."
+        )
+
+    with get_session() as session:
+        user = find_by_email(session, clean_email)
+        if user and user.email:
+            raw_token = create_password_reset_token(session, user, ttl_minutes=30)
+            base_url = (getattr(settings, "app_base_url", None) or "https://sparkdhi.ai").rstrip("/")
+            reset_link = f"{base_url}/reset-password?token={raw_token}"
+            send_password_reset_email(user.email, reset_link)
+
+    return {
+        "ok": True,
+        "message": "If an account exists for this email, we've sent password reset instructions."
+    }
+
+
+@app.post("/api/auth/verify-reset-token")
+def verify_reset_token(body: VerifyResetTokenIn):
+    """Verify that a password reset token is valid and unexpired before rendering reset form."""
+    with get_session() as session:
+        res = validate_reset_token(session, body.token)
+        if not res:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This password reset link is invalid or has expired. Please request a new one."
+            )
+        user, _ = res
+        email_parts = (user.email or "user@sparkdhi.ai").split("@")
+        masked = email_parts[0][:2] + "***@" + email_parts[1] if len(email_parts) > 1 else "***"
+        return {
+            "ok": True,
+            "valid": True,
+            "masked_email": masked
+        }
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordIn):
+    """Reset user password using a valid, unexpired, single-use reset token."""
+    if len(body.new_password) < 8:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Password must be at least 8 characters long."
+        )
+
+    with get_session() as session:
+        user = verify_and_consume_reset_token(session, body.token, body.new_password)
+        return {
+            "ok": True,
+            "message": "Password has been successfully updated. You can now log in with your new password."
+        }
+
+
 import uuid
 
 @app.get("/api/me")
 def me(user: User = Depends(current_user)):
     with get_session() as session:
         return _public_user(session, user)
+
+
+# --- Founder Account Endpoints ----------------------------------------------
+
+class FounderTestModeIn(BaseModel):
+    mode: str = "default"  # "default", "free", "plus", "pro"
+
+
+@app.get("/api/founder/status")
+def founder_status(user: User = Depends(require_founder)):
+    """Retrieve Founder account status, test mode state, and quotas."""
+    test_mode = subscription.get_founder_test_mode(user.id)
+    eff_plan = subscription.get_effective_plan(user)
+    limits = subscription.get_plan_limits(user)
+    return {
+        "ok": True,
+        "is_founder": True,
+        "user_id": user.id,
+        "email": user.email,
+        "role": getattr(user, "role", "user"),
+        "active_test_mode": test_mode,
+        "effective_plan": eff_plan,
+        "limits": limits,
+        "server_time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/api/founder/test-mode")
+def set_founder_mode(body: FounderTestModeIn, user: User = Depends(require_founder)):
+    """Switch simulated test tier for this Founder session ('default', 'free', 'plus', 'pro')."""
+    valid_modes = ("default", "free", "plus", "pro")
+    target = body.mode.strip().lower()
+    if target not in valid_modes:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Invalid test mode '{body.mode}'. Supported modes: {', '.join(valid_modes)}",
+        )
+    active = subscription.set_founder_test_mode(user.id, target)
+    eff_plan = subscription.get_effective_plan(user)
+    limits = subscription.get_plan_limits(user)
+    return {
+        "ok": True,
+        "active_test_mode": active,
+        "effective_plan": eff_plan,
+        "limits": limits,
+    }
 
 
 # --- user profile / avatar --------------------------------------------------
@@ -301,6 +435,47 @@ def authenticated_upload_user(
         return user
 
 
+def _serve_storage_or_file(storage_key: Optional[str], filename: str) -> Response:
+    storage_adapter = get_storage()
+    ct = guess_content_type(filename)
+
+    # 1. Try explicit storage key
+    if storage_key:
+        if hasattr(storage_adapter, "get_local_path"):
+            local_path = storage_adapter.get_local_path(storage_key)
+            if local_path and local_path.is_file():
+                return FileResponse(local_path)
+        try:
+            data = storage_adapter.get(storage_key)
+            if data is not None:
+                media_type = storage_adapter.get_content_type(storage_key) or ct
+                return Response(content=data, media_type=media_type)
+        except Exception:
+            pass
+
+    # 2. Try filename directly in storage
+    try:
+        if storage_adapter.exists(filename):
+            if hasattr(storage_adapter, "get_local_path"):
+                local_path = storage_adapter.get_local_path(filename)
+                if local_path and local_path.is_file():
+                    return FileResponse(local_path)
+            data = storage_adapter.get(filename)
+            if data is not None:
+                return Response(content=data, media_type=ct)
+    except Exception:
+        pass
+
+    # 3. Legacy filesystem fallback (_UPLOAD_FILES_DIR and _UPLOAD_DIR)
+    for folder in [_UPLOAD_FILES_DIR, _UPLOAD_DIR]:
+        base = folder.resolve()
+        candidate = (base / filename).resolve()
+        if candidate.is_relative_to(base) and candidate.is_file():
+            return FileResponse(candidate)
+
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+
+
 @app.get("/api/uploads/{filename}")
 def serve_upload(filename: str, user: User = Depends(authenticated_upload_user)):
     # 1. Path safety: reject traversal characters, slashes, or malformed filenames
@@ -313,19 +488,7 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
     ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid filename")
 
-    # 2. Path resolution: verify file exists strictly inside upload storage directories
-    found_path: Optional[Path] = None
-    for folder in [_UPLOAD_FILES_DIR, _UPLOAD_DIR]:
-        base = folder.resolve()
-        candidate = (base / filename).resolve()
-        if candidate.is_relative_to(base) and candidate.is_file():
-            found_path = candidate
-            break
-
-    if not found_path:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-
-    # 3. Ownership / Authorization: verify database relationship or public authorization
+    # 2. Ownership / Authorization: verify database relationship or public authorization
     target_url = f"/api/uploads/{filename}"
     is_admin = getattr(user, "role", None) in ("admin", "founder")
 
@@ -335,28 +498,34 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
             select(StudentTask).where(
                 (StudentTask.image_url == target_url) |
                 (StudentTask.image_url == filename) |
-                (StudentTask.image_url == f"api/uploads/{filename}")
+                (StudentTask.image_url == f"api/uploads/{filename}") |
+                (StudentTask.storage_key == filename) |
+                (StudentTask.storage_key.like(f"%/{filename}"))
             )
         ).all()
         if task_matches:
-            if any(t.user_id == user.id for t in task_matches) or is_admin:
-                return FileResponse(found_path)
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+            if not (any(t.user_id == user.id for t in task_matches) or is_admin):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+            matched_task = next((t for t in task_matches if t.user_id == user.id or is_admin), task_matches[0])
+            return _serve_storage_or_file(matched_task.storage_key, filename)
 
         # Check card attachments (files, voice notes, PDFs, images)
         card_matches = session.exec(
             select(Card).where(
                 (Card.source_url == target_url) |
                 (Card.source_url == filename) |
-                (Card.source_url == f"api/uploads/{filename}")
+                (Card.source_url == f"api/uploads/{filename}") |
+                (Card.storage_key == filename) |
+                (Card.storage_key.like(f"%/{filename}"))
             )
         ).all()
         if card_matches:
-            if any(c.user_id == user.id or c.is_public for c in card_matches) or is_admin:
-                return FileResponse(found_path)
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+            if not (any(c.user_id == user.id or c.is_public for c in card_matches) or is_admin):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+            matched_card = next((c for c in card_matches if c.user_id == user.id or c.is_public or is_admin), card_matches[0])
+            return _serve_storage_or_file(matched_card.storage_key, filename)
 
-    # File exists on disk but has no authorized database association for this user
+    # File has no authorized database association for this user
     raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
 
 
@@ -425,15 +594,16 @@ async def create_voice_card(file: UploadFile = File(...),
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
         
-        # Save voice recording file to disk
+        # Save voice recording file to storage
         ext = Path(file.filename or "voice.webm").suffix or ".webm"
-        filename = f"voice_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-        file_path = _UPLOAD_FILES_DIR / filename
-        with open(file_path, "wb") as f:
-            f.write(audio)
+        token = uuid.uuid4().hex[:12]
+        filename = f"voice_{user.id}_{token}{ext}"
+        object_key = build_object_key("captures", user.id, filename, identifier=token)
+        get_storage().put(object_key, audio, content_type=file.content_type or "audio/webm")
 
         fields = build_card_fields("voice", audio_bytes=audio, lang_hint=lang_hint)
         fields["source_url"] = f"/api/uploads/{filename}"
+        fields["storage_key"] = object_key
         fields["kind"] = "voice"
         return _card_out(_save_card(session, user, fields))
 
@@ -460,26 +630,29 @@ async def create_file_card(file: UploadFile = File(...),
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
 
         ext = Path(file.filename or "file.bin").suffix or (".pdf" if is_pdf else ".jpg")
-        filename = f"file_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-        file_path = _UPLOAD_FILES_DIR / filename
-        with open(file_path, "wb") as f:
-            f.write(data)
+        token = uuid.uuid4().hex[:12]
+        filename = f"file_{user.id}_{token}{ext}"
+        object_key = build_object_key("captures", user.id, filename, identifier=token)
+        get_storage().put(object_key, data, content_type=file.content_type)
 
         if is_pdf:
             fields = build_card_fields("pdf", pdf_bytes=data)
             fields["source_url"] = f"/api/uploads/{filename}"
+            fields["storage_key"] = object_key
             fields["kind"] = "pdf"
             if not fields.get("title"):
                 fields["title"] = file.filename or "PDF Document"
         elif is_image:
             fields = build_card_fields("image", raw=f"Image capture: {file.filename or 'photo'}")
             fields["source_url"] = f"/api/uploads/{filename}"
+            fields["storage_key"] = object_key
             fields["kind"] = "image"
             if not fields.get("title"):
                 fields["title"] = file.filename or "Photo / Diagram"
         else:
             fields = build_card_fields("text", raw=f"Uploaded file: {file.filename}")
             fields["source_url"] = f"/api/uploads/{filename}"
+            fields["storage_key"] = object_key
             fields["kind"] = "file"
             fields["title"] = file.filename or "Uploaded File"
 
@@ -539,10 +712,18 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         if emb:
             session.delete(emb)
 
-
-        # Delete media file from disk if present
-        if card.source_url and card.source_url.startswith("/api/uploads/"):
+        # Delete media file from storage if present
+        if card.storage_key:
+            try:
+                get_storage().delete(card.storage_key)
+            except Exception as e:
+                print(f"[delete_card] Error removing storage object {card.storage_key}: {e}")
+        elif card.source_url and card.source_url.startswith("/api/uploads/"):
             fn = card.source_url.replace("/api/uploads/", "")
+            try:
+                get_storage().delete(fn)
+            except Exception:
+                pass
             fp = _UPLOAD_FILES_DIR / fn
             if fp.exists():
                 try:
@@ -865,17 +1046,42 @@ async def upload_and_solve_task(
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, msg)
 
     ext = Path(file.filename or "file.png").suffix or ".png"
-    filename = f"task_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = _UPLOAD_FILES_DIR / filename
-    with open(file_path, "wb") as f:
-        f.write(data)
+    token = uuid.uuid4().hex[:12]
+    filename = f"task_{user.id}_{token}{ext}"
+    object_key = build_object_key("tasks", user.id, filename, identifier=token)
 
-    extracted_text = ""
-    if data[:5] == b"%PDF-" or (file.filename and file.filename.lower().endswith(".pdf")):
-        extracted_text = career.extract_resume_text(data, filename=file.filename or "")
+    get_storage().put(object_key, data, content_type=file.content_type)
 
-    full_prompt = (prompt + "\n" + extracted_text).strip() if extracted_text else (prompt.strip() or f"Problem in file: {file.filename}")
-    res = llm.solve_student_task(full_prompt, subject_hint=subject_hint)
+    try:
+        extracted = content_understanding.inspect_and_extract(
+            data, filename=file.filename or "attachment", mime_type=file.content_type or ""
+        )
+    except UnsupportedFileError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to process file: {e}")
+
+    # Solve via Vision or Text extraction
+    if extracted.is_visual and extracted.image_b64:
+        solve_prompt = prompt.strip() or f"Solve and explain the academic problem shown in this image ({file.filename}) step-by-step."
+        full_prompt = solve_prompt
+        res = llm.solve_student_task(
+            solve_prompt,
+            subject_hint=subject_hint,
+            image_b64=extracted.image_b64,
+            mime_type=extracted.mime_type,
+        )
+    else:
+        doc_text = extracted.text.strip()
+        if prompt.strip() and doc_text:
+            full_prompt = f"{prompt.strip()}\n\n--- Content from {file.filename} ---\n{doc_text}"
+        elif doc_text:
+            full_prompt = f"Solve the following problem from {file.filename}:\n\n{doc_text}"
+        else:
+            full_prompt = prompt.strip() or f"Problem in file: {file.filename}"
+        res = llm.solve_student_task(full_prompt, subject_hint=subject_hint)
 
     with get_session() as session:
         task = StudentTask(
@@ -885,6 +1091,7 @@ async def upload_and_solve_task(
             title=res.get("title") or prompt[:80] or file.filename or "Uploaded Problem",
             prompt=full_prompt,
             image_url=f"/api/uploads/{filename}",
+            storage_key=object_key,
             solution=res.get("solution") or "AI Solution",
             steps_json=json.dumps(res.get("steps") or []),
             formulas_json=json.dumps(res.get("formulas") or []),
@@ -897,6 +1104,46 @@ async def upload_and_solve_task(
         session.commit()
         session.refresh(task)
         return _format_task_out(task)
+
+
+@app.post("/api/tasks/extract-paper")
+async def extract_question_paper_endpoint(
+    file: Optional[UploadFile] = File(None),
+    raw_text: str = Form(""),
+    subject_hint: str = Form(""),
+    exam_hint: str = Form(""),
+    user: User = Depends(current_user),
+):
+    """Extract structured question paper according to canonical JSON schema without solving."""
+    if not file and not raw_text.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Either file or raw_text must be provided.")
+
+    file_bytes = None
+    filename = "paper.txt"
+    mime_type = "text/plain"
+
+    if file:
+        file_bytes = await file.read()
+        filename = file.filename or "paper"
+        mime_type = file.content_type or ""
+
+    try:
+        extraction = content_understanding.extract_question_paper(
+            file_bytes=file_bytes,
+            filename=filename,
+            mime_type=mime_type,
+            text_content=raw_text.strip() if not file_bytes else None,
+            subject_hint=subject_hint.strip() or None,
+            exam_hint=exam_hint.strip() or None,
+        )
+    except UnsupportedFileError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Extraction failed: {e}")
+
+    return extraction.model_dump()
 
 
 class TaskFollowupIn(BaseModel):
@@ -957,8 +1204,17 @@ def delete_student_task(task_id: int, user: User = Depends(current_user)):
         if not task or task.user_id != user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
 
-        if task.image_url and task.image_url.startswith("/api/uploads/"):
+        if task.storage_key:
+            try:
+                get_storage().delete(task.storage_key)
+            except Exception as e:
+                print(f"[delete_task] Storage delete error: {e}")
+        elif task.image_url and task.image_url.startswith("/api/uploads/"):
             fn = task.image_url.replace("/api/uploads/", "")
+            try:
+                get_storage().delete(fn)
+            except Exception:
+                pass
             fp = _UPLOAD_FILES_DIR / fn
             if fp.exists():
                 try:
@@ -1056,6 +1312,10 @@ def career_audit(body: CareerIn, user: User = Depends(current_user)):
         return result
 
 
+ALLOWED_RESUME_EXTS = {".pdf", ".docx", ".doc", ".txt"}
+MAX_RESUME_BYTES = 10 * 1024 * 1024  # 10MB
+
+
 @app.post("/api/career/upload-resume")
 async def upload_resume(file: UploadFile = File(...),
                         target_role: str = Form(""),
@@ -1063,13 +1323,27 @@ async def upload_resume(file: UploadFile = File(...),
                         target_company: str = Form(""),
                         user: User = Depends(current_user)):
     """Upload PDF/Doc resume, extract text, update profile, and return AI career analysis."""
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_RESUME_EXTS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Unsupported file type '{ext}'. Allowed formats: PDF, DOCX, DOC, TXT."
+        )
+
     data = await file.read()
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty.")
 
-    extracted_text = career.extract_resume_text(data, filename=file.filename or "")
+    if len(data) > MAX_RESUME_BYTES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "File exceeds maximum allowed size of 10MB."
+        )
+
+    extracted_text = career.extract_resume_text(data, filename=filename)
     if not extracted_text:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not extract text from uploaded resume. Please paste resume text directly.")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not extract text from uploaded resume. Please upload a readable document.")
 
     with get_session() as session:
         prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
@@ -1079,6 +1353,10 @@ async def upload_resume(file: UploadFile = File(...),
 
         prof.resume_text = extracted_text
         prof.resume_filename = file.filename or "uploaded_resume.pdf"
+        token = uuid.uuid4().hex[:12]
+        object_key = build_object_key("resumes", user.id, prof.resume_filename, identifier=token)
+        get_storage().put(object_key, data, content_type=file.content_type)
+        prof.resume_storage_key = object_key
         if target_role.strip():
             prof.target_role = target_role.strip()
         if target_company.strip():
@@ -1108,6 +1386,60 @@ async def upload_resume(file: UploadFile = File(...),
         }
 
 
+@app.post("/api/coach/resume")
+async def upload_coach_resume(file: UploadFile = File(...),
+                              user: User = Depends(current_user)):
+    """Upload resume directly from Coach module, storing into the shared canonical UserCareerProfile."""
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_RESUME_EXTS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Unsupported file type '{ext}'. Allowed formats: PDF, DOCX, DOC, TXT."
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty.")
+
+    if len(data) > MAX_RESUME_BYTES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "File exceeds maximum allowed size of 10MB."
+        )
+
+    extracted_text = career.extract_resume_text(data, filename=filename)
+    if not extracted_text:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Could not extract text from uploaded resume. Please upload a readable document."
+        )
+
+    with get_session() as session:
+        prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+        if not prof:
+            prof = UserCareerProfile(user_id=user.id)
+            session.add(prof)
+
+        prof.resume_text = extracted_text
+        prof.resume_filename = filename or "uploaded_resume.pdf"
+        token = uuid.uuid4().hex[:12]
+        object_key = build_object_key("resumes", user.id, prof.resume_filename, identifier=token)
+        get_storage().put(object_key, data, content_type=file.content_type)
+        prof.resume_storage_key = object_key
+        prof.updated_at = datetime.now(timezone.utc)
+        session.add(prof)
+        session.commit()
+        session.refresh(prof)
+
+        return {
+            "status": "success",
+            "resume_filename": prof.resume_filename,
+            "resume_text": prof.resume_text,
+            "has_resume": True,
+        }
+
+
 @app.delete("/api/career/resume")
 @app.post("/api/career/clear-resume")
 def clear_resume(user: User = Depends(current_user)):
@@ -1115,6 +1447,12 @@ def clear_resume(user: User = Depends(current_user)):
     with get_session() as session:
         prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
         if prof:
+            if prof.resume_storage_key:
+                try:
+                    get_storage().delete(prof.resume_storage_key)
+                except Exception as e:
+                    print(f"[clear_resume] Storage delete error: {e}")
+                prof.resume_storage_key = None
             prof.resume_text = ""
             prof.resume_filename = ""
             prof.last_analysis_json = None
@@ -1189,6 +1527,7 @@ class InterviewStartIn(BaseModel):
     target_company: str = ""
     job_description: str = ""
     resume_text: str = ""
+    use_saved_resume: bool = False
     round_type: str = "Technical Deep-Dive"
     difficulty: str = "Medium"
 
@@ -1197,30 +1536,38 @@ class InterviewStartIn(BaseModel):
 def start_interview_session(body: InterviewStartIn, user: User = Depends(current_user)):
     """Start a new dynamic candidate-specific interview session."""
     target_role = body.target_role.strip() or "Software / Professional Role"
-
-    opening_q = interview.generate_opening_question(
-        target_role=target_role,
-        target_company=body.target_company,
-        job_description=body.job_description,
-        resume_text=body.resume_text,
-        round_type=body.round_type,
-        difficulty=body.difficulty,
-    )
-
-    initial_turn = {
-        "q": opening_q,
-        "a": "",
-        "feedback": "",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    effective_resume = body.resume_text.strip()
 
     with get_session() as session:
+        if not effective_resume and body.use_saved_resume:
+            prof = session.exec(select(UserCareerProfile).where(UserCareerProfile.user_id == user.id)).first()
+            if prof and prof.resume_text:
+                effective_resume = prof.resume_text.strip()
+
+        opening_q = interview.generate_opening_question(
+            target_role=target_role,
+            target_company=body.target_company,
+            job_description=body.job_description,
+            resume_text=effective_resume,
+            round_type=body.round_type,
+            difficulty=body.difficulty,
+        )
+
+        initial_turn = {
+            "q": opening_q,
+            "a": "",
+            "feedback": "",
+            "emotion": "warm",
+            "delivery": {"pace": "natural", "energy": "medium", "pause_after": True},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
         sess = InterviewSession(
             user_id=user.id,
             target_role=target_role,
             target_company=body.target_company.strip(),
             job_description=body.job_description.strip(),
-            resume_text=body.resume_text.strip(),
+            resume_text=effective_resume,
             round_type=body.round_type,
             difficulty=body.difficulty,
             status="active",
@@ -1277,6 +1624,8 @@ def answer_interview_turn(body: InterviewAnswerIn, user: User = Depends(current_
             "q": res.get("next_question", "Walk me through your next step."),
             "a": "",
             "feedback": "",
+            "emotion": res.get("emotion", "neutral"),
+            "delivery": res.get("delivery", {"pace": "natural", "energy": "medium", "pause_after": True}),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -1333,7 +1682,7 @@ def list_interview_history(user: User = Depends(current_user)):
         return [_format_interview_session(s) for s in sessions]
 
 
-# --- text-to-speech (MiniMax Speech 2.8) ------------------------------------
+# --- text-to-speech (VoiceProvider Abstraction) -----------------------------
 
 class TTSIn(BaseModel):
     text: str
@@ -1550,6 +1899,8 @@ if _DIST.exists():
 
     @app.get("/{full_path:path}")
     def spa(full_path: str):
+        if full_path.startswith("api/") or full_path == "api":
+            raise HTTPException(status_code=404, detail="API endpoint not found")
         candidate = _DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)

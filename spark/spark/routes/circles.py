@@ -1,13 +1,15 @@
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlmodel import col, func, select, delete
 
 from ..auth import current_user
 from ..models import CircleMember, CircleMessage, CircleMessageReaction, CircleMute, StudyCircle, User, UserBlock, UserReport, get_session
+from ..storage import build_object_key, get_storage, guess_content_type
 from ..subscription import is_active_paid, is_trial_active
 
 router = APIRouter(prefix="/api/circles", tags=["circles"])
@@ -580,22 +582,66 @@ async def upload_chat_image(file: UploadFile = File(...), user: User = Depends(c
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image file size exceeds 5MB limit.")
 
-    file_name = f"chat_{uuid.uuid4().hex[:12]}{ext}"
-    dest_path = os.path.join(UPLOAD_FILES_DIR, file_name)
-    with open(dest_path, "wb") as f:
-        f.write(data)
+    token = uuid.uuid4().hex[:12]
+    file_name = f"chat_{user.id}_{token}{ext}"
+    storage_key = build_object_key("chat", user.id, file_name, identifier=token)
+
+    get_storage().put(storage_key, data, content_type=file.content_type)
 
     url = f"/api/circles/media/{file_name}"
-    return {"url": url, "filename": file.filename, "size": len(data)}
+    return {"url": url, "filename": file.filename, "size": len(data), "storage_key": storage_key}
 
 
 @router.get("/media/{file_name}")
 def serve_chat_media(file_name: str):
     """Serve uploaded chat image file."""
+    if not file_name or "/" in file_name or "\\" in file_name or ".." in file_name or Path(file_name).name != file_name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid media filename")
+
+    storage = get_storage()
+    ct = guess_content_type(file_name)
+
+    # 1. Try deterministic user storage key: users/{uid}/chat/{token}/{file_name}
+    candidate_key = None
+    if file_name.startswith("chat_"):
+        parts = file_name.split("_")
+        if len(parts) >= 3:
+            uid = parts[1]
+            token = parts[2].split(".")[0]
+            candidate_key = f"users/{uid}/chat/{token}/{file_name}"
+
+    if candidate_key and storage.exists(candidate_key):
+        if hasattr(storage, "get_local_path"):
+            lp = storage.get_local_path(candidate_key)
+            if lp and lp.is_file():
+                return FileResponse(lp)
+        try:
+            data = storage.get(candidate_key)
+            if data is not None:
+                media_type = storage.get_content_type(candidate_key) or ct
+                return Response(content=data, media_type=media_type)
+        except Exception:
+            pass
+
+    # 2. Try file_name directly in storage
+    try:
+        if storage.exists(file_name):
+            if hasattr(storage, "get_local_path"):
+                lp = storage.get_local_path(file_name)
+                if lp and lp.is_file():
+                    return FileResponse(lp)
+            data = storage.get(file_name)
+            if data is not None:
+                return Response(content=data, media_type=ct)
+    except Exception:
+        pass
+
+    # 3. Legacy file path check in storage_media
     file_path = os.path.join(UPLOAD_FILES_DIR, file_name)
-    if not os.path.exists(file_path):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Media file not found")
-    return FileResponse(file_path)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Media file not found")
 
 
 @router.post("/{circle_id}/messages")
@@ -641,12 +687,23 @@ def send_message(circle_id: int, body: dict, user: User = Depends(current_user))
             if not parent or parent.circle_id != circle_id:
                 reply_to_id = None
 
+        msg_storage_key = None
+        if media_url and "/api/circles/media/" in media_url:
+            fn = media_url.split("/api/circles/media/")[-1]
+            if fn.startswith("chat_"):
+                parts = fn.split("_")
+                if len(parts) >= 3:
+                    uid = parts[1]
+                    token = parts[2].split(".")[0]
+                    msg_storage_key = f"users/{uid}/chat/{token}/{fn}"
+
         msg = CircleMessage(
             circle_id=circle_id,
             user_id=user.id,
             content=content,
             message_type=msg_type,
             media_url=media_url,
+            storage_key=msg_storage_key,
             sticker_id=sticker_id,
             capture_id=capture_id,
             capture_title=capture_title,
@@ -753,9 +810,14 @@ def delete_message(circle_id: int, msg_id: int, user: User = Depends(current_use
                 "Only the message author or circle owner can delete this message.",
             )
 
-        # Soft delete & cleanup reactions
+        # Soft delete & cleanup reactions & media
         msg.is_deleted = True
         msg.content = ""
+        if msg.storage_key:
+            try:
+                get_storage().delete(msg.storage_key)
+            except Exception as e:
+                print(f"[delete_message] Storage delete error: {e}")
         session.exec(delete(CircleMessageReaction).where(col(CircleMessageReaction.message_id) == msg_id))
         session.add(msg)
         session.commit()
