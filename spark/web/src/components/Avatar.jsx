@@ -1,52 +1,63 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { AVATAR_PRESETS, getInitials, isImageAvatarUrl, getPreset } from "../utils/avatar.js";
 
-export const AVATAR_PRESETS = [
-  { id: "preset-1", name: "Cosmic Spark", bg: "linear-gradient(135deg, #8B5CF6, #EC4899)", icon: "✨" },
-  { id: "preset-2", name: "Amber Pulse", bg: "linear-gradient(135deg, #F59E0B, #EF4444)", icon: "⚡" },
-  { id: "preset-3", name: "Emerald Flow", bg: "linear-gradient(135deg, #10B981, #059669)", icon: "🌿" },
-  { id: "preset-4", name: "Neon Cyber", bg: "linear-gradient(135deg, #06B6D4, #3B82F6)", icon: "🌐" },
-  { id: "preset-5", name: "Solar Flare", bg: "linear-gradient(135deg, #F97316, #EAB308)", icon: "☀️" },
-  { id: "preset-6", name: "Violet Nebula", bg: "linear-gradient(135deg, #6366F1, #A855F7)", icon: "🔮" },
-  { id: "preset-7", name: "Ocean Crest", bg: "linear-gradient(135deg, #0284C7, #0D9488)", icon: "🌊" },
-  { id: "preset-8", name: "Ruby Nova", bg: "linear-gradient(135deg, #E11D48, #9333EA)", icon: "💎" },
-  { id: "preset-9", name: "Aurora Sky", bg: "linear-gradient(135deg, #34D399, #3B82F6)", icon: "🌌" },
-  { id: "preset-10", name: "Golden Horizon", bg: "linear-gradient(135deg, #D97706, #B45309)", icon: "🌅" },
-  { id: "preset-11", name: "Plasma Glow", bg: "linear-gradient(135deg, #EC4899, #8B5CF6)", icon: "🔥" },
-  { id: "preset-12", name: "Midnight Prism", bg: "linear-gradient(135deg, #1E293B, #475569)", icon: "✺" },
-];
-
-function getInitials(name) {
-  if (!name || typeof name !== "string") return "U";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2 && parts[0] && parts[1]) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return parts[0] ? parts[0][0].toUpperCase() : "U";
-}
-
-export function getPreset(src, name = "User") {
-  if (src && typeof src === "string" && src.startsWith("preset-")) {
-    const found = AVATAR_PRESETS.find((p) => p.id === src);
-    if (found) return found;
-  }
-  let hash = 0;
-  const str = String(name || "User");
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const idx = Math.abs(hash) % AVATAR_PRESETS.length;
-  return AVATAR_PRESETS[idx];
-}
+export { AVATAR_PRESETS, getInitials, isImageAvatarUrl, getPreset };
 
 export function Avatar({ src, name = "User", size = 36, style = {}, className = "" }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  const hasImage = isImageAvatarUrl(src) && !imgError;
   const preset = getPreset(src, name);
   const initials = getInitials(name);
   const fontSize = Math.max(11, Math.floor(size * 0.38));
+
+  if (hasImage) {
+    return (
+      <div
+        className={className}
+        title={name}
+        data-avatar-type="custom"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          overflow: "hidden",
+          flexShrink: 0,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.14)",
+          border: "1.5px solid rgba(255,255,255,0.25)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--surface-2, #F1F5F9)",
+          position: "relative",
+          ...style,
+        }}
+      >
+        <img
+          src={src}
+          alt={name || "Profile picture"}
+          onError={() => setImgError(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+            borderRadius: "50%",
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
       className={className}
       title={`${name} (${preset.name})`}
+      data-avatar-type="preset"
       style={{
         width: size,
         height: size,

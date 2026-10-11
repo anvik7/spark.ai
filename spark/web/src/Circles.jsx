@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { api } from "./api.js";
+import Avatar from "./components/Avatar.jsx";
 import EmojiPicker from "./components/chat/EmojiPicker.jsx";
 
 const QUICK_REACTIONS = ["❤️", "😂", "🔥", "👍", "👀", "🫡"];
@@ -224,11 +225,11 @@ export default function Circles({ onOpenUpgrade, user }) {
 
   return (
     <div className="screen" style={{ maxWidth: 860, margin: "0 auto", padding: "12px 16px 80px" }}>
-      {/* Spark Chat Header */}
+      {/* SparkDhi Chat Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
-            <span>Spark Chat</span>
+            <span>SparkDhi Chat</span>
             <span style={{ fontSize: 11, fontWeight: 700, background: "#8B5CF6", color: "#FFF", padding: "2px 8px", borderRadius: 12 }}>
               Social
             </span>
@@ -416,7 +417,7 @@ export default function Circles({ onOpenUpgrade, user }) {
       {loading && (
         <div style={{ padding: 40, textAlign: "center", color: "var(--ink-soft)", fontSize: 14 }}>
           <div className="spinner" style={{ marginBottom: 10 }}>⚡</div>
-          Loading Spark conversations…
+          Loading SparkDhi conversations…
         </div>
       )}
 
@@ -433,7 +434,7 @@ export default function Circles({ onOpenUpgrade, user }) {
               {discoveredUsers.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 6 }}>
-                    People on Spark
+                    People on SparkDhi
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {discoveredUsers.map((u) => (
@@ -451,12 +452,10 @@ export default function Circles({ onOpenUpgrade, user }) {
                           cursor: "pointer",
                         }}
                       >
-                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#EDE9FE", color: "#6D28D9", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
-                          {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : "👤"}
-                        </div>
+                        <Avatar src={u.avatarUrl} name={u.name} size={36} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{u.name}</div>
-                          <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>Spark Learner · Tap to view profile</div>
+                          <div style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>SparkDhi Learner · Tap to view profile</div>
                         </div>
                         <button
                           onClick={(e) => {
@@ -603,7 +602,7 @@ export default function Circles({ onOpenUpgrade, user }) {
                       Private 1-to-1 & Group Chats
                     </h4>
                     <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>
-                      Public Spark communities are 100% free. Upgrade to unlock private 1-to-1 messaging.
+                      Public SparkDhi communities are 100% free. Upgrade to unlock private 1-to-1 messaging.
                     </p>
                   </div>
                 </div>
@@ -1242,7 +1241,12 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                 >
                   {/* Sender Name & Time */}
                   <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 3, display: "flex", gap: 6, alignItems: "center" }}>
-                    {!isMe && <span style={{ fontWeight: 700, color: "var(--ink)" }}>{m.senderName}</span>}
+                    {!isMe && (
+                      <span style={{ fontWeight: 700, color: "var(--ink)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <Avatar src={m.senderAvatar} name={m.senderName} size={16} />
+                        <span>{m.senderName}</span>
+                      </span>
+                    )}
                     <span>{fmtDate(m.createdAt)}</span>
                     {m.isEdited && <span style={{ fontStyle: "italic", color: "var(--ink-faint)" }}>(edited)</span>}
                   </div>
@@ -1390,9 +1394,11 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                       <StickerMessageBubble stickerId={m.stickerId} isMe={isMe} />
                     ) : m.messageType === "image" ? (
                       /* Image Message Render */
-                      <div
-                        onClick={() => setSelectedImage(m.mediaUrl)}
-                        style={{
+                      <AuthenticatedChatImage
+                        src={m.mediaUrl}
+                        alt="Chat attachment"
+                        style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }}
+                        containerStyle={{
                           borderRadius: 14,
                           overflow: "hidden",
                           border: "1.5px solid var(--line)",
@@ -1400,9 +1406,8 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
                           maxWidth: 240,
                           boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                         }}
-                      >
-                        <img src={m.mediaUrl} alt="Chat attachment" style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }} />
-                      </div>
+                        onClick={(blobUrl) => setSelectedImage(blobUrl || m.mediaUrl)}
+                      />
                     ) : m.messageType === "capture" ? (
                       /* Spark Capture Card Render */
                       <CaptureCardBubble
@@ -1741,7 +1746,7 @@ function CaptureCardBubble({ msg, isMe, onOpen }) {
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
         <span style={{ fontSize: 10.5, fontWeight: 800, color: "#8B5CF6", background: "#EDE9FE", padding: "2px 8px", borderRadius: 6, textTransform: "uppercase" }}>
-          🎴 Spark Capture
+          🎴 SparkDhi Capture
         </span>
         <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>Tap to view →</span>
       </div>
@@ -1783,7 +1788,7 @@ function CapturePickerModal({ onClose, onSelect, onError }) {
         </div>
 
         <p style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 0, marginBottom: 12 }}>
-          Choose one of your saved Spark Captures to share in this chat.
+          Choose one of your saved SparkDhi Captures to share in this chat.
         </p>
 
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1835,7 +1840,7 @@ function CaptureDetailModal({ msg, onClose }) {
       <div style={{ background: "var(--surface)", border: "1.5px solid #8B5CF6", borderRadius: 16, padding: 20, width: "100%", maxWidth: 460, boxShadow: "0 12px 36px rgba(0,0,0,0.25)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: "#8B5CF6", background: "#EDE9FE", padding: "3px 10px", borderRadius: 8 }}>
-            🎴 Shared Spark Capture Card
+            🎴 Shared SparkDhi Capture Card
           </span>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>✕</button>
         </div>
@@ -1863,7 +1868,87 @@ function CaptureDetailModal({ msg, onClose }) {
   );
 }
 
-/* ── IMAGE LIGHTBOX MODAL ───────────────────────────────────── */
+/* ── AUTHENTICATED CHAT IMAGE & LIGHTBOX ───────────────────── */
+
+function AuthenticatedChatImage({ src, alt = "Chat attachment", style, containerStyle, onClick }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let currentCreatedUrl = null;
+
+    if (!src) {
+      setLoading(false);
+      setError(true);
+      return;
+    }
+
+    if (src.startsWith("blob:") || src.startsWith("data:")) {
+      setBlobUrl(src);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(false);
+
+    api.fetchMediaBlob(src)
+      .then((objectUrl) => {
+        if (!active) {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        currentCreatedUrl = objectUrl;
+        setBlobUrl(objectUrl);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (currentCreatedUrl) {
+        URL.revokeObjectURL(currentCreatedUrl);
+      }
+    };
+  }, [src]);
+
+  const content = loading ? (
+    <div style={{ padding: "30px 20px", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2, #f3f4f6)", minHeight: 120, minWidth: 160, color: "var(--ink-muted, #9ca3af)", fontSize: 13, gap: 8 }}>
+      <span style={{ display: "inline-block" }}>⏳</span> Loading attachment...
+    </div>
+  ) : error || !blobUrl ? (
+    <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2, #f3f4f6)", minHeight: 80, minWidth: 160, color: "var(--ink-muted, #9ca3af)", fontSize: 13, gap: 6, border: "1px dashed var(--line, #e5e7eb)" }}>
+      ⚠️ Image unavailable
+    </div>
+  ) : (
+    <img
+      src={blobUrl}
+      alt={alt}
+      style={style}
+      loading="lazy"
+    />
+  );
+
+  if (containerStyle || onClick) {
+    return (
+      <div
+        style={containerStyle}
+        onClick={onClick ? () => onClick(blobUrl) : undefined}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return content;
+}
 
 function ImageLightboxModal({ url, onClose }) {
   return (
@@ -1871,14 +1956,18 @@ function ImageLightboxModal({ url, onClose }) {
       onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 }}
     >
-      <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
+      <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }} onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onClose}
-          style={{ position: "absolute", right: -12, top: -12, width: 32, height: 32, borderRadius: "50%", background: "#FFF", border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer" }}
+          style={{ position: "absolute", right: -12, top: -12, width: 32, height: 32, borderRadius: "50%", background: "#FFF", border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer", zIndex: 10 }}
         >
           ✕
         </button>
-        <img src={url} alt="Full preview" style={{ maxWidth: "100%", maxHeight: "85vh", borderRadius: 12, display: "block" }} />
+        <AuthenticatedChatImage
+          src={url}
+          alt="Full preview"
+          style={{ maxWidth: "100%", maxHeight: "85vh", borderRadius: 12, display: "block" }}
+        />
       </div>
     </div>
   );
@@ -1947,7 +2036,7 @@ function ReportMessageModal({ msgId, onClose, onError }) {
     setBusy(true);
     try {
       await api.reportMessage(msgId, reason, details);
-      alert("Report submitted. Thank you for helping keep Spark safe.");
+      alert("Report submitted. Thank you for helping keep SparkDhi safe.");
       onClose();
     } catch (err) {
       onError(err.message || "Failed to submit report.");
@@ -2003,12 +2092,12 @@ function UserProfileModal({ userId, onClose, onMessage, onError }) {
 
         {!loading && profile && (
           <>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#EDE9FE", color: "#6D28D9", fontSize: 26, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", border: "2px solid #8B5CF6" }}>
-              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : "👤"}
+            <div style={{ margin: "0 auto 12px", display: "inline-block" }}>
+              <Avatar src={profile.avatarUrl} name={profile.name} size={64} />
             </div>
 
             <h3 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 2px", color: "var(--ink)" }}>{profile.name}</h3>
-            <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 14 }}>Spark Social Member</div>
+            <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 14 }}>SparkDhi Social Member</div>
 
             {profile.publicCommunities?.length > 0 && (
               <div style={{ margin: "0 0 16px", textAlign: "left" }}>
@@ -2072,7 +2161,7 @@ function CreatePublicCommunityModal({ onClose, onCreated, onError }) {
         </div>
 
         <p style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 0, marginBottom: 14 }}>
-          Anyone on Spark can discover and join this community for free.
+          Anyone on SparkDhi can discover and join this community for free.
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2195,7 +2284,7 @@ function CreatePrivateChatModal({ onClose, onCreated, onError }) {
               </div>
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>Spark Member</div>
+                <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>SparkDhi Member</div>
               </div>
             </div>
           ))}

@@ -14,7 +14,7 @@ from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile, status)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlmodel import col, select, func
@@ -401,38 +401,213 @@ _UPLOAD_FILES_DIR = _UPLOAD_DIR / "files"
 _UPLOAD_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 MB
+ALLOWED_AVATAR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+ALLOWED_AVATAR_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
 class AvatarPresetIn(BaseModel):
     avatar_url: str
 
 
 @app.post("/api/me/avatar")
-def update_avatar_preset(body: AvatarPresetIn, user: User = Depends(current_user)):
+async def update_or_upload_avatar(
+    request: Request,
+    user: User = Depends(current_user),
+):
+    """Update user avatar via multipart image file upload or JSON preset payload."""
+    content_type = request.headers.get("content-type", "")
+    storage = get_storage()
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file = form.get("file")
+        if not file or not hasattr(file, "read"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is required.")
+
+        raw_filename = getattr(file, "filename", None) or "avatar.png"
+        ext = Path(raw_filename).suffix.lower()
+        if not ext and getattr(file, "content_type", None):
+            ct_lower = file.content_type.lower()
+            if "png" in ct_lower:
+                ext = ".png"
+            elif "jpeg" in ct_lower or "jpg" in ct_lower:
+                ext = ".jpg"
+            elif "webp" in ct_lower:
+                ext = ".webp"
+            elif "gif" in ct_lower:
+                ext = ".gif"
+
+        if ext not in ALLOWED_AVATAR_EXTENSIONS:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"File format '{ext}' is not allowed. Supported formats: PNG, JPG, JPEG, WEBP, GIF."
+            )
+
+        file_ct = getattr(file, "content_type", None) or guess_content_type(raw_filename)
+        if file_ct and file_ct.lower() not in ALLOWED_AVATAR_MIMES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"MIME type '{file_ct}' is not supported. Supported: image/jpeg, image/png, image/webp, image/gif."
+            )
+
+        chunk = await file.read(MAX_AVATAR_SIZE + 1)
+        if len(chunk) > MAX_AVATAR_SIZE:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image file size exceeds 5MB limit.")
+        if len(chunk) == 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty.")
+        data = chunk
+
+        is_valid_img = (
+            data.startswith(b"\x89PNG\r\n\x1a\n") or
+            data.startswith(b"\xff\xd8\xff") or
+            data.startswith(b"GIF87a") or data.startswith(b"GIF89a") or
+            (data.startswith(b"RIFF") and b"WEBP" in data[:16])
+        )
+        if not is_valid_img:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image: file header does not match supported image formats.")
+
+        token = uuid.uuid4().hex[:12]
+        filename = f"avatar_{user.id}_{token}{ext}"
+        storage_key = build_object_key("avatars", user.id, filename, identifier=token)
+
+        storage.put(storage_key, data, content_type=file_ct)
+        storage.put(filename, data, content_type=file_ct)
+
+        with get_session() as session:
+            db_user = session.get(User, user.id)
+            if not db_user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+
+            # Clean up old uploaded avatar file if exists
+            old_avatar = db_user.avatar_url
+            if old_avatar and "/api/uploads/avatar_" in old_avatar:
+                old_fn = old_avatar.split("/api/uploads/")[-1]
+                try:
+                    if storage.exists(old_fn):
+                        storage.delete(old_fn)
+                except Exception:
+                    pass
+
+            db_user.avatar_url = f"/api/uploads/{filename}"
+            session.add(db_user)
+            session.commit()
+            session.refresh(db_user)
+            return _public_user(session, db_user)
+
+    else:
+        # JSON preset payload
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON body.")
+
+        if not isinstance(body, dict) or "avatar_url" not in body:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "avatar_url is required.")
+
+        avatar_val = str(body["avatar_url"]).strip()
+        with get_session() as session:
+            db_user = session.get(User, user.id)
+            if not db_user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+
+            # Clean up old uploaded avatar file if switching to preset
+            old_avatar = db_user.avatar_url
+            if old_avatar and "/api/uploads/avatar_" in old_avatar:
+                old_fn = old_avatar.split("/api/uploads/")[-1]
+                try:
+                    if storage.exists(old_fn):
+                        storage.delete(old_fn)
+                except Exception:
+                    pass
+
+            db_user.avatar_url = avatar_val
+            session.add(db_user)
+            session.commit()
+            session.refresh(db_user)
+            return _public_user(session, db_user)
+
+
+@app.post("/api/me/avatar/upload")
+async def upload_avatar_explicit(
+    request: Request,
+    user: User = Depends(current_user),
+):
+    """Explicit alias for avatar upload endpoint."""
+    return await update_or_upload_avatar(request, user)
+
+
+@app.delete("/api/me/avatar")
+def delete_avatar(user: User = Depends(current_user)):
+    """Remove user's profile picture and revert to default avatar."""
     with get_session() as session:
         db_user = session.get(User, user.id)
         if not db_user:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        db_user.avatar_url = body.avatar_url
+
+        old_avatar = db_user.avatar_url
+        if old_avatar and "/api/uploads/avatar_" in old_avatar:
+            old_fn = old_avatar.split("/api/uploads/")[-1]
+            try:
+                storage = get_storage()
+                if storage.exists(old_fn):
+                    storage.delete(old_fn)
+            except Exception:
+                pass
+
+        db_user.avatar_url = None
         session.add(db_user)
         session.commit()
         session.refresh(db_user)
         return _public_user(session, db_user)
 
 
+@app.get("/api/users/{user_id}/avatar")
+def get_user_avatar(user_id: int):
+    """Safely retrieve a user's avatar without exposing private captures or chat media."""
+    with get_session() as session:
+        target_user = session.get(User, user_id)
+        if not target_user:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+        if not target_user.avatar_url:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User has no profile picture")
+
+        avatar_url = target_user.avatar_url
+        if avatar_url.startswith("/api/uploads/"):
+            filename = avatar_url.split("/api/uploads/")[-1]
+            if (
+                not filename
+                or "/" in filename
+                or "\\" in filename
+                or ".." in filename
+                or Path(filename).name != filename
+            ):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid avatar filename")
+            return _serve_storage_or_file(None, filename)
+        elif avatar_url.startswith("preset-"):
+            return {"avatar_url": avatar_url, "is_preset": True}
+        else:
+            return RedirectResponse(avatar_url)
+
+
 _upload_bearer = HTTPBearer(auto_error=False)
 
 
-def authenticated_upload_user(
+def optional_upload_user(
     creds: Optional[HTTPAuthorizationCredentials] = Depends(_upload_bearer),
-) -> User:
+) -> Optional[User]:
     if not creds or not creds.credentials:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
-    uid = _user_id_from_token(creds.credentials)
-    with get_session() as session:
-        user = session.get(User, uid)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
-        session.expunge(user)
-        return user
+        return None
+    try:
+        uid = _user_id_from_token(creds.credentials)
+        with get_session() as session:
+            user = session.get(User, uid)
+            if not user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
+            session.expunge(user)
+            return user
+    except Exception:
+        return None
 
 
 def _serve_storage_or_file(storage_key: Optional[str], filename: str) -> Response:
@@ -477,7 +652,7 @@ def _serve_storage_or_file(storage_key: Optional[str], filename: str) -> Respons
 
 
 @app.get("/api/uploads/{filename}")
-def serve_upload(filename: str, user: User = Depends(authenticated_upload_user)):
+def serve_upload(filename: str, user: Optional[User] = Depends(optional_upload_user)):
     # 1. Path safety: reject traversal characters, slashes, or malformed filenames
     if (
         not filename
@@ -490,9 +665,21 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
 
     # 2. Ownership / Authorization: verify database relationship or public authorization
     target_url = f"/api/uploads/{filename}"
-    is_admin = getattr(user, "role", None) in ("admin", "founder")
+    is_admin = getattr(user, "role", None) in ("admin", "founder") if user else False
 
     with get_session() as session:
+        # Check user avatars (public profile pictures viewable by all users)
+        user_matches = session.exec(
+            select(User).where(
+                (User.avatar_url == target_url) |
+                (User.avatar_url == filename) |
+                (User.avatar_url == f"api/uploads/{filename}") |
+                (User.avatar_url.like(f"%/{filename}"))
+            )
+        ).all()
+        if user_matches:
+            return _serve_storage_or_file(None, filename)
+
         # Check student task attachments
         task_matches = session.exec(
             select(StudentTask).where(
@@ -504,10 +691,13 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
             )
         ).all()
         if task_matches:
-            if not (any(t.user_id == user.id for t in task_matches) or is_admin):
+            if user and (any(t.user_id == user.id for t in task_matches) or is_admin):
+                matched_task = next((t for t in task_matches if t.user_id == user.id or is_admin), task_matches[0])
+                return _serve_storage_or_file(matched_task.storage_key, filename)
+            elif not user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+            else:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
-            matched_task = next((t for t in task_matches if t.user_id == user.id or is_admin), task_matches[0])
-            return _serve_storage_or_file(matched_task.storage_key, filename)
 
         # Check card attachments (files, voice notes, PDFs, images)
         card_matches = session.exec(
@@ -520,13 +710,25 @@ def serve_upload(filename: str, user: User = Depends(authenticated_upload_user))
             )
         ).all()
         if card_matches:
-            if not (any(c.user_id == user.id or c.is_public for c in card_matches) or is_admin):
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
-            matched_card = next((c for c in card_matches if c.user_id == user.id or c.is_public or is_admin), card_matches[0])
-            return _serve_storage_or_file(matched_card.storage_key, filename)
+            # Check public authorization first: explicitly public cards serve attachments to unauthenticated visitors
+            public_cards = [c for c in card_matches if c.is_public]
+            if public_cards:
+                matched_card = public_cards[0]
+                return _serve_storage_or_file(matched_card.storage_key, filename)
+
+            # Private cards require valid authenticated user who is owner or admin
+            if not user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+            if any(c.user_id == user.id for c in card_matches) or is_admin:
+                matched_card = next((c for c in card_matches if c.user_id == user.id or is_admin), card_matches[0])
+                return _serve_storage_or_file(matched_card.storage_key, filename)
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
 
     # File has no authorized database association for this user
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+
 
 
 @app.get("/assets/fonts/{font_name}")

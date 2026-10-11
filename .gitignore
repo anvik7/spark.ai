@@ -1,10 +1,58 @@
-.env
-spark.db
+# Dependencies & Environments
 venv/
 .venv/
+node_modules/
 __pycache__/
 *.pyc
-node_modules/
+
+# Production Builds
 dist/
-*.log
+
+# Local Environment Files & Secrets
+.env
+.env.*
+.env*.local
+!.env.example
+!.env.template
+
+# Temporary SQLite Databases & Journal Files
+*.db
+*.sqlite
+*.sqlite3
+*-journal
+*.db-wal
+*.db-shm
+
+# Local Uploaded Media & Audio Tests
 storage_media/
+uploads/
+**/uploads/
+*.wav
+
+# Debug Logs, Error Traces & Build Logs
+*.log
+*.err
+log.txt
+**/log.txt
+build_log.txt
+
+# Diff Dumps, Patches & Inspection Text Dumps
+*.diff
+*.patch
+*diff*.txt
+git*.txt
+status*.txt
+stat*.txt
+show*.txt
+staged.txt
+commit_files.txt
+hash.txt
+
+# Scratch Scripts & Temporary Test Directories
+scratch/
+**/scratch/
+scratch_*.py
+**/scratch_*.py
+temp-test/
+**/temp-test/
+.pytest_cache/

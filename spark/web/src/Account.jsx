@@ -1,11 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { api, setToken } from "./api.js";
-import Avatar, { AVATAR_PRESETS, getPreset } from "./components/Avatar.jsx";
+import Avatar, { AVATAR_PRESETS, getPreset, isImageAvatarUrl } from "./components/Avatar.jsx";
 
 export default function Account({ user = {}, onLogout, onUpdateUser, theme = "system", onChangeTheme }) {
   const [busy, setBusy] = useState(false);
   const [updatingPreset, setUpdatingPreset] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [successMsg, setSuccessMsg] = useState("");
   const [err, setErr] = useState("");
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const logout = () => {
     setBusy(true);
@@ -13,14 +26,106 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
     onLogout?.();
   };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    e.target.value = "";
+    setErr("");
+    setSuccessMsg("");
+
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setErr("Image file size exceeds 5MB limit. Please choose a smaller photo.");
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+      setErr("File format not supported. Allowed formats: PNG, JPG, JPEG, WEBP, GIF.");
+      return;
+    }
+
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setSelectedFile(file);
+    setPreviewUrl(objectUrl);
+  };
+
+  const handleCancelPreview = () => {
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setSelectedFile(null);
+    setErr("");
+  };
+
+  const handleSaveAvatar = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      const updatedUser = await api.uploadAvatar(selectedFile);
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setPreviewUrl(null);
+      setSelectedFile(null);
+      setSuccessMsg("Profile picture uploaded successfully!");
+      onUpdateUser?.(updatedUser);
+      setTimeout(() => setSuccessMsg(""), 3500);
+    } catch (error) {
+      setErr(error.message || "Failed to upload profile picture. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setUploading(true);
+    setErr("");
+    setSuccessMsg("");
+    try {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setPreviewUrl(null);
+      setSelectedFile(null);
+
+      const updatedUser = await api.deleteAvatar();
+      setSuccessMsg("Profile picture removed. Reverted to default avatar.");
+      onUpdateUser?.(updatedUser);
+      setTimeout(() => setSuccessMsg(""), 3500);
+    } catch (error) {
+      setErr(error.message || "Failed to remove profile picture.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSelectPreset = async (presetId) => {
     if (updatingPreset || user?.avatar_url === presetId) return;
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setSelectedFile(null);
     setUpdatingPreset(true);
     setErr("");
+    setSuccessMsg("");
     document.body.setAttribute("data-persona", presetId);
     try {
       const updatedUser = await api.updateAvatarPreset(presetId);
       onUpdateUser?.(updatedUser);
+      setSuccessMsg("Persona avatar updated!");
+      setTimeout(() => setSuccessMsg(""), 3000);
     } catch (error) {
       setErr(error.message || "Failed to update avatar persona.");
       if (user?.avatar_url) document.body.setAttribute("data-persona", user.avatar_url);
@@ -43,7 +148,7 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
     <div className="screen">
       <div className="eyebrow">Account</div>
 
-      {/* Profile Header & Abstract Persona Avatar Display */}
+      {/* Profile Header & Avatar Management Display */}
       <div
         style={{
           background: "var(--surface)",
@@ -56,11 +161,31 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
           flexDirection: "column",
           alignItems: "center",
           textAlign: "center",
-          gap: 12,
+          gap: 14,
         }}
       >
-        <div style={{ position: "relative" }}>
-          <Avatar src={user?.avatar_url} name={user?.name || "User"} size={88} />
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <Avatar src={previewUrl || user?.avatar_url} name={user?.name || "User"} size={88} />
+          {previewUrl && (
+            <span
+              style={{
+                position: "absolute",
+                top: -4,
+                right: -4,
+                background: "var(--marigold-dark, #D97706)",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "2px 6px",
+                borderRadius: 10,
+                textTransform: "uppercase",
+                letterSpacing: ".04em",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+              }}
+            >
+              Preview
+            </span>
+          )}
         </div>
 
         <div>
@@ -85,9 +210,129 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
             }}
           >
             <span>{currentPreset.icon}</span>
-            <span>Persona: {currentPreset.name}</span>
+            <span>
+              {isImageAvatarUrl(user?.avatar_url)
+                ? "Custom Photo Active"
+                : `Persona: ${currentPreset.name}`}
+            </span>
           </div>
         </div>
+
+        {/* Hidden File Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          style={{ display: "none" }}
+          onChange={handleFileSelect}
+        />
+
+        {/* Profile Picture Controls */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+          {previewUrl ? (
+            <>
+              <button
+                onClick={handleSaveAvatar}
+                disabled={uploading}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "var(--r-s, 8px)",
+                  background: "var(--marigold-dark, #D97706)",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: uploading ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {uploading ? "Saving photo…" : "✓ Save Photo"}
+              </button>
+              <button
+                onClick={handleCancelPreview}
+                disabled={uploading}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "var(--r-s, 8px)",
+                  background: "var(--surface-2, #F1F5F9)",
+                  color: "var(--ink-soft)",
+                  border: "1px solid var(--line)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: uploading ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "var(--r-s, 8px)",
+                  background: "var(--surface-2, #F1F5F9)",
+                  color: "var(--ink)",
+                  border: "1px solid var(--line)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: uploading ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>📷</span>
+                <span>{user?.avatar_url ? "Change Picture" : "Upload Picture"}</span>
+              </button>
+              {user?.avatar_url && (
+                <button
+                  onClick={handleRemoveAvatar}
+                  disabled={uploading}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "var(--r-s, 8px)",
+                    background: "transparent",
+                    color: "var(--red, #DC2626)",
+                    border: "1px solid rgba(220, 38, 38, 0.2)",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: uploading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {uploading ? "Removing…" : "Remove Picture"}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {uploading && (
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", fontStyle: "italic" }}>
+            Processing avatar update…
+          </div>
+        )}
+
+        {successMsg && (
+          <div
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: "var(--r-s, 8px)",
+              background: "rgba(16, 185, 129, 0.1)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              color: "#059669",
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            {successMsg}
+          </div>
+        )}
 
         {err && <div className="err" style={{ width: "100%", margin: "4px 0 0", fontSize: 13 }}>{err}</div>}
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "./api.js";
+import Avatar from "./components/Avatar.jsx";
 import { Chakra } from "./Chakra.jsx";
 
 export default function SharedCapture({ shareToken }) {
@@ -100,8 +101,8 @@ export default function SharedCapture({ shareToken }) {
 
             <span style={{ fontSize: 11, color: "var(--line)" }}>|</span>
 
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
-              <span style={{ fontSize: 12 }}>👤</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+              <Avatar src={capture.creator_avatar} name={creatorName} size={16} />
               <span>{creatorName.startsWith("@") ? creatorName : `@${creatorName}`}</span>
             </span>
           </div>

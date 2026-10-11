@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "./api.js";
+import Avatar from "./components/Avatar.jsx";
 import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
 // ── Voice: Web Speech API & MediaRecorder ──────────
@@ -495,8 +496,8 @@ export default function Capture({ onNavigate }) {
                 {c.creator_name && (
                   <>
                     <span style={{ fontSize: 11, color: "var(--line)" }}>|</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
-                      <span style={{ fontSize: 12 }}>👤</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+                      <Avatar src={c.creator_avatar} name={c.creator_name} size={16} />
                       <span>{c.creator_name.startsWith("@") ? c.creator_name : `@${c.creator_name}`}</span>
                     </span>
                   </>

@@ -22,8 +22,8 @@ def _llm(prompt: str, max_tokens: int = 1000) -> str:
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "HTTP-Referer": "https://spark.ai",
-                "X-Title": "Spark AI Student Workspace",
+                "HTTP-Referer": "https://sparkdhi.ai",
+                "X-Title": "SparkDhi Student Workspace",
                 "Content-Type": "application/json",
             },
             json={"model": model, "messages": [{"role": "user", "content": prompt}]},
@@ -145,19 +145,29 @@ def generate_opening_question(
 
 # --- Multi-Turn Adaptive Questioning ------------------------------------------
 
+ALLOWED_EMOTIONS = {
+    "warm", "neutral", "curious", "encouraging", "impressed",
+    "skeptical", "firm", "challenging", "concerned", "excited",
+    "surprised", "closing"
+}
+
 _TURN_PROMPT = (
-    "You are an expert interviewer conducting a {round_type} interview for '{target_role}'. Current difficulty: {difficulty}.\n\n"
+    "You are an expert executive interviewer conducting a realistic, conversational {round_type} interview for '{target_role}'. Current difficulty: {difficulty}.\n\n"
     "CANDIDATE RESUME:\n{resume_text}\n\n"
     "PAST INTERVIEW TRANSCRIPT:\n{transcript}\n\n"
     "LATEST CANDIDATE ANSWER:\n\"{last_answer}\"\n\n"
-    "INSTRUCTIONS:\n"
-    "1. Evaluate the candidate's latest answer for technical depth, metric evidence, and specificity.\n"
-    "2. Provide 1-2 sentences of concise recruiter feedback on their answer.\n"
-    "3. Ask the NEXT intelligent follow-up question. If they made a specific claim or mentioned a metric/technology, probe deeper into trade-offs, edge cases, baseline measurements, or concrete implementation details.\n"
-    "4. CRITICAL: Do NOT repeat or rephrase any question already in the PAST INTERVIEW TRANSCRIPT. Ask a fresh, probing question.\n"
-    "5. Return STRICT JSON with keys:\n"
-    "   - \"feedback\": string (1-2 sentences constructive feedback)\n"
-    "   - \"next_question\": string (the next inquiring question)\n"
+    "CONVERSATIONAL INTERVIEW GUIDELINES:\n"
+    "1. Sound like a REAL human interviewer having an engaging dialogue — NOT a scripted robotic questionnaire.\n"
+    "2. Acknowledge the candidate's points naturally and concisely before inquiring further (e.g. 'That makes sense', 'Good point on the indexing', 'Fair enough').\n"
+    "3. Follow up directly on what the candidate just said. If they made a vague claim or cited an unverified metric, probe it with professional skepticism.\n"
+    "4. Show genuine curiosity when an approach is interesting; be firm and challenging when trade-offs or failure modes are glossed over.\n"
+    "5. Keep responses concise (1-3 sentences total). Avoid long monologues, robotic transitions, or repeating the same question structure.\n"
+    "6. Stay professional at all times — NEVER be hostile, angry, or insulting.\n\n"
+    "RETURN STRICT JSON with keys:\n"
+    "   - \"feedback\": string (1-2 sentences constructive feedback on candidate's answer)\n"
+    "   - \"next_question\": string (concise, conversational question with natural lead-in)\n"
+    "   - \"emotion\": string (MUST be one of: 'warm', 'neutral', 'curious', 'encouraging', 'impressed', 'skeptical', 'firm', 'challenging', 'concerned', 'excited', 'surprised', 'closing')\n"
+    "   - \"delivery\": object (e.g. {{\"pace\": \"natural\", \"energy\": \"medium\", \"pause_after\": true}})\n"
     "   - \"adjusted_difficulty\": string ('Easy', 'Medium', 'Hard', 'Expert')"
 )
 
@@ -191,6 +201,25 @@ def next_interview_turn(
         raw_json = _llm(prompt, max_tokens=600)
         parsed = _extract_json(raw_json)
         if parsed and isinstance(parsed, dict) and "next_question" in parsed:
+            emotion = str(parsed.get("emotion") or "").strip().lower()
+            if emotion not in ALLOWED_EMOTIONS:
+                clean_ans = (last_answer or "").strip()
+                if len(clean_ans) < 60:
+                    emotion = "skeptical" if difficulty in ["Hard", "Expert"] else "encouraging"
+                elif len(clean_ans) > 250:
+                    emotion = "impressed" if difficulty in ["Easy", "Medium"] else "curious"
+                else:
+                    emotion = "curious"
+            parsed["emotion"] = emotion
+
+            delivery = parsed.get("delivery")
+            if not isinstance(delivery, dict):
+                delivery = {"pace": "natural", "energy": "medium", "pause_after": True}
+            else:
+                delivery.setdefault("pace", "natural")
+                delivery.setdefault("energy", "medium")
+                delivery.setdefault("pause_after", True)
+            parsed["delivery"] = delivery
             return parsed
     except Exception as e:
         print(f"[next_interview_turn] LLM fallback: {e}")
@@ -210,6 +239,12 @@ def next_interview_turn(
     return {
         "feedback": fb,
         "next_question": next_q,
+        "emotion": "curious" if is_detailed else "encouraging",
+        "delivery": {
+            "pace": "deliberate" if is_detailed else "natural",
+            "energy": "medium",
+            "pause_after": True,
+        },
         "adjusted_difficulty": adjusted_diff,
     }
 
