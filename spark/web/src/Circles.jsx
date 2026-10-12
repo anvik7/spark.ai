@@ -1499,28 +1499,28 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
 
       {/* Composer Attachment Action Sheet */}
       {showAttachmentSheet && (
-        <div style={{ padding: "10px 14px", background: "var(--surface-2)", borderTop: "1px solid var(--line)", display: "flex", gap: 12, justifyContent: "space-around" }}>
+        <div style={{ padding: "12px 16px", background: "var(--surface-2)", borderTop: "1px solid var(--line)", display: "flex", gap: 16, justifyContent: "space-around" }}>
           <button
             onClick={() => {
               setShowAttachmentSheet(false);
               setShowCapturePicker(true);
             }}
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: "var(--ink)" }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--ink)", minWidth: 64, minHeight: 44 }}
           >
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: "#EDE9FE", color: "#6D28D9", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              🎴
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(99, 102, 241, 0.12)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700 }}>Share Capture</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Share Capture</span>
           </button>
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: "var(--ink)" }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--ink)", minWidth: 64, minHeight: 44 }}
           >
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: "#E0F2FE", color: "#0369A1", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              📷
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(14, 165, 233, 0.12)", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700 }}>Photo</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700 }}>Photo</span>
           </button>
         </div>
       )}
@@ -1556,13 +1556,15 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             setShowAttachmentSheet((p) => !p);
           }}
           style={{
-            width: 36,
-            height: 36,
+            width: 44,
+            height: 44,
+            minWidth: 44,
+            minHeight: 44,
             borderRadius: "50%",
-            border: "1px solid var(--line)",
+            border: "1.5px solid var(--line)",
             background: "var(--surface-2)",
             color: "var(--ink)",
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: 700,
             cursor: "pointer",
             display: "flex",
@@ -1581,8 +1583,9 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
           placeholder="Write a message..."
           style={{
             flex: 1,
+            minHeight: 44,
             padding: "10px 14px",
-            borderRadius: 20,
+            borderRadius: 22,
             border: "1px solid var(--line)",
             fontSize: 14,
             background: "var(--surface-2)",
@@ -1597,7 +1600,7 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
             setShowAttachmentSheet(false);
             setShowComposerEmojiPicker((p) => !p);
           }}
-          style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "0 4px" }}
+          style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", minWidth: 44, minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           title="Emojis & Spark Reactions"
         >
           😊
@@ -1607,13 +1610,18 @@ function CircleDetail({ circle, user, isPaidUser, onBack, onOpenUpgrade, onError
           type="submit"
           disabled={sending || !textInput.trim()}
           style={{
-            padding: "9px 16px",
-            borderRadius: 20,
+            padding: "9px 18px",
+            minHeight: 44,
+            minWidth: 64,
+            borderRadius: 22,
             border: "none",
             background: sending || !textInput.trim() ? "var(--line)" : "var(--p-gradient)",
             color: "#FFF",
             fontSize: 13,
             fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
             cursor: sending || !textInput.trim() ? "not-allowed" : "pointer",
             boxShadow: sending || !textInput.trim() ? "none" : "0 2px 6px rgba(139,92,246,0.3)",
           }}

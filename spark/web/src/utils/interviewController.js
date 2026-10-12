@@ -6,6 +6,7 @@ export function createInterviewController({
   company = "",
   jobDescription = "",
   candidateProfile = "",
+  useSavedResume = false,
   interviewRound = "Technical Deep-Dive",
   difficulty = "Medium",
   aiStartInterview,
@@ -73,6 +74,7 @@ export function createInterviewController({
         target_company: company,
         job_description: jobDescription,
         resume_text: candidateProfile,
+        use_saved_resume: useSavedResume,
         round_type: state.round,
         difficulty: difficulty,
       });
@@ -250,7 +252,33 @@ export function createInterviewController({
     tts: {
       pause: () => tts.pause(),
       resume: () => tts.resume(),
-      replay: () => tts.replay(),
+      replay: () => {
+        stt.stopListening();
+        return tts.replay({
+          onStart: () => {
+            if (running) {
+              stt.stopListening();
+              setStatus("speaking");
+              ui.onTTSStart?.(state.currentQuestion);
+            }
+          },
+          onEnd: () => {
+            if (running) {
+              ui.onTTSEnd?.(state.currentQuestion);
+              setStatus("listening");
+              ui.onCandidateListening?.();
+            }
+          },
+          onError: (err) => {
+            console.warn("[replay] TTS error notice:", err?.message || err);
+            if (running) {
+              ui.onTTSError?.(err);
+              setStatus("listening");
+              ui.onCandidateListening?.();
+            }
+          },
+        });
+      },
       stop: () => tts.stop(),
       unlockAudio: () => tts.unlockAudio?.(),
       isSpeaking: () => tts.isSpeaking(),

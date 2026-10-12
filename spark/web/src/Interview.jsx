@@ -4,6 +4,33 @@ import { createInterviewController } from "./utils/interviewController.js";
 import { createSpeechRecognitionManager } from "./utils/speechRecognition.js";
 import { createTTSManager } from "./utils/tts.js";
 
+// Clean SVG Icons for Interview
+const Ico = {
+  mic: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16 }}>
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+    </svg>
+  ),
+  speaker: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16 }}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+    </svg>
+  ),
+  spark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+  ),
+  check: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  ),
+};
+
 const scoreColor = (s) =>
   s >= 80 ? "#10B981" : s >= 65 ? "var(--marigold)" : "#EF4444";
 
@@ -58,6 +85,12 @@ export default function Interview({ onNavigate, user }) {
   const [targetCompany, setTargetCompany] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [resumeText, setResumeText] = useState("");
+  const [resumeFilename, setResumeFilename] = useState("");
+  const [useSavedResume, setUseSavedResume] = useState(true);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [resumeUploadErr, setResumeUploadErr] = useState("");
+  const [showPasteText, setShowPasteText] = useState(false);
+  const resumeInputRef = useRef(null);
   const [roundType, setRoundType] = useState("Technical Deep-Dive");
   const [difficulty, setDifficulty] = useState("Medium");
 
@@ -140,7 +173,9 @@ export default function Interview({ onNavigate, user }) {
           if (profile.target_role && !targetRole) setTargetRole(profile.target_role);
           if (profile.target_company && !targetCompany) setTargetCompany(profile.target_company);
           if (profile.job_description && !jobDescription) setJobDescription(profile.job_description);
-          if (profile.resume_text && !resumeText) setResumeText(profile.resume_text);
+          if (profile.resume_text) setResumeText(profile.resume_text);
+          if (profile.resume_filename) setResumeFilename(profile.resume_filename);
+          if (profile.resume_filename || profile.resume_text) setUseSavedResume(true);
         }
       })
       .catch((e) => console.error("Failed to load interview context:", e))
@@ -149,12 +184,14 @@ export default function Interview({ onNavigate, user }) {
 
   // Initialize Interview Controller
   const initController = useCallback(
-    (roleVal, companyVal, jdVal, resumeVal, roundVal, diffVal) => {
+    (roleVal, companyVal, jdVal, resumeVal, useSavedVal, roundVal, diffVal) => {
+      const isUsing = useSavedVal !== undefined ? useSavedVal : useSavedResume;
       const ctrl = createInterviewController({
         targetRole: roleVal || targetRole,
         company: companyVal || targetCompany,
         jobDescription: jdVal || jobDescription,
-        candidateProfile: resumeVal || resumeText,
+        candidateProfile: isUsing ? (resumeVal || resumeText) : "",
+        useSavedResume: isUsing,
         interviewRound: roundVal || roundType,
         difficulty: diffVal || difficulty,
         ttsInstance: ttsManagerRef.current,
@@ -215,7 +252,7 @@ export default function Interview({ onNavigate, user }) {
       setController(ctrl);
       return ctrl;
     },
-    [targetRole, targetCompany, jobDescription, resumeText, roundType, difficulty, voiceEnabled]
+    [targetRole, targetCompany, jobDescription, resumeText, useSavedResume, roundType, difficulty, voiceEnabled]
   );
 
   const startListeningMic = () => {
@@ -264,6 +301,38 @@ export default function Interview({ onNavigate, user }) {
     setInterimTranscript("");
   };
 
+  const handleCoachResumeUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setResumeUploadErr("");
+    const allowedExts = [".pdf", ".docx", ".doc", ".txt"];
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    if (!allowedExts.includes(ext)) {
+      setResumeUploadErr("Supported formats: PDF, DOCX, DOC, TXT");
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setResumeUploadErr("File size exceeds 10MB limit.");
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+      return;
+    }
+
+    setUploadingResume(true);
+    try {
+      const res = await api.uploadCoachResume(file);
+      setResumeFilename(res.filename || file.name);
+      setResumeText(res.resume_text || "");
+      setUseSavedResume(true);
+    } catch (err) {
+      setResumeUploadErr(err.message || "Failed to upload resume. Please try again.");
+    } finally {
+      setUploadingResume(false);
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+    }
+  };
+
   // Handlers
   const handleStartInterview = async (e) => {
     e?.preventDefault();
@@ -280,7 +349,15 @@ export default function Interview({ onNavigate, user }) {
     setErr("");
 
     try {
-      const ctrl = initController(targetRole, targetCompany, jobDescription, resumeText, roundType, difficulty);
+      const ctrl = initController(
+        targetRole,
+        targetCompany,
+        jobDescription,
+        resumeText,
+        useSavedResume,
+        roundType,
+        difficulty
+      );
       await ctrl.start();
       const st = ctrl.getState();
       if (st.session) {
@@ -450,7 +527,7 @@ export default function Interview({ onNavigate, user }) {
             Configure Interview Parameters
           </h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4, color: "var(--ink-soft)" }}>
                 Target Role *
@@ -478,7 +555,7 @@ export default function Interview({ onNavigate, user }) {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4, color: "var(--ink-soft)" }}>
                 Interview Round
@@ -523,17 +600,225 @@ export default function Interview({ onNavigate, user }) {
             />
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4, color: "var(--ink-soft)" }}>
-              Candidate Resume / Background Profile
-            </label>
-            <textarea
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              placeholder="Paste your resume text, key achievements, or metrics..."
-              rows={4}
-              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, resize: "vertical" }}
-            />
+          {/* Shared Resume Section (Career + Coach Sync) */}
+          <div
+            style={{
+              marginBottom: 18,
+              background: "var(--surface)",
+              border: "1.5px solid var(--line)",
+              borderRadius: "var(--r)",
+              padding: "16px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+                  Resume <span style={{ fontWeight: 500, fontSize: 12, color: "var(--ink-faint)" }}>(Optional)</span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>
+                  Upload your resume for a more personalized interview
+                </div>
+              </div>
+              <input
+                type="file"
+                ref={resumeInputRef}
+                onChange={handleCoachResumeUpload}
+                accept=".pdf,.docx,.doc,.txt"
+                style={{ display: "none" }}
+              />
+            </div>
+
+            {/* Current Resume Status Card */}
+            {resumeFilename || resumeText ? (
+              <div
+                style={{
+                  background: useSavedResume ? "rgba(16, 185, 129, 0.07)" : "var(--surface-sunken, rgba(0,0,0,0.02))",
+                  border: useSavedResume ? "1.5px solid #10B981" : "1px dashed var(--line)",
+                  borderRadius: 10,
+                  padding: "14px",
+                  marginTop: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 200, flex: "1 1 auto" }}>
+                    <span style={{ fontSize: 24, flexShrink: 0 }}>📄</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", wordBreak: "break-word" }}>
+                        {useSavedResume
+                          ? `Using: ${resumeFilename || "Saved Career Resume"}`
+                          : `Saved Resume: ${resumeFilename || "Available in profile"}`}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: useSavedResume ? "#059669" : "var(--ink-faint)", marginTop: 2 }}>
+                        {useSavedResume
+                          ? "✓ Personalized interview questions enabled"
+                          : "Not attached for this session"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    {useSavedResume ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => resumeInputRef.current?.click()}
+                          disabled={uploadingResume}
+                          style={{
+                            minHeight: 44,
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            border: "1px solid var(--line)",
+                            background: "var(--surface)",
+                            color: "var(--ink)",
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            cursor: uploadingResume ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {uploadingResume ? "Uploading…" : "Replace Resume"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUseSavedResume(false)}
+                          style={{
+                            minHeight: 44,
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid var(--line)",
+                            background: "transparent",
+                            color: "var(--ink-soft)",
+                            fontSize: 12.5,
+                            fontWeight: 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Don't Use
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setUseSavedResume(true)}
+                          style={{
+                            minHeight: 44,
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "var(--p-gradient)",
+                            color: "#fff",
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✓ Use Saved Resume
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resumeInputRef.current?.click()}
+                          disabled={uploadingResume}
+                          style={{
+                            minHeight: 44,
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            border: "1px solid var(--line)",
+                            background: "var(--surface)",
+                            color: "var(--ink)",
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            cursor: uploadingResume ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {uploadingResume ? "Uploading…" : "Upload New"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: "var(--surface-sunken, rgba(0,0,0,0.02))",
+                  border: "1.5px dashed var(--line)",
+                  borderRadius: 10,
+                  padding: "18px 14px",
+                  textAlign: "center",
+                  marginTop: 6,
+                }}
+              >
+                <div style={{ fontSize: 26, marginBottom: 4 }}>📄</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", marginBottom: 2 }}>
+                  No resume attached (Optional)
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 14 }}>
+                  Supported formats: PDF, DOCX, DOC, TXT (Max 10MB)
+                </div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => resumeInputRef.current?.click()}
+                    disabled={uploadingResume}
+                    style={{
+                      minHeight: 44,
+                      padding: "10px 18px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "var(--p-gradient)",
+                      color: "#fff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: uploadingResume ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {uploadingResume ? "Uploading…" : "+ Upload Resume"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasteText((p) => !p)}
+                    style={{
+                      minHeight: 44,
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      border: "1px solid var(--line)",
+                      background: "var(--surface)",
+                      color: "var(--ink-soft)",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {showPasteText ? "Hide Text Paste" : "Paste Text Instead"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {resumeUploadErr && (
+              <div style={{ marginTop: 8, fontSize: 12.5, color: "#EF4444", fontWeight: 500 }}>
+                {resumeUploadErr}
+              </div>
+            )}
+
+            {/* Optional manual text input fallback */}
+            {showPasteText && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", display: "block", marginBottom: 4 }}>
+                  Resume / Achievements Text
+                </label>
+                <textarea
+                  value={resumeText}
+                  onChange={(e) => {
+                    setResumeText(e.target.value);
+                    if (e.target.value.trim() && !useSavedResume) setUseSavedResume(true);
+                  }}
+                  placeholder="Paste your resume text or accomplishments here..."
+                  rows={4}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13, resize: "vertical" }}
+                />
+              </div>
+            )}
           </div>
 
           {err && <div className="err" style={{ marginBottom: 12, fontSize: 13 }}>{err}</div>}
@@ -587,7 +872,7 @@ export default function Interview({ onNavigate, user }) {
             }}
           >
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--primary)" }}>
                 {session.round_type || roundType} · {session.difficulty || difficulty}
               </div>
               <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
@@ -595,7 +880,7 @@ export default function Interview({ onNavigate, user }) {
               </h2>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               {/* Voice Status Badge */}
               <div
                 style={{
@@ -612,7 +897,7 @@ export default function Interview({ onNavigate, user }) {
                       : status === "listening"
                       ? "#ECFDF5"
                       : status === "thinking"
-                      ? "var(--marigold-light)"
+                      ? "var(--primary-light)"
                       : "var(--surface-2)",
                   color:
                     status === "speaking"
@@ -620,22 +905,23 @@ export default function Interview({ onNavigate, user }) {
                       : status === "listening"
                       ? "#059669"
                       : status === "thinking"
-                      ? "var(--marigold-dark)"
+                      ? "var(--primary)"
                       : "var(--ink-soft)",
                   border: "1px solid var(--line)",
                 }}
               >
-                {status === "speaking" && <span>🔊 Interviewer Speaking…</span>}
-                {status === "listening" && <span>🎙️ Candidate Turn (Listening)</span>}
-                {status === "thinking" && <span>🧠 Evaluating Answer…</span>}
-                {status === "completed" && <span>✅ Interview Concluded</span>}
-                {status === "idle" && <span>⏸️ Ready</span>}
+                {status === "speaking" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{Ico.speaker} Interviewer Speaking…</span>}
+                {status === "listening" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{Ico.mic} Candidate Turn (Listening)</span>}
+                {status === "thinking" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{Ico.spark} Evaluating Answer…</span>}
+                {status === "completed" && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{Ico.check} Interview Concluded</span>}
+                {status === "idle" && <span>Ready</span>}
               </div>
 
               {session.status !== "completed" && (
                 <button
                   onClick={handleConcludeInterview}
                   style={{
+                    minHeight: 34,
                     padding: "6px 14px",
                     borderRadius: 12,
                     border: "1px solid var(--line)",
@@ -653,6 +939,7 @@ export default function Interview({ onNavigate, user }) {
               <button
                 onClick={handleNewInterview}
                 style={{
+                  minHeight: 34,
                   padding: "6px 14px",
                   borderRadius: 12,
                   border: "1px solid var(--line)",
@@ -670,33 +957,33 @@ export default function Interview({ onNavigate, user }) {
 
           {/* Voice Controls Toolbar */}
           {controller && session.status !== "completed" && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
               <button
                 onClick={() => {
                   ttsManagerRef.current?.unlockAudio?.();
                   controller.tts.replay();
                 }}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ minHeight: 36, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
               >
-                🔄 Replay Question Voice
+                Replay Question Voice
               </button>
               <button
                 onClick={() => controller.tts.pause()}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ minHeight: 36, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
               >
-                ⏸️ Pause Voice
+                Pause Voice
               </button>
               <button
                 onClick={() => controller.tts.resume()}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ minHeight: 36, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
               >
-                ▶️ Resume Voice
+                Resume Voice
               </button>
               <button
                 onClick={() => controller.tts.stop()}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ minHeight: 36, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
               >
-                ⏹️ Stop Voice
+                Stop Voice
               </button>
             </div>
           )}
@@ -716,7 +1003,7 @@ export default function Interview({ onNavigate, user }) {
               >
                 {/* Interviewer Question */}
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--marigold-dark)", marginBottom: 4 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--primary)", marginBottom: 4 }}>
                     Turn {idx + 1} · Interviewer Question
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", lineHeight: 1.5 }}>
@@ -758,21 +1045,23 @@ export default function Interview({ onNavigate, user }) {
                       />
 
                       {interimTranscript && (
-                        <div style={{ fontSize: 12, color: "#059669", background: "#ECFDF5", padding: "4px 8px", borderRadius: 6, marginTop: 6 }}>
-                          🎙️ Hearing speech: <i>{interimTranscript}</i>
+                        <div style={{ fontSize: 12, color: "#059669", background: "#ECFDF5", padding: "6px 10px", borderRadius: 6, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ display: "inline-flex" }}>{Ico.mic}</span>
+                          <span>Hearing speech: <i>{interimTranscript}</i></span>
                         </div>
                       )}
 
                       {err && <div className="err" style={{ marginTop: 6, fontSize: 13 }}>{err}</div>}
 
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, flexWrap: "wrap", gap: 10 }}>
                         <button
                           type="button"
                           onClick={() => (isMicActive ? stopListeningMic() : startListeningMic())}
                           style={{
-                            padding: "6px 14px",
-                            borderRadius: 16,
-                            border: isMicActive ? "1.5px solid #059669" : "1px solid var(--line)",
+                            minHeight: 44,
+                            padding: "8px 18px",
+                            borderRadius: 22,
+                            border: isMicActive ? "1.5px solid #059669" : "1.5px solid var(--line)",
                             background: isMicActive ? "#ECFDF5" : "var(--surface-2)",
                             fontSize: 13,
                             fontWeight: 600,
@@ -783,15 +1072,16 @@ export default function Interview({ onNavigate, user }) {
                             gap: 6,
                           }}
                         >
-                          <span>🎙️</span>
-                          <span>{isMicActive ? "Listening (Click to pause)" : "Start Mic"}</span>
+                          {Ico.mic}
+                          <span>{isMicActive ? "Listening (Tap to pause)" : "Start Mic"}</span>
                         </button>
 
                         <button
                           type="submit"
                           disabled={busy || !answerInput.trim()}
                           style={{
-                            padding: "8px 20px",
+                            minHeight: 44,
+                            padding: "10px 22px",
                             borderRadius: 8,
                             border: "none",
                             background: busy || !answerInput.trim() ? "var(--line)" : "var(--p-gradient)",

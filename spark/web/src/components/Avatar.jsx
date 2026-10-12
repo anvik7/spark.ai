@@ -56,15 +56,15 @@ export function Avatar({ src, name = "User", size = 36, style = {}, className = 
   return (
     <div
       className={className}
-      title={`${name} (${preset.name})`}
-      data-avatar-type="preset"
+      title={name}
+      data-avatar-type="initials"
       style={{
         width: size,
         height: size,
         borderRadius: "50%",
-        background: preset.bg,
+        background: preset.bg || "linear-gradient(135deg, #334155, #1E293B)",
         color: "#FFFFFF",
-        fontWeight: 700,
+        fontWeight: 600,
         fontSize: fontSize,
         fontFamily: "var(--sans, Inter, sans-serif)",
         display: "inline-flex",
@@ -73,25 +73,13 @@ export function Avatar({ src, name = "User", size = 36, style = {}, className = 
         flexShrink: 0,
         letterSpacing: ".02em",
         userSelect: "none",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.14)",
-        border: "1.5px solid rgba(255,255,255,0.25)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+        border: "1px solid rgba(255,255,255,0.15)",
         position: "relative",
         ...style,
       }}
     >
       <span>{initials}</span>
-      <span
-        style={{
-          position: "absolute",
-          bottom: -2,
-          right: -2,
-          fontSize: Math.max(8, Math.floor(size * 0.32)),
-          lineHeight: 1,
-          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
-        }}
-      >
-        {preset.icon}
-      </span>
     </div>
   );
 }

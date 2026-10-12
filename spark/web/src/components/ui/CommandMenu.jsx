@@ -42,10 +42,10 @@ export default function CommandMenu({ isOpen, onClose, onNavigate }) {
     { id: "home", label: "Go to Home Workspace", icon: "⚡", category: "Navigation" },
     { id: "tasks", label: "Go to Tasks", icon: "📋", category: "Navigation" },
     { id: "capture", label: "Go to Capture", icon: "✏️", category: "Navigation" },
-    { id: "study", label: "Go to Study", icon: "📖", category: "Navigation" },
     { id: "circles", label: "Go to Chat", icon: "👥", category: "Navigation" },
     { id: "career", label: "Go to Career OS", icon: "🎯", category: "Navigation" },
     { id: "coach", label: "Go to Interview Coach", icon: "💬", category: "Navigation" },
+    { id: "study", label: "Go to Study Center", icon: "📚", category: "Navigation" },
   ].filter((item) => !q || item.label.toLowerCase().includes(q));
 
   const filteredCaptures = captures.filter((c) =>

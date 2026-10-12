@@ -20,22 +20,9 @@ if os.environ.get("RUN_LIVE_CLOUD_STORAGE_TESTS") != "1":
 from spark.config import get_settings
 from spark.storage import reset_storage
 
-# Ensure deterministic local SQLite database for test session
-_test_db_file = Path(__file__).resolve().parent / "test_suite_tmp.db"
-if _test_db_file.exists():
-    try:
-        _test_db_file.unlink()
-    except Exception:
-        pass
-
-os.environ["DATABASE_URL"] = f"sqlite:///{_test_db_file}"
-
-# Clear settings cache so STORAGE_BACKEND=local and DATABASE_URL are active
+# Clear settings cache so STORAGE_BACKEND=local is active
 get_settings.cache_clear()
 reset_storage()
-
-from spark.models import init_db
-init_db()
 
 
 @pytest.fixture(autouse=True)

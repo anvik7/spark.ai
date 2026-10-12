@@ -83,13 +83,13 @@ async function req(path, { method = "GET", body, form, timeoutMs = 60000, signal
       setToken("");
       window.dispatchEvent(new Event("spark:unauthorized"));
     }
-    let errMsg = data.error?.message || data.message || data.detail || (typeof data === "string" ? data : "");
+    let errMsg = data.error?.message || data.message || (Array.isArray(data.detail) ? data.detail.map(d => d.msg || d.message || JSON.stringify(d)).join(", ") : data.detail) || (typeof data === "string" ? data : "");
     if (res.status === 400 && !errMsg) {
       errMsg = "Invalid request. Please check your question or file.";
     } else if ((res.status === 401 || res.status === 403) && !errMsg) {
       errMsg = "Session expired. Please log in again.";
     } else if (res.status === 429) {
-      errMsg = data.error?.message || "You're sending tasks too quickly. Please wait a moment.";
+      errMsg = data.error?.message || errMsg || "You're sending tasks too quickly. Please wait a moment.";
     } else if (res.status >= 500 && !errMsg) {
       errMsg = "SparkDhi encountered an issue processing your task. Please try again.";
     } else if (!errMsg) {
@@ -109,6 +109,16 @@ export const api = {
     req("/auth/signup", { method: "POST", body: { email, password, name } }),
   login: (email, password) =>
     req("/auth/login", { method: "POST", body: { email, password } }),
+  forgotPassword: (email) =>
+    req("/auth/forgot-password", { method: "POST", body: { email } }),
+  verifyResetToken: (token) =>
+    req("/auth/verify-reset-token", { method: "POST", body: { token } }),
+  resetPassword: (token, newPassword) => {
+    const payload = typeof token === "object" && token !== null
+      ? { token: token.token, new_password: token.new_password || token.newPassword || token.password }
+      : { token, new_password: newPassword };
+    return req("/auth/reset-password", { method: "POST", body: payload });
+  },
   me: () => req("/me"),
   uploadAvatar: (file) => {
     const f = new FormData();
@@ -154,39 +164,9 @@ export const api = {
       body: { order_id, payment_id, signature, plan, interval, currency },
     }),
   cancelSubscription: () => req("/billing/cancel", { method: "POST" }),
-  getGoal: () => req("/goals"),
-  setGoal: (goalData) => req("/goals", { method: "POST", body: goalData }),
+
   updateAvatarPreset: (presetId) => req("/me/avatar", { method: "POST", body: { avatar_url: presetId } }),
 
-  // Study API
-  getStudySessions: () => req("/study/sessions"),
-  getStudyLogs: () => req("/study/logs"),
-  createStudySession: (subject, material = "", minutes = 0, seconds = 0, date = null) =>
-    req("/study/sessions", { method: "POST", body: { subject, material, minutes, seconds, date } }),
-  getTodayStudyStats: () => req("/study/logs/today"),
-  getWeeklyGoal: () => req("/study/weekly-goal"),
-  getStudyGoals: () => req("/study/goals"),
-  setWeeklyGoal: (targetHours) => req("/study/weekly-goal", { method: "POST", body: { target_hours: Number(targetHours) } }),
-  getStudyFeed: () => req("/study/feed"),
-  getStudyAnalyticsSummary: () => req("/study/analytics/summary"),
-  getStudySubjectBreakdown: () => req("/study/analytics/subjects"),
-  getStudyWeakspots: () => req("/study/analytics/weakspots"),
-
-  // Active Learning Engine API
-  listActiveStudySessions: () => req("/study/active-sessions"),
-  createActiveStudySessionUpload: (formData) => req("/study/active-sessions", { method: "POST", form: formData }),
-  getActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`),
-  processActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}/process`, { method: "POST" }),
-  getStudyChapter: (chapterId) => req(`/study/active-sessions/chapters/${chapterId}`),
-  submitActiveRecall: (chapterId, userResponse) =>
-    req(`/study/active-sessions/chapters/${chapterId}/recall`, { method: "POST", body: { user_response: userResponse } }),
-  submitQuizAnswer: (questionId, userAnswer, timeTakenSeconds = 0) =>
-    req(`/study/active-sessions/questions/${questionId}/answer`, { method: "POST", body: { user_answer: userAnswer, time_taken_seconds: timeTakenSeconds } }),
-  getStudyMindMap: (sessionId) => req(`/study/active-sessions/${sessionId}/mindmap`),
-  updateStudyProgress: (sessionId, currentChapterIndex, currentTimeSeconds) =>
-    req(`/study/active-sessions/${sessionId}/progress`, { method: "POST", body: { current_chapter_index: currentChapterIndex, current_time_seconds: currentTimeSeconds } }),
-  deleteActiveStudySession: (sessionId) => req(`/study/active-sessions/${sessionId}`, { method: "DELETE" }),
-  createStudyFromCapture: (captureId) => req(`/study/active-sessions/from-capture/${captureId}`, { method: "POST" }),
 
   getTasks: () => req("/tasks").then(res => res.items || res),
   solveTask: (prompt, subject_hint = "", options = {}) => req("/tasks/solve", { method: "POST", body: { prompt, subject_hint }, ...options }),
@@ -255,6 +235,24 @@ export const api = {
     }
   },
 
+  // Authenticated Media Fetch
+  fetchMediaBlob: async (mediaUrl) => {
+    if (!mediaUrl) return null;
+    const path = mediaUrl.startsWith("/api")
+      ? mediaUrl
+      : (mediaUrl.startsWith("/") ? `/api${mediaUrl}` : `/api/${mediaUrl}`);
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(path, { headers });
+    if (!res.ok) {
+      const err = new Error(`Failed to load media (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 
   // Circles & Chat
   myCircles: () => req("/circles"),

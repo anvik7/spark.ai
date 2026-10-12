@@ -186,32 +186,66 @@ class StorageAdapter(ABC):
         pass
 
 
+def is_production_env() -> bool:
+    """Return True if running in production or on Render."""
+    env = (os.environ.get("ENVIRONMENT") or os.environ.get("ENV") or os.environ.get("SPARK_ENV") or "").strip().lower()
+    return env in ("production", "prod") or bool(os.environ.get("RENDER"))
+
+
 # --- Local Filesystem Storage Adapter ---------------------------------------
 
 class LocalStorageAdapter(StorageAdapter):
     """Local filesystem adapter preserving development workflow and legacy directory access."""
 
     def __init__(self, base_dir: Optional[Path] = None, fallback_dirs: Optional[list[Path]] = None):
+        is_prod = is_production_env()
         if base_dir:
             self.base_dir = Path(base_dir).resolve()
         else:
             settings = get_settings()
-            if settings.storage_local_dir:
-                self.base_dir = Path(settings.storage_local_dir).resolve()
+            if settings.storage_local_dir and settings.storage_local_dir.strip():
+                self.base_dir = Path(settings.storage_local_dir.strip()).resolve()
+            elif is_prod:
+                raise StorageConfigError(
+                    "FATAL: In production, STORAGE_LOCAL_DIR must be explicitly configured with a persistent storage mount path (e.g. /data/uploads). Ephemeral fallback to container storage is disallowed."
+                )
             else:
-                # Default to spark/uploads
+                # Default to spark/uploads for local development
                 self.base_dir = Path(__file__).resolve().parent.parent / "uploads"
 
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise StorageConfigError(
+                f"FATAL: Failed to access or create storage directory '{self.base_dir}': {e}"
+            ) from None
 
-        # Fallback directories for backward-compatibility with legacy uploads
-        app_root = Path(__file__).resolve().parent.parent
-        self.fallback_dirs: list[Path] = fallback_dirs or [
-            self.base_dir / "files",
-            self.base_dir,
-            app_root / "spark" / "storage_media",
-            app_root / "storage_media",
-        ]
+        # Confirm the configured directory is writable before accepting operations
+        test_file = self.base_dir / f".write_test_{uuid.uuid4().hex}"
+        try:
+            test_file.write_bytes(b"test")
+            if test_file.exists():
+                test_file.unlink()
+        except Exception as e:
+            raise StorageConfigError(
+                f"FATAL: Production storage directory '{self.base_dir}' is not writable. Ensure the persistent volume is properly mounted with write permissions."
+            ) from None
+
+        if is_prod:
+            # In production, do not silently search or fall back to ephemeral container directories
+            self.fallback_dirs: list[Path] = fallback_dirs or [
+                self.base_dir / "files",
+                self.base_dir,
+            ]
+        else:
+            # Fallback directories for backward-compatibility with legacy uploads in local dev
+            app_root = Path(__file__).resolve().parent.parent
+            self.fallback_dirs: list[Path] = fallback_dirs or [
+                self.base_dir / "files",
+                self.base_dir,
+                app_root / "spark" / "storage_media",
+                app_root / "storage_media",
+            ]
         for fb in self.fallback_dirs:
             fb.mkdir(parents=True, exist_ok=True)
 
@@ -481,7 +515,11 @@ def get_storage() -> StorageAdapter:
     if backend in ("s3", "r2", "cloudflare_r2"):
         bucket = getattr(settings, "s3_bucket", "")
         if not bucket:
-            # Fallback gracefully to local storage if bucket name is missing
+            if is_production_env():
+                raise StorageConfigError(
+                    "FATAL: In production, S3_BUCKET must be configured when STORAGE_BACKEND is set to S3/R2."
+                )
+            # Fallback gracefully to local storage if bucket name is missing in local dev
             _storage_instance = LocalStorageAdapter()
             return _storage_instance
 

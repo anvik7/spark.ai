@@ -3,7 +3,6 @@ import React from "react";
 const MESSAGES = {
   tasks: "Loading your tasks…",
   capture: "Loading your captures…",
-  study: "Loading your learning sessions…",
   chat: "Loading chats…",
   career: "Loading your career workspace…",
   coach: "Loading interview coach…",

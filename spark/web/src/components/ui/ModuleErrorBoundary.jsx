@@ -42,7 +42,7 @@ export default class ModuleErrorBoundary extends React.Component {
             {moduleName} couldn't load
           </h2>
           <p style={{ fontSize: 13, color: "var(--ink-soft)", margin: "0 0 16px", lineHeight: 1.5 }}>
-            A temporary issue occurred while loading this section. The rest of Spark remains fully usable.
+            A temporary issue occurred while loading this section. The rest of SparkDhi remains fully usable.
           </p>
           <button
             onClick={this.handleRetry}

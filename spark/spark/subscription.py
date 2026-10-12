@@ -21,8 +21,30 @@ from sqlmodel import select, col, func
 import httpx
 from .config import get_settings
 from .models import User, Card, UsageDay, StudentTask, SubscriptionOrder
+from .auth import is_founder
 
 settings = get_settings()
+
+# In-memory test mode override for Founder accounts: {user_id: "default" | "free" | "plus" | "pro"}
+_FOUNDER_TEST_MODES: dict[int, str] = {}
+
+
+def set_founder_test_mode(user_id: int, mode: str) -> str:
+    """Set active simulation mode for a Founder account ('default', 'free', 'plus', 'pro')."""
+    clean_mode = mode.strip().lower()
+    if clean_mode not in ("default", "free", "plus", "pro"):
+        clean_mode = "default"
+    _FOUNDER_TEST_MODES[user_id] = clean_mode
+    return clean_mode
+
+
+def get_founder_test_mode(user_id: int) -> str:
+    """Retrieve active simulation mode for a Founder account."""
+    return _FOUNDER_TEST_MODES.get(user_id, "default")
+
+
+def clear_founder_test_mode(user_id: int) -> None:
+    _FOUNDER_TEST_MODES.pop(user_id, None)
 
 TIER_LIMITS = {
     "expired": {
@@ -178,6 +200,17 @@ def get_current_plan(user: User) -> str:
 
 def get_effective_plan(user: User) -> str:
     """Determine effective plan for feature access & quota evaluation ('plus', 'pro', 'trial', 'expired')."""
+    if is_founder(user):
+        test_mode = get_founder_test_mode(user.id)
+        if test_mode == "free":
+            return "expired"
+        elif test_mode == "plus":
+            return "plus"
+        elif test_mode == "pro":
+            return "pro"
+        else:  # "default"
+            return "pro"
+
     if is_active_paid(user):
         return user.plan
     if is_trial_active(user):
@@ -187,12 +220,22 @@ def get_effective_plan(user: User) -> str:
 
 def has_feature_access(user: User, feature_key: str) -> bool:
     """Centralized entitlement check for specific features."""
-    eff_plan = get_effective_plan(user)
-    status = get_subscription_status(user)
-
-    # Core workspace is always viewable/accessible for reading data
     if feature_key == "core_workspace":
         return True
+
+    if is_founder(user):
+        test_mode = get_founder_test_mode(user.id)
+        if test_mode == "free":
+            return False
+        elif test_mode == "plus":
+            if feature_key in ("advanced_analytics", "early_access", "voice_interview"):
+                return False
+            return True
+        else:
+            return True
+
+    eff_plan = get_effective_plan(user)
+    status = get_subscription_status(user)
 
     # Expired accounts cannot create new AI workloads or uploads
     if status == "expired":
@@ -205,7 +248,7 @@ def has_feature_access(user: User, feature_key: str) -> bool:
             return True
         return False
 
-    # PLUS and above features (Tasks AI, Coding answers, Study AI, Quizzes, Circles, Career OS)
+    # PLUS and above features (Tasks AI, Coding answers, Circles, Career OS)
     return True
 
 
@@ -217,6 +260,40 @@ def get_usage_limit(user: User, limit_key: str):
 
 def get_plan_limits(user: User) -> dict:
     """Get limits for user's effective plan, adjusting downloads during trial."""
+    if is_founder(user):
+        test_mode = get_founder_test_mode(user.id)
+        if test_mode == "free":
+            limits = dict(TIER_LIMITS["expired"])
+            limits["is_trial"] = False
+            limits["is_founder"] = True
+            limits["test_mode"] = "free"
+            return limits
+        elif test_mode == "plus":
+            limits = dict(TIER_LIMITS["plus"])
+            limits["is_trial"] = False
+            limits["is_founder"] = True
+            limits["test_mode"] = "plus"
+            return limits
+        elif test_mode == "pro":
+            limits = dict(TIER_LIMITS["pro"])
+            limits["is_trial"] = False
+            limits["is_founder"] = True
+            limits["test_mode"] = "pro"
+            return limits
+        else:  # "default"
+            return {
+                "ai_calls_per_day": 10000,
+                "max_uploads": 500,
+                "storage_bytes": 100 * 1024 * 1024 * 1024,
+                "max_downloads_per_month": 5000,
+                "advanced_ai": True,
+                "advanced_analytics": True,
+                "priority_processing": True,
+                "is_trial": False,
+                "is_founder": True,
+                "test_mode": "default",
+            }
+
     eff_plan = get_effective_plan(user)
     limits = dict(TIER_LIMITS.get(eff_plan, TIER_LIMITS["expired"]))
 
@@ -229,9 +306,8 @@ def get_plan_limits(user: User) -> dict:
     return limits
 
 
-
 def count_user_uploads(session, user_id: int) -> int:
-    """Count user uploaded files across active non-Study modules (Task attachments and File/Voice Captures)."""
+    """Count user uploaded files across active non-Study modules (Task attachments & File/Voice Captures)."""
     try:
         task_uploads = session.exec(
             select(func.count()).where(StudentTask.user_id == user_id, StudentTask.image_url.is_not(None))
@@ -288,6 +364,8 @@ def get_user_entitlements(user: User, session) -> dict:
         "effective_plan": eff_plan,
         "subscription_status": sub_status,
         "is_active_paid": is_active_paid(user),
+        "is_founder": is_founder(user),
+        "founder_test_mode": get_founder_test_mode(user.id) if is_founder(user) else None,
         "trial": {
             "active": trial_active,
             "started_at": trial_started_at.isoformat() if trial_started_at else None,

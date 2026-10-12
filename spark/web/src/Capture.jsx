@@ -3,6 +3,40 @@ import { api } from "./api.js";
 import Avatar from "./components/Avatar.jsx";
 import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 
+// Clean SVG Icons for Capture
+const Ico = {
+  mic: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+    </svg>
+  ),
+  file: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+  ),
+  spark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+  ),
+  link: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  ),
+  copy: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+};
+
 // ── Voice: Web Speech API & MediaRecorder ──────────
 const SPEECH_OK =
   typeof window !== "undefined" &&
@@ -101,6 +135,96 @@ function autoClassifyContent(text, selectedFile, recordedAudioBlob) {
   const trimmed = text.trim();
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return "link";
   return "note";
+}
+
+// Helper: Authenticated capture image preview with automatic Blob URL revocation
+function CaptureImagePreview({ src, alt = "Capture preview" }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let currentUrl = null;
+
+    if (!src) {
+      setLoading(false);
+      setError(true);
+      return;
+    }
+
+    if (src.startsWith("blob:") || src.startsWith("data:")) {
+      setBlobUrl(src);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(false);
+
+    api.fetchMediaBlob(src)
+      .then((url) => {
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        currentUrl = url;
+        setBlobUrl(url);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [src]);
+
+  if (loading) {
+    return (
+      <div style={{ marginTop: 8, padding: "16px 12px", background: "var(--surface-2, #f9fafb)", borderRadius: 10, border: "1px solid var(--line, #e5e7eb)", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-faint, #6b7280)" }}>
+        <span>⏳</span> Loading preview...
+      </div>
+    );
+  }
+
+  if (error || !blobUrl) {
+    return (
+      <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--surface-2, #f9fafb)", borderRadius: 10, border: "1px dashed var(--line, #e5e7eb)", fontSize: 12, color: "var(--ink-faint, #6b7280)" }}>
+        ⚠️ Image preview unavailable
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--line, #e5e7eb)", maxWidth: 360, maxHeight: 260, background: "#000" }}>
+      <img
+        src={blobUrl}
+        alt={alt}
+        style={{ width: "100%", maxHeight: 260, objectFit: "contain", display: "block" }}
+      />
+    </div>
+  );
+}
+
+async function handleDownloadAttachment(sourceUrl, fallbackName) {
+  try {
+    const blobUrl = await api.fetchMediaBlob(sourceUrl);
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fallbackName || sourceUrl.split("/").pop() || "attachment";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch (err) {
+    alert("Failed to download attachment: " + (err.message || "Access denied"));
+  }
 }
 
 export default function Capture({ onNavigate }) {
@@ -267,41 +391,48 @@ export default function Capture({ onNavigate }) {
 
         {/* Live Voice Recording Transcript Bar */}
         {voice.listening && (
-          <div style={{ padding: "8px 12px", background: "var(--marigold-light)", borderRadius: 8, fontSize: 13, color: "var(--marigold-dark)", fontWeight: 600, marginBottom: 10, display: "flex", alignItems: "center", justifyBetween: "space-between" }}>
-            <span>🎙️ Listening… {voice.interim && `"${voice.interim}"`}</span>
-            <button type="button" onClick={voice.stop} style={{ background: "none", border: "none", color: "var(--marigold-dark)", fontWeight: 700, cursor: "pointer" }}>Stop</button>
+          <div style={{ padding: "8px 12px", background: "var(--primary-light)", borderRadius: 8, fontSize: 13, color: "var(--primary)", fontWeight: 600, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {Ico.mic} Listening… {voice.interim && `"${voice.interim}"`}
+            </span>
+            <button type="button" onClick={voice.stop} style={{ background: "none", border: "none", color: "var(--primary)", fontWeight: 700, cursor: "pointer" }}>Stop</button>
           </div>
         )}
 
         {/* Selected File Badge */}
         {selectedFile && (
-          <div style={{ padding: "6px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>📄 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)</span>
-            <button type="button" onClick={() => setSelectedFile(null)} style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer" }}>✕</button>
+          <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {Ico.file} {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)
+            </span>
+            <button type="button" onClick={() => setSelectedFile(null)} style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700 }}>✕</button>
           </div>
         )}
 
-        {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>⚠️ {err}</div>}
+        {err && <div className="err" style={{ marginBottom: 10, fontSize: 13 }}>{err}</div>}
 
         {/* Composer Action Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* "+" Icon Attachment Control */}
             <label
               title="Attach image, document, or file"
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
+                minWidth: 44,
+                minHeight: 44,
                 borderRadius: "50%",
-                border: "1px solid var(--line)",
+                border: "1.5px solid var(--line)",
                 background: "var(--surface-2)",
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 600,
                 cursor: "pointer",
                 color: "var(--ink)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
+                transition: "border-color .15s ease",
               }}
             >
               +
@@ -318,20 +449,22 @@ export default function Capture({ onNavigate }) {
               onClick={voice.listening ? voice.stop : voice.start}
               title={voice.listening ? "Stop voice" : "Voice note"}
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
+                minWidth: 44,
+                minHeight: 44,
                 borderRadius: "50%",
-                border: voice.listening ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                background: voice.listening ? "var(--marigold-light)" : "var(--surface-2)",
-                fontSize: 16,
+                border: voice.listening ? "1.5px solid var(--primary)" : "1.5px solid var(--line)",
+                background: voice.listening ? "var(--primary-light)" : "var(--surface-2)",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: voice.listening ? "var(--marigold-dark)" : "var(--ink)",
+                color: voice.listening ? "var(--primary)" : "var(--ink)",
+                transition: "all .15s ease",
               }}
             >
-              🎙️
+              {Ico.mic}
             </button>
           </div>
 
@@ -339,7 +472,8 @@ export default function Capture({ onNavigate }) {
             type="submit"
             disabled={saving || (!textInput.trim() && !selectedFile && !voice.recordedAudioBlob)}
             style={{
-              padding: "9px 20px",
+              minHeight: 44,
+              padding: "10px 22px",
               borderRadius: "var(--r-s)",
               border: "none",
               background: saving || (!textInput.trim() && !selectedFile && !voice.recordedAudioBlob) ? "var(--line)" : "var(--p-gradient)",
@@ -524,21 +658,51 @@ export default function Capture({ onNavigate }) {
 
             {/* Real AI Insight Badge if summary is available and distinct */}
             {c.summary && c.summary !== c.raw && (
-              <div style={{ marginTop: 8, padding: "6px 10px", background: "var(--marigold-light)", borderRadius: 6, border: "1px solid var(--marigold)", fontSize: 12, color: "var(--marigold-dark)", lineHeight: 1.4 }}>
-                <span style={{ fontWeight: 700 }}>✨ Spark Insight: </span>
+              <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--primary-light)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12.5, color: "var(--ink)", lineHeight: 1.45 }}>
+                <span style={{ fontWeight: 700, color: "var(--primary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {Ico.spark} SparkDhi Insight:
+                </span>{" "}
                 <span>{c.summary}</span>
               </div>
             )}
 
             {c.source_url && (
-              <a
-                href={c.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 12, color: "var(--marigold-dark)", textDecoration: "none", marginTop: 6, display: "inline-block" }}
-              >
-                🔗 {c.source_url}
-              </a>
+              <>
+                {c.kind === "image" ? (
+                  <CaptureImagePreview src={c.source_url} alt={c.title || "Capture image"} />
+                ) : null}
+
+                {c.source_url.startsWith("/api/uploads/") ? (
+                  <button
+                    onClick={() => handleDownloadAttachment(c.source_url, c.title || "attachment")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: "4px 0",
+                      fontSize: 12,
+                      color: "var(--primary)",
+                      textDecoration: "underline",
+                      marginTop: 6,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {Ico.file} Download {c.kind === "pdf" ? "PDF Document" : (c.kind === "voice" ? "Voice Note" : "Attachment")}
+                  </button>
+                ) : (
+                  <a
+                    href={c.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: "var(--primary)", textDecoration: "none", marginTop: 6, display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    {Ico.link} {c.source_url}
+                  </a>
+                )}
+              </>
             )}
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
@@ -556,17 +720,20 @@ export default function Capture({ onNavigate }) {
                         alert("Public link copied to clipboard:\n" + url);
                       }}
                       style={{
-                        padding: "3px 8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 10px",
                         borderRadius: 6,
-                        border: "1px solid var(--marigold)",
-                        background: "var(--marigold-light)",
-                        color: "var(--marigold-dark)",
+                        border: "1px solid var(--line)",
+                        background: "var(--primary-light)",
+                        color: "var(--primary)",
                         fontSize: 11.5,
                         fontWeight: 700,
                         cursor: "pointer",
                       }}
                     >
-                      📋 Copy Link
+                      {Ico.copy} Copy Link
                     </button>
                     <button
                       onClick={async () => {
@@ -576,7 +743,7 @@ export default function Capture({ onNavigate }) {
                         );
                       }}
                       style={{
-                        padding: "3px 8px",
+                        padding: "4px 10px",
                         borderRadius: 6,
                         border: "1px solid var(--line)",
                         background: "var(--surface-2)",
@@ -601,7 +768,10 @@ export default function Capture({ onNavigate }) {
                       alert("Public share link created & copied:\n" + url);
                     }}
                     style={{
-                      padding: "3px 8px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "4px 10px",
                       borderRadius: 6,
                       border: "1px solid var(--line)",
                       background: "var(--surface-2)",
@@ -611,32 +781,10 @@ export default function Capture({ onNavigate }) {
                       cursor: "pointer",
                     }}
                   >
-                    🔗 Share
+                    {Ico.link} Share
                   </button>
                 )}
 
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.createStudyFromCapture(c.id);
-                      onNavigate?.("study");
-                    } catch (err) {
-                      setErr(err.message || "Failed to start study session from capture.");
-                    }
-                  }}
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 6,
-                    border: "1px solid var(--marigold)",
-                    background: "var(--marigold-light)",
-                    color: "var(--marigold-dark)",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  🚀 Study Note
-                </button>
               </div>
             </div>
           </div>

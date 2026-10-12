@@ -1,6 +1,34 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "./api.js";
 
+// Clean SVG Icons for Tasks
+const Ico = {
+  mic: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+    </svg>
+  ),
+  copy: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+  refresh: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M23 4v6h-6M1 20v-6h6" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  ),
+  spark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  ),
+};
+
 // ── Voice: Web Speech API ──────────
 const SPEECH_OK =
   typeof window !== "undefined" &&
@@ -67,6 +95,81 @@ function useVoiceInput({ onTranscript, onError }) {
   }, []);
 
   return { listening, interim, start, stop };
+}
+
+// ── Authenticated Task Image Preview Component with Automatic Blob Cleanup ──
+function TaskImagePreview({ src, alt = "Attached problem" }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let currentUrl = null;
+
+    if (!src) {
+      setLoading(false);
+      setError(true);
+      return;
+    }
+
+    if (src.startsWith("blob:") || src.startsWith("data:")) {
+      setBlobUrl(src);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(false);
+
+    api.fetchMediaBlob(src)
+      .then((url) => {
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        currentUrl = url;
+        setBlobUrl(url);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [src]);
+
+  if (loading) {
+    return (
+      <div style={{ marginBottom: 12, padding: "16px 12px", background: "var(--surface-2, #f9fafb)", borderRadius: 8, border: "1px solid var(--line, #e5e7eb)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12, color: "var(--ink-faint, #6b7280)" }}>
+        <span>⏳</span> Loading problem attachment...
+      </div>
+    );
+  }
+
+  if (error || !blobUrl) {
+    return (
+      <div style={{ marginBottom: 12, padding: "12px 14px", background: "var(--surface-2, #f9fafb)", borderRadius: 8, border: "1px dashed var(--line, #e5e7eb)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12, color: "var(--ink-faint, #6b7280)" }}>
+        <span>🖼️</span> Attached image unavailable
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
+      <img
+        src={blobUrl}
+        alt={alt}
+        style={{ maxHeight: 220, width: "100%", objectFit: "cover", display: "block" }}
+        loading="lazy"
+      />
+    </div>
+  );
 }
 
 function renderStepWithCode(text) {
@@ -475,18 +578,21 @@ export default function Tasks() {
               onClick={() => fileInputRef.current?.click()}
               title="Attach photo or document (Image, PDF, DOCX, TXT)"
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
+                minWidth: 44,
+                minHeight: 44,
                 borderRadius: "50%",
-                border: "1px solid var(--line)",
+                border: "1.5px solid var(--line)",
                 background: "var(--surface-2)",
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 600,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 color: "var(--ink)",
+                transition: "border-color .15s ease",
               }}
             >
               +
@@ -505,20 +611,22 @@ export default function Tasks() {
               onClick={toggleVoice}
               title={listening ? "Stop voice" : "Voice input"}
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
+                minWidth: 44,
+                minHeight: 44,
                 borderRadius: "50%",
-                border: listening ? "1.5px solid var(--marigold)" : "1px solid var(--line)",
-                background: listening ? "var(--marigold-light)" : "var(--surface-2)",
-                fontSize: 16,
+                border: listening ? "1.5px solid var(--primary)" : "1.5px solid var(--line)",
+                background: listening ? "var(--primary-light)" : "var(--surface-2)",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: listening ? "var(--marigold-dark)" : "var(--ink)",
+                color: listening ? "var(--primary)" : "var(--ink)",
+                transition: "all .15s ease",
               }}
             >
-              🎙️
+              {Ico.mic}
             </button>
 
             {/* Keyboard Shortcut Hint */}
@@ -534,9 +642,10 @@ export default function Tasks() {
               onClick={handleStop}
               title="Stop generating"
               style={{
-                height: 38,
-                padding: "0 14px",
-                borderRadius: 19,
+                minHeight: 44,
+                height: 44,
+                padding: "0 16px",
+                borderRadius: 22,
                 border: "1.5px solid #EF4444",
                 background: "#FEF2F2",
                 color: "#DC2626",
@@ -562,13 +671,15 @@ export default function Tasks() {
                 disabled={!canSubmit}
                 title="Send"
                 style={{
-                  width: 38,
-                  height: 38,
+                  width: 44,
+                  height: 44,
+                  minWidth: 44,
+                  minHeight: 44,
                   borderRadius: "50%",
                   border: "none",
                   background: canSubmit ? "var(--p-gradient)" : "var(--line)",
                   color: canSubmit ? "#FFFFFF" : "var(--ink-faint)",
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: 700,
                   cursor: canSubmit ? "pointer" : "not-allowed",
                   boxShadow: canSubmit ? "0 2px 6px rgba(0,0,0,0.12)" : "none",
@@ -589,7 +700,7 @@ export default function Tasks() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>Recent Tasks</h2>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--marigold-dark)", background: "var(--marigold-light)", padding: "2px 8px", borderRadius: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)", background: "var(--primary-light)", padding: "2px 8px", borderRadius: 10 }}>
             {tasks.length} items
           </span>
         </div>
@@ -602,7 +713,9 @@ export default function Tasks() {
 
         {!loadingTasks && tasks.length === 0 && (
           <div className="empty" style={{ padding: 36, textAlign: "center", background: "var(--surface-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)" }}>
-            <div style={{ fontSize: 28, marginBottom: 6 }}>💬</div>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+              {Ico.spark}
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No tasks yet</div>
             <div style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 2 }}>
               Type a question or attach a file above to get started.
@@ -632,8 +745,8 @@ export default function Tasks() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14 }}>{task.icon || "💬"}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--marigold-dark)" }}>
+                      <span style={{ color: "var(--primary)", display: "inline-flex" }}>{Ico.spark}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--primary)" }}>
                         {task.subject || "General"}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
@@ -688,7 +801,7 @@ export default function Tasks() {
                         onClick={() => handleCopyTask(task)}
                         style={{
                           fontSize: 12,
-                          padding: "3px 10px",
+                          padding: "4px 10px",
                           borderRadius: 8,
                           border: `1px solid ${isCopied ? "#059669" : "var(--line)"}`,
                           background: isCopied ? "#ECFDF5" : "var(--surface-2)",
@@ -696,10 +809,10 @@ export default function Tasks() {
                           cursor: "pointer",
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: 4,
+                          gap: 5,
                         }}
                       >
-                        <span>{isCopied ? "✓" : "📋"}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center" }}>{isCopied ? "✓" : Ico.copy}</span>
                         <span>{isCopied ? "Copied" : "Copy"}</span>
                       </button>
 
@@ -708,7 +821,7 @@ export default function Tasks() {
                         disabled={isRegenerating}
                         style={{
                           fontSize: 12,
-                          padding: "3px 10px",
+                          padding: "4px 10px",
                           borderRadius: 8,
                           border: "1px solid var(--line)",
                           background: "var(--surface-2)",
@@ -716,19 +829,17 @@ export default function Tasks() {
                           cursor: isRegenerating ? "not-allowed" : "pointer",
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: 4,
+                          gap: 5,
                         }}
                       >
-                        <span>🔄</span>
+                        <span style={{ display: "inline-flex", alignItems: "center" }}>{Ico.refresh}</span>
                         <span>{isRegenerating ? "Regenerating…" : "Regenerate"}</span>
                       </button>
                     </div>
 
                     {/* Attachment display */}
                     {task.imageUrl && (
-                      <div style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}>
-                        <img src={task.imageUrl} alt="Attached problem" style={{ maxHeight: 220, width: "100%", objectFit: "cover" }} />
-                      </div>
+                      <TaskImagePreview src={task.imageUrl} alt="Attached problem" />
                     )}
 
                     {/* Direct Solution / Code Output */}
@@ -736,7 +847,7 @@ export default function Tasks() {
                       <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 4 }}>
                         Solution
                       </span>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--marigold-dark)", lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--primary)", lineHeight: 1.5 }}>
                         {renderStepWithCode(task.solution)}
                       </div>
                     </div>
@@ -765,7 +876,7 @@ export default function Tasks() {
                         </span>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {task.formulas.map((f, idx) => (
-                            <span key={idx} style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "var(--marigold-light)", color: "var(--marigold-dark)", border: "1px solid var(--line)" }}>
+                            <span key={idx} style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary)", border: "1px solid var(--line)" }}>
                               {f}
                             </span>
                           ))}
@@ -775,8 +886,9 @@ export default function Tasks() {
 
                     {/* Intuition */}
                     {task.intuition && (
-                      <div style={{ marginBottom: 12, fontSize: 13, color: "var(--ink)", background: "var(--surface-2)", padding: 10, borderRadius: 8, border: "1px solid var(--line)" }}>
-                        💡 <b>Intuition:</b> {task.intuition}
+                      <div style={{ marginBottom: 12, fontSize: 13, color: "var(--ink)", background: "var(--surface-2)", padding: 10, borderRadius: 8, border: "1px solid var(--line)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span style={{ color: "var(--primary)", display: "inline-flex", marginTop: 2 }}>{Ico.spark}</span>
+                        <div><b>Intuition:</b> {task.intuition}</div>
                       </div>
                     )}
 
@@ -789,10 +901,10 @@ export default function Tasks() {
                       {/* Quick Follow-up Action Pills */}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
                         {[
-                          { label: "✨ Simplify", query: "Can you explain this in simpler terms with an intuitive example?" },
-                          { label: "🔍 Explain More", query: "Can you explain the reasoning and derivation in more detail?" },
-                          { label: "💻 Code version", query: "Can you provide a runnable code implementation with comments for this?" },
-                          { label: "📝 Key Points", query: "What are the key takeaways, edge cases, and pitfalls to watch out for?" },
+                          { label: "Simplify", query: "Can you explain this in simpler terms with an intuitive example?" },
+                          { label: "Explain More", query: "Can you explain the reasoning and derivation in more detail?" },
+                          { label: "Code Version", query: "Can you provide a runnable code implementation with comments for this?" },
+                          { label: "Key Takeaways", query: "What are the key takeaways, edge cases, and pitfalls to watch out for?" },
                         ].map((action, aIdx) => (
                           <button
                             key={aIdx}

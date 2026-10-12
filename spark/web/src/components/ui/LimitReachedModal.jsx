@@ -5,7 +5,7 @@ export default function LimitReachedModal({
   onClose,
   onUpgrade,
   title = "You've reached your AI quota limit",
-  message = "You've reached your daily AI quota or upload capacity. Continue learning with Spark Plus or Pro.",
+  message = "You've reached your daily AI quota or upload capacity. Continue learning with SparkDhi Plus or Pro.",
   suggestedPlan = "plus",
 }) {
   if (!isOpen) return null;
@@ -41,7 +41,7 @@ export default function LimitReachedModal({
             Recommended Upgrade
           </div>
           <div style={{ fontSize: 16, fontWeight: 800, color: "var(--ink)", marginTop: 2 }}>
-            Spark Plus — ₹599 <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-soft)" }}>/ month ($12)</span>
+            SparkDhi Plus — ₹599 <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-soft)" }}>/ month ($12)</span>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 4 }}>
             ✓ 100 AI calls/day · 1GB storage · 25 downloads/mo · Priority AI

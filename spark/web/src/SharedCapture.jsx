@@ -36,13 +36,13 @@ export default function SharedCapture({ shareToken }) {
           {err || "This shared capture is private or its share link was revoked by the owner."}
         </p>
         <a href="/" style={{ fontSize: 13, fontWeight: 700, color: "var(--marigold-dark)", textDecoration: "none" }}>
-          ← Back to Spark Home
+          ← Back to SparkDhi Home
         </a>
       </div>
     );
   }
 
-  const creatorName = capture.creator_name || "Spark Creator";
+  const creatorName = capture.creator_name || "SparkDhi Creator";
   const displayTag = (capture.tags && capture.tags[0]) || capture.kind || "capture";
   const formattedDate = new Date(capture.created_at || Date.now()).toLocaleDateString("en-US", {
     month: "short",
@@ -113,21 +113,43 @@ export default function SharedCapture({ shareToken }) {
           {capture.raw || capture.title || capture.summary}
         </div>
 
+        {capture.kind === "image" && capture.source_url && (
+          <div style={{ marginTop: 8, marginBottom: 12, borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--line, #e5e7eb)", maxWidth: 480, maxHeight: 320, background: "#000" }}>
+            <img
+              src={capture.source_url}
+              alt={capture.title || "Shared image"}
+              style={{ width: "100%", maxHeight: 320, objectFit: "contain", display: "block" }}
+            />
+          </div>
+        )}
+
         {capture.source_url && (
-          <a
-            href={capture.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 12, color: "var(--marigold-dark)", textDecoration: "none", marginTop: 4, marginBottom: 12, display: "inline-block", wordBreak: "break-all" }}
-          >
-            🔗 {capture.source_url}
-          </a>
+          capture.source_url.startsWith("/api/uploads/") ? (
+            <a
+              href={capture.source_url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--marigold-dark)", textDecoration: "underline", marginTop: 4, marginBottom: 12, display: "inline-block", fontWeight: 600 }}
+            >
+              📎 Download {capture.kind === "pdf" ? "PDF Document" : (capture.kind === "voice" ? "Voice Note" : "Attachment")}
+            </a>
+          ) : (
+            <a
+              href={capture.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--marigold-dark)", textDecoration: "none", marginTop: 4, marginBottom: 12, display: "inline-block", wordBreak: "break-all" }}
+            >
+              🔗 {capture.source_url}
+            </a>
+          )
         )}
 
         {/* Action Footer */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>
-            Saved via Spark
+            Saved via SparkDhi
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -164,7 +186,7 @@ export default function SharedCapture({ shareToken }) {
                 textDecoration: "none",
               }}
             >
-              🚀 Open Spark
+              🚀 Open SparkDhi
             </a>
           </div>
         </div>

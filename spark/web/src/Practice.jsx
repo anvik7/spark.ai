@@ -214,7 +214,7 @@ export default function Practice() {
               Step-by-Step Solution
             </span>
             <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-              Spark AI Reasoning
+              SparkDhi Reasoning
             </span>
           </div>
 

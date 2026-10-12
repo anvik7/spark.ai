@@ -5,14 +5,32 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import col, func, select, delete
 
-from ..auth import current_user
+from ..auth import current_user, _user_id_from_token
 from ..models import CircleMember, CircleMessage, CircleMessageReaction, CircleMute, StudyCircle, User, UserBlock, UserReport, get_session
-from ..storage import build_object_key, get_storage, guess_content_type
+from ..storage import build_object_key, get_storage, guess_content_type, sanitize_object_key, StoragePathTraversalError, StorageError
 from ..subscription import is_active_paid, is_trial_active
 
 router = APIRouter(prefix="/api/circles", tags=["circles"])
+
+_media_bearer = HTTPBearer(auto_error=False)
+
+
+def authenticated_circle_media_user(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_media_bearer),
+) -> User:
+    """Authenticate user for chat media requests via Bearer token."""
+    if not creds or not creds.credentials:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    uid = _user_id_from_token(creds.credentials)
+    with get_session() as session:
+        user = session.get(User, uid)
+        if not user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
+        session.expunge(user)
+        return user
 
 UPLOAD_FILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "storage_media")
 os.makedirs(UPLOAD_FILES_DIR, exist_ok=True)
@@ -545,10 +563,19 @@ def delete_circle(circle_id: int, user: User = Depends(current_user)):
         if circle.owner_id != user.id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can delete this circle")
 
-        # Delete all messages first
+        # Collect unique storage keys belonging to this circle's messages
         messages = session.exec(
             select(CircleMessage).where(CircleMessage.circle_id == circle_id)
         ).all()
+
+        storage_keys_to_delete: list[str] = []
+        for msg in messages:
+            if msg.storage_key:
+                clean_key = msg.storage_key.strip()
+                if clean_key and clean_key not in storage_keys_to_delete:
+                    storage_keys_to_delete.append(clean_key)
+
+        # Delete all messages first
         for msg in messages:
             session.delete(msg)
 
@@ -561,6 +588,38 @@ def delete_circle(circle_id: int, user: User = Depends(current_user)):
 
         session.delete(circle)
         session.commit()
+
+        # Delete storage objects safely after commit
+        storage = get_storage()
+        storage_delete_errors: list[str] = []
+
+        for sk in storage_keys_to_delete:
+            try:
+                # 1. Validate key safety against directory traversal
+                safe_k = sanitize_object_key(sk)
+
+                # 2. Safety check: ensure key belongs to chat domain
+                if not (safe_k.startswith("users/") and "/chat/" in safe_k):
+                    continue
+
+                # 3. Check if key is still referenced by any other message across circles
+                other_ref = session.exec(
+                    select(CircleMessage.id).where(CircleMessage.storage_key == sk)
+                ).first()
+                if other_ref:
+                    # Still referenced by another record, do not delete
+                    continue
+
+                # 4. Safely delete from storage
+                storage.delete(safe_k)
+            except StoragePathTraversalError as e:
+                storage_delete_errors.append(f"Invalid key {sk}: {e}")
+            except Exception as e:
+                storage_delete_errors.append(f"Storage error for {sk}: {e}")
+
+        if storage_delete_errors:
+            print(f"[delete_circle] Storage cleanup warnings for circle {circle_id}: {storage_delete_errors}")
+
         return {"deleted": circle_id}
 
 
@@ -593,15 +652,82 @@ async def upload_chat_image(file: UploadFile = File(...), user: User = Depends(c
 
 
 @router.get("/media/{file_name}")
-def serve_chat_media(file_name: str):
-    """Serve uploaded chat image file."""
+def serve_chat_media(file_name: str, user: User = Depends(authenticated_circle_media_user)):
+    """Serve uploaded chat image file with authentication and Circle membership authorization."""
     if not file_name or "/" in file_name or "\\" in file_name or ".." in file_name or Path(file_name).name != file_name:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid media filename")
+
+    # Authorize access via CircleMessage and Circle membership
+    target_media_url = f"/api/circles/media/{file_name}"
+    is_admin = getattr(user, "role", None) in ("admin", "founder")
+
+    resolved_storage_key: Optional[str] = None
+
+    with get_session() as session:
+        # Find messages referencing this media file
+        msg_matches = session.exec(
+            select(CircleMessage).where(
+                (CircleMessage.media_url == target_media_url) |
+                (CircleMessage.media_url == file_name) |
+                (CircleMessage.storage_key == file_name) |
+                (CircleMessage.storage_key.like(f"%/{file_name}"))
+            )
+        ).all()
+
+        if msg_matches:
+            # Check if user has membership in at least one circle that contains this message, or is an admin
+            authorized = False
+            for m in msg_matches:
+                if is_admin:
+                    authorized = True
+                    if m.storage_key:
+                        resolved_storage_key = m.storage_key
+                    break
+
+                # Check membership in message's circle
+                member = session.exec(
+                    select(CircleMember).where(
+                        CircleMember.circle_id == m.circle_id,
+                        CircleMember.user_id == user.id,
+                    )
+                ).first()
+                if member:
+                    authorized = True
+                    if m.storage_key:
+                        resolved_storage_key = m.storage_key
+                    break
+
+            if not authorized:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied: You are not authorized to view this media.")
+        else:
+            # Check if recently uploaded by this user before message creation: chat_{uid}_{token}.ext
+            is_recent_uploader = False
+            if file_name.startswith("chat_"):
+                parts = file_name.split("_")
+                if len(parts) >= 3 and (parts[1] == str(user.id) or is_admin):
+                    is_recent_uploader = True
+
+            if not is_recent_uploader:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Media file not found")
 
     storage = get_storage()
     ct = guess_content_type(file_name)
 
-    # 1. Try deterministic user storage key: users/{uid}/chat/{token}/{file_name}
+    # 1. Try explicit resolved storage key if known
+    if resolved_storage_key:
+        try:
+            if hasattr(storage, "get_local_path"):
+                lp = storage.get_local_path(resolved_storage_key)
+                if lp and lp.is_file():
+                    return FileResponse(lp)
+            data = storage.get(resolved_storage_key)
+            if data is not None:
+                media_type = storage.get_content_type(resolved_storage_key) or ct
+                return Response(content=data, media_type=media_type)
+        except Exception:
+            pass
+
+    # 2. Try deterministic user storage key: users/{uid}/chat/{token}/{file_name}
     candidate_key = None
     if file_name.startswith("chat_"):
         parts = file_name.split("_")
@@ -623,7 +749,7 @@ def serve_chat_media(file_name: str):
         except Exception:
             pass
 
-    # 2. Try file_name directly in storage
+    # 3. Try file_name directly in storage
     try:
         if storage.exists(file_name):
             if hasattr(storage, "get_local_path"):
@@ -636,7 +762,7 @@ def serve_chat_media(file_name: str):
     except Exception:
         pass
 
-    # 3. Legacy file path check in storage_media
+    # 4. Legacy file path check in storage_media
     file_path = os.path.join(UPLOAD_FILES_DIR, file_name)
     if os.path.exists(file_path):
         return FileResponse(file_path)
@@ -810,20 +936,58 @@ def delete_message(circle_id: int, msg_id: int, user: User = Depends(current_use
                 "Only the message author or circle owner can delete this message.",
             )
 
-        # Soft delete & cleanup reactions & media
+        # Determine storage key to clean up
+        target_storage_key = msg.storage_key
+        if not target_storage_key and msg.media_url and "/api/circles/media/" in msg.media_url:
+            fn = msg.media_url.split("/api/circles/media/")[-1]
+            if fn.startswith("chat_"):
+                parts = fn.split("_")
+                if len(parts) >= 3:
+                    uid = parts[1]
+                    token = parts[2].split(".")[0]
+                    target_storage_key = f"users/{uid}/chat/{token}/{fn}"
+
+        storage_delete_warning = None
+        if target_storage_key:
+            clean_key = target_storage_key.strip()
+            # Determine whether another active record references this storage key
+            other_ref = session.exec(
+                select(CircleMessage.id).where(
+                    CircleMessage.id != msg_id,
+                    CircleMessage.is_deleted == False,
+                    (
+                        (CircleMessage.storage_key == clean_key) |
+                        (CircleMessage.media_url == msg.media_url) if msg.media_url else (CircleMessage.storage_key == clean_key)
+                    ),
+                )
+            ).first()
+
+            if not other_ref:
+                try:
+                    safe_k = sanitize_object_key(clean_key)
+                    if safe_k.startswith("users/") and "/chat/" in safe_k:
+                        get_storage().delete(safe_k)
+                except StoragePathTraversalError as e:
+                    storage_delete_warning = f"Invalid storage key: {e}"
+                    print(f"[delete_message] Blocked unsafe storage key '{clean_key}': {e}")
+                except Exception as e:
+                    storage_delete_warning = f"Storage delete failure: {e}"
+                    print(f"[delete_message] Storage delete error for '{clean_key}': {e}")
+
+        # Soft delete & cleanup reactions & media pointers
         msg.is_deleted = True
         msg.content = ""
-        if msg.storage_key:
-            try:
-                get_storage().delete(msg.storage_key)
-            except Exception as e:
-                print(f"[delete_message] Storage delete error: {e}")
+        msg.media_url = None
+        msg.storage_key = None
         session.exec(delete(CircleMessageReaction).where(col(CircleMessageReaction.message_id) == msg_id))
         session.add(msg)
         session.commit()
         session.refresh(msg)
 
-        return _message_out(session, msg, user.id)
+        out = _message_out(session, msg, user.id)
+        if storage_delete_warning:
+            out["storage_warning"] = storage_delete_warning
+        return out
 
 
 # ==================== MESSAGE REACTIONS ENDPOINTS ====================

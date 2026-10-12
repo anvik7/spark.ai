@@ -71,7 +71,7 @@ export default function Review() {
       <h1 className="title">Queue cleared</h1>
       <p className="sub">
         {graded > 0
-          ? `You reviewed ${graded} card${graded > 1 ? "s" : ""} — Spark has scheduled the next rounds.`
+          ? `You reviewed ${graded} card${graded > 1 ? "s" : ""} — SparkDhi has scheduled the next rounds.`
           : "Nothing due right now — come back tomorrow."}
       </p>
       <div style={{
@@ -86,7 +86,7 @@ export default function Review() {
         </div>
         <p className="summary">
           Cards you rated "Forgot" come back tomorrow. "Got it" in a week.
-          "Easy" in several weeks. Spark spaces them automatically — no folders, no effort.
+          "Easy" in several weeks. SparkDhi spaces them automatically — no folders, no effort.
         </p>
       </div>
       <button className="primary" style={{ marginTop: 24 }} onClick={load}>

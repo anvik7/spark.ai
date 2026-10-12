@@ -49,7 +49,7 @@ export default class ErrorBoundary extends React.Component {
           >
             <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
             <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 8px", color: "#0D1117" }}>
-              Something went wrong loading Spark
+              Something went wrong loading SparkDhi
             </h2>
             <p style={{ fontSize: 13.5, color: "#57606A", lineHeight: 1.5, margin: "0 0 20px" }}>
               An unexpected error occurred while rendering the workspace. Please reload to restore your session.
@@ -86,7 +86,7 @@ export default class ErrorBoundary extends React.Component {
                 cursor: "pointer",
               }}
             >
-              Reload Spark Workspace
+              Reload SparkDhi Workspace
             </button>
           </div>
         </div>

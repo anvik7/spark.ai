@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { api, setToken } from "./api.js";
-import Avatar, { AVATAR_PRESETS, getPreset, isImageAvatarUrl } from "./components/Avatar.jsx";
+import Avatar, { isImageAvatarUrl } from "./components/Avatar.jsx";
 
 export default function Account({ user = {}, onLogout, onUpdateUser, theme = "system", onChangeTheme }) {
   const [busy, setBusy] = useState(false);
-  const [updatingPreset, setUpdatingPreset] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -110,30 +109,6 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
     }
   };
 
-  const handleSelectPreset = async (presetId) => {
-    if (updatingPreset || user?.avatar_url === presetId) return;
-    if (previewUrl && previewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setPreviewUrl(null);
-    setSelectedFile(null);
-    setUpdatingPreset(true);
-    setErr("");
-    setSuccessMsg("");
-    document.body.setAttribute("data-persona", presetId);
-    try {
-      const updatedUser = await api.updateAvatarPreset(presetId);
-      onUpdateUser?.(updatedUser);
-      setSuccessMsg("Persona avatar updated!");
-      setTimeout(() => setSuccessMsg(""), 3000);
-    } catch (error) {
-      setErr(error.message || "Failed to update avatar persona.");
-      if (user?.avatar_url) document.body.setAttribute("data-persona", user.avatar_url);
-    } finally {
-      setUpdatingPreset(false);
-    }
-  };
-
   const isPro = user?.plan === "pro";
   const isPlus = user?.plan === "plus";
   const isPaid = isPro || isPlus;
@@ -142,7 +117,6 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
   const cardCount = user?.card_count || 0;
   const freeLimit = user?.free_card_limit || 1;
   const pct = Math.min(100, Math.round((cardCount / freeLimit) * 100));
-  const currentPreset = getPreset(user?.avatar_url, user?.name);
 
   return (
     <div className="screen">
@@ -202,19 +176,15 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
               gap: 6,
               marginTop: 8,
               fontSize: 12,
-              fontWeight: 600,
-              color: "var(--marigold-dark)",
-              background: "var(--marigold-light)",
+              fontWeight: 500,
+              color: "var(--ink-soft)",
+              background: "var(--surface-2)",
               padding: "4px 12px",
               borderRadius: 16,
+              border: "1px solid var(--line)",
             }}
           >
-            <span>{currentPreset.icon}</span>
-            <span>
-              {isImageAvatarUrl(user?.avatar_url)
-                ? "Custom Photo Active"
-                : `Persona: ${currentPreset.name}`}
-            </span>
+            <span>{isImageAvatarUrl(user?.avatar_url) ? "Custom Profile Photo" : "Standard Initials"}</span>
           </div>
         </div>
 
@@ -286,7 +256,7 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
                   gap: 6,
                 }}
               >
-                <span>📷</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                 <span>{user?.avatar_url ? "Change Picture" : "Upload Picture"}</span>
               </button>
               {user?.avatar_url && (
@@ -335,55 +305,6 @@ export default function Account({ user = {}, onLogout, onUpdateUser, theme = "sy
         )}
 
         {err && <div className="err" style={{ width: "100%", margin: "4px 0 0", fontSize: 13 }}>{err}</div>}
-
-        {/* Persona Avatar Picker Selector */}
-        <div style={{ width: "100%", marginTop: 8 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: ".05em",
-              color: "var(--ink-soft)",
-              textTransform: "uppercase",
-              marginBottom: 10,
-            }}
-          >
-            Choose Persona Avatar
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(6, 1fr)",
-              gap: 10,
-              justifyItems: "center",
-            }}
-          >
-            {AVATAR_PRESETS.map((p) => {
-              const isSelected = (user?.avatar_url === p.id) || (currentPreset.id === p.id);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => handleSelectPreset(p.id)}
-                  disabled={updatingPreset}
-                  title={p.name}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 4,
-                    cursor: updatingPreset ? "not-allowed" : "pointer",
-                    borderRadius: "50%",
-                    outline: isSelected ? "3px solid var(--marigold)" : "none",
-                    outlineOffset: 2,
-                    transition: "transform .15s ease",
-                    transform: isSelected ? "scale(1.1)" : "scale(1)",
-                  }}
-                >
-                  <Avatar src={p.id} name={user?.name || "User"} size={36} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
       {/* Appearance / Theme Toggle */}

@@ -36,44 +36,58 @@
   --display: Georgia, 'Times New Roman', serif;
   --sans:    Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 
+  /* Primary SaaS Accent */
+  --primary:        #6366F1;
+  --primary-hover:  #4F46E5;
+  --primary-glow:   rgba(99,102,241,.18);
+  --primary-light:  rgba(99,102,241,.10);
+
   /* Elevation */
   --sh-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
   --sh:    0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.05);
   --sh-lg: 0 12px 28px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06);
 
   /* Radii */
-  --r:   16px;
-  --r-s: 10px;
-  --r-l: 22px;
+  --r:   14px;
+  --r-s: 8px;
+  --r-l: 20px;
 
   /* Section accents */
-  --c-capture:  var(--marigold);
+  --c-capture:  #F59E0B;
+  --c-tasks:    #6366F1;
+  --c-study:    #0D9488;
   --c-cards:    #6366F1;
   --c-review:   #0D9488;
   --c-connect:  #8B5CF6;
   --c-career:   #3B82F6;
-  --c-coach:    #FB7185;
+  --c-coach:    #818CF8;
 
-  --p-gradient: linear-gradient(135deg, var(--marigold), var(--marigold-dark));
+  --p-gradient: linear-gradient(135deg, var(--primary), var(--primary-hover));
 }
 
 /* ============================================================
-   DARK THEME — Activated via html[data-theme="dark"]
+   DARK THEME — Production Charcoal / Deep Navy SaaS
    ============================================================ */
 html[data-theme="dark"] {
-  --surface:        #141419;
-  --surface-2:      #1C1C24;
-  --surface-3:      #25252F;
-  --ink:            #E8E6E1;
+  --surface:        #111827;
+  --surface-2:      #0B0F19;
+  --surface-3:      #1F2937;
+  --ink:            #F9FAFB;
   --ink-soft:       #9CA3AF;
   --ink-faint:      #6B7280;
-  --line:           #2D2D3A;
-  --nav-bg:         #0D0D12;
+  --line:           #1F2937;
+  --nav-bg:         #0B0F19;
+  --primary:        #818CF8;
+  --primary-hover:  #6366F1;
+  --primary-glow:   rgba(129,140,248,.22);
+  --primary-light:  rgba(129,140,248,.12);
+  --marigold:       #F59E0B;
+  --marigold-dark:  #D97706;
   --marigold-glow:  rgba(245,158,11,.22);
   --marigold-light: rgba(245,158,11,.12);
-  --sh-sm: 0 1px 3px rgba(0,0,0,.24), 0 1px 2px rgba(0,0,0,.18);
-  --sh:    0 4px 12px rgba(0,0,0,.30), 0 2px 4px rgba(0,0,0,.20);
-  --sh-lg: 0 12px 28px rgba(0,0,0,.40), 0 4px 8px rgba(0,0,0,.25);
+  --sh-sm: 0 1px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.25);
+  --sh:    0 4px 12px rgba(0,0,0,.40), 0 2px 4px rgba(0,0,0,.25);
+  --sh-lg: 0 12px 28px rgba(0,0,0,.50), 0 4px 8px rgba(0,0,0,.30);
   color-scheme: dark;
 }
 
@@ -85,8 +99,8 @@ html[data-theme="dark"] .err {
 }
 
 html[data-theme="dark"] .pro-lock {
-  background: linear-gradient(135deg, rgba(245,158,11,.10), rgba(217,119,6,.08));
-  border-color: rgba(245,158,11,.25);
+  background: linear-gradient(135deg, rgba(99,102,241,.10), rgba(79,70,229,.08));
+  border-color: rgba(99,102,241,.25);
 }
 
 html[data-theme="dark"] .skeleton {
@@ -99,147 +113,7 @@ html[data-theme="dark"] .modal-overlay {
 }
 
 html[data-theme="dark"] .pro-badge {
-  background: linear-gradient(135deg, #25252F, #2D2D3A);
-}
-
-/* ============================================================
-   PERSONA THEME PALETTES (12 Distinct Visual Personalities)
-   ============================================================ */
-
-body, .app, header, .app-header, .nav, button, input, textarea, select, .card, .tag, .screen {
-  transition: background-color .3s ease, border-color .3s ease, color .3s ease, box-shadow .3s ease;
-}
-
-/* Preset 1: Cosmic Spark (Deep Violet & Magenta) */
-body[data-persona="preset-1"], [data-persona="preset-1"] {
-  --marigold:       #8B5CF6;
-  --marigold-dark:  #7C3AED;
-  --marigold-glow:  rgba(139,92,246,.20);
-  --marigold-light: #F3E8FF;
-  --c-capture:      #8B5CF6;
-  --c-cards:        #EC4899;
-  --p-gradient:     linear-gradient(135deg, #8B5CF6, #EC4899);
-}
-
-/* Preset 2: Amber Pulse (Golden Amber & Crimson) */
-body[data-persona="preset-2"], [data-persona="preset-2"] {
-  --marigold:       #F59E0B;
-  --marigold-dark:  #D97706;
-  --marigold-glow:  rgba(245,158,11,.20);
-  --marigold-light: #FEF9EC;
-  --c-capture:      #F59E0B;
-  --c-cards:        #EF4444;
-  --p-gradient:     linear-gradient(135deg, #F59E0B, #EF4444);
-}
-
-/* Preset 3: Emerald Flow (Vibrant Mint & Emerald) */
-body[data-persona="preset-3"], [data-persona="preset-3"] {
-  --marigold:       #10B981;
-  --marigold-dark:  #059669;
-  --marigold-glow:  rgba(16,185,129,.20);
-  --marigold-light: #ECFDF5;
-  --c-capture:      #10B981;
-  --c-cards:        #047857;
-  --p-gradient:     linear-gradient(135deg, #10B981, #059669);
-}
-
-/* Preset 4: Neon Cyber (Electric Cyan & Royal Blue) */
-body[data-persona="preset-4"], [data-persona="preset-4"] {
-  --marigold:       #06B6D4;
-  --marigold-dark:  #0284C7;
-  --marigold-glow:  rgba(6,182,212,.20);
-  --marigold-light: #E0F2FE;
-  --c-capture:      #06B6D4;
-  --c-cards:        #3B82F6;
-  --p-gradient:     linear-gradient(135deg, #06B6D4, #3B82F6);
-}
-
-/* Preset 5: Solar Flare (Sunburst Orange & Gold) */
-body[data-persona="preset-5"], [data-persona="preset-5"] {
-  --marigold:       #F97316;
-  --marigold-dark:  #EA580C;
-  --marigold-glow:  rgba(249,115,22,.20);
-  --marigold-light: #FFF7ED;
-  --c-capture:      #F97316;
-  --c-cards:        #EAB308;
-  --p-gradient:     linear-gradient(135deg, #F97316, #EAB308);
-}
-
-/* Preset 6: Violet Nebula (Indigo & Amethyst) */
-body[data-persona="preset-6"], [data-persona="preset-6"] {
-  --marigold:       #6366F1;
-  --marigold-dark:  #4F46E5;
-  --marigold-glow:  rgba(99,102,241,.20);
-  --marigold-light: #EEF2FF;
-  --c-capture:      #6366F1;
-  --c-cards:        #A855F7;
-  --p-gradient:     linear-gradient(135deg, #6366F1, #A855F7);
-}
-
-/* Preset 7: Ocean Crest (Deep Sea Blue & Teal) */
-body[data-persona="preset-7"], [data-persona="preset-7"] {
-  --marigold:       #0284C7;
-  --marigold-dark:  #0369A1;
-  --marigold-glow:  rgba(2,132,199,.20);
-  --marigold-light: #F0F9FF;
-  --c-capture:      #0284C7;
-  --c-cards:        #0D9488;
-  --p-gradient:     linear-gradient(135deg, #0284C7, #0D9488);
-}
-
-/* Preset 8: Ruby Nova (Vibrant Rose & Deep Purple) */
-body[data-persona="preset-8"], [data-persona="preset-8"] {
-  --marigold:       #E11D48;
-  --marigold-dark:  #BE123C;
-  --marigold-glow:  rgba(225,29,72,.20);
-  --marigold-light: #FFF1F2;
-  --c-capture:      #E11D48;
-  --c-cards:        #9333EA;
-  --p-gradient:     linear-gradient(135deg, #E11D48, #9333EA);
-}
-
-/* Preset 9: Aurora Sky (Teal & Sky Blue) */
-body[data-persona="preset-9"], [data-persona="preset-9"] {
-  --marigold:       #0D9488;
-  --marigold-dark:  #0F766E;
-  --marigold-glow:  rgba(13,148,136,.20);
-  --marigold-light: #F0FDFA;
-  --c-capture:      #0D9488;
-  --c-cards:        #3B82F6;
-  --p-gradient:     linear-gradient(135deg, #34D399, #3B82F6);
-}
-
-/* Preset 10: Golden Horizon (Warm Honey & Amber) */
-body[data-persona="preset-10"], [data-persona="preset-10"] {
-  --marigold:       #D97706;
-  --marigold-dark:  #B45309;
-  --marigold-glow:  rgba(217,119,6,.20);
-  --marigold-light: #FFFBEB;
-  --c-capture:      #D97706;
-  --c-cards:        #B45309;
-  --p-gradient:     linear-gradient(135deg, #D97706, #B45309);
-}
-
-/* Preset 11: Plasma Glow (Hot Pink & Electric Violet) */
-body[data-persona="preset-11"], [data-persona="preset-11"] {
-  --marigold:       #EC4899;
-  --marigold-dark:  #DB2777;
-  --marigold-glow:  rgba(236,72,153,.20);
-  --marigold-light: #FDF2F8;
-  --c-capture:      #EC4899;
-  --c-cards:        #8B5CF6;
-  --p-gradient:     linear-gradient(135deg, #EC4899, #8B5CF6);
-}
-
-/* Preset 12: Midnight Prism (Sleek Dark Slate & Platinum) */
-body[data-persona="preset-12"], [data-persona="preset-12"] {
-  --marigold:       #475569;
-  --marigold-dark:  #1E293B;
-  --marigold-glow:  rgba(71,85,105,.20);
-  --marigold-light: #F8FAFC;
-  --c-capture:      #475569;
-  --c-cards:        #334155;
-  --p-gradient:     linear-gradient(135deg, #1E293B, #475569);
+  background: linear-gradient(135deg, #1F2937, #2D3748);
 }
 
 /* ── Base ──────────────────────────────────────────── */
@@ -450,150 +324,6 @@ html, body {
   min-width: 0;
   box-sizing: border-box;
   padding: 0;
-}
-
-/* ── STUDY SESSION CARD RESPONSIVE LAYOUT ──────────── */
-.study-session-card {
-  background: var(--surface);
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: var(--sh-sm);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-.study-card-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-}
-
-.study-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-  min-width: 0;
-}
-
-.study-card-badges {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.study-card-title {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.4;
-}
-
-.study-card-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.study-card-continue-btn {
-  flex: 1;
-  padding: 9px 14px;
-  border-radius: 8px;
-  background: var(--marigold-light);
-  color: var(--marigold-dark);
-  border: none;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  text-align: center;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity .15s;
-}
-
-.study-card-continue-btn:hover {
-  opacity: 0.9;
-}
-
-.study-card-delete-btn {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink-soft);
-  border: 1px solid var(--line);
-  font-size: 13.5px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  min-width: 40px;
-  flex-shrink: 0;
-  transition: background .15s;
-}
-
-.study-card-delete-btn:hover {
-  background: var(--surface-2);
-}
-
-.study-card-mastery-desktop {
-  display: none !important;
-}
-
-@media (min-width: 640px) {
-  .study-session-card {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .study-card-left {
-    flex: 1;
-  }
-
-  .study-card-meta {
-    justify-content: flex-start;
-  }
-
-  .study-card-mastery-mobile {
-    display: none !important;
-  }
-
-  .study-card-mastery-desktop {
-    display: block !important;
-    text-align: right;
-    margin-right: 4px;
-    flex-shrink: 0;
-  }
-
-  .study-card-right {
-    width: auto;
-    flex-shrink: 0;
-  }
-
-  .study-card-continue-btn {
-    flex: initial;
-  }
 }
 
 /* ── Typography ────────────────────────────────────── */
@@ -849,18 +579,12 @@ nav button, .nav-bar button, .nav-btn {
 }
 nav button:hover, .nav-btn:hover { color: rgba(255,255,255,.75); }
 
-/* Active */
+/* Active Navigation State */
 nav button.active, .nav-btn.active,
 nav button[data-active="true"] {
-  color: currentColor;
+  color: var(--primary, #818CF8);
+  font-weight: 700;
 }
-.nav button:nth-child(1).active, .nav-btn:nth-child(1).active { color: var(--marigold); }
-.nav button:nth-child(2).active, .nav-btn:nth-child(2).active { color: #EC4899; }
-.nav button:nth-child(3).active, .nav-btn:nth-child(3).active { color: #10B981; }
-.nav button:nth-child(4).active, .nav-btn:nth-child(4).active { color: #3B82F6; }
-.nav button:nth-child(5).active, .nav-btn:nth-child(5).active { color: #8B5CF6; }
-.nav button:nth-child(6).active, .nav-btn:nth-child(6).active { color: #F59E0B; }
-.nav button:nth-child(7).active, .nav-btn:nth-child(7).active { color: #FB7185; }
 
 nav button.active::before, .nav-btn.active::before,
 nav button[data-active="true"]::before {
@@ -868,9 +592,78 @@ nav button[data-active="true"]::before {
   position: absolute;
   top: 0; left: 50%;
   transform: translateX(-50%);
-  width: 20px; height: 2.5px;
-  background: currentColor;
+  width: 24px; height: 3px;
+  background: var(--primary, #818CF8);
   border-radius: 0 0 3px 3px;
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
+/* ── MORE MENU BOTTOM SHEET ────────────────────────── */
+.more-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fadeIn .18s ease;
+}
+
+.more-sheet {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--sh-lg);
+  animation: slideUp .22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.more-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.more-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.more-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-s, 10px);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all .15s ease;
+  min-height: 52px;
+}
+
+.more-sheet-item:hover, .more-sheet-item:active {
+  background: var(--surface-3);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.more-sheet-item.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 

@@ -14,7 +14,7 @@ Covers scenarios A through O:
   L. No API secrets exposed in logs or error messages
   M. Backward compatibility of all public llm.py functions
   N. Tasks regression compatibility
-  O. Study/ingest regression compatibility
+  O. Ingest regression compatibility
 """
 import json
 import os
@@ -39,8 +39,6 @@ from spark.llm import (
     GroqAdapter,
     GeminiAdapter,
     TaskSolutionSchema,
-    StudyChaptersSchema,
-    ActiveRecallSchema,
     _extract_and_validate_json,
     _sanitize_log,
 )
@@ -419,18 +417,6 @@ def test_scenario_m_backward_compatibility_public_functions():
     r_followup = llm.solve_task_followup("Solve x + 5 = 10", "x = 5", [], "Why do you subtract 5?")
     assert isinstance(r_followup, str)
 
-    # 8. generate_concept_chapters
-    r_chap = llm.generate_concept_chapters("Photosynthesis in plants involves light reactions and dark reactions in chloroplasts.", title="Biology Chapter")
-    assert isinstance(r_chap, dict)
-    assert "chapters" in r_chap
-    assert len(r_chap["chapters"]) > 0
-
-    # 9. evaluate_active_recall
-    r_eval = llm.evaluate_active_recall("Chapter 1", "Light reactions occur in thylakoid membranes.", "The light reactions happen in thylakoids and produce ATP.")
-    assert isinstance(r_eval, dict)
-    assert "understanding_score" in r_eval
-    assert 0 <= r_eval["understanding_score"] <= 100
-
 
 # --- Scenario N: Production solve_student_task Re-raises AIServiceUnavailableError
 
@@ -450,10 +436,10 @@ def test_scenario_n_solve_student_task_raises_on_total_provider_failure():
         assert isinstance(exc_info.value, RuntimeError)
 
 
-# --- Scenario O: Study/Ingest Regression Compatibility ------------------------
+# --- Scenario O: Ingest Regression Compatibility ------------------------------
 
-def test_scenario_o_study_and_ingest_compatibility():
-    """Ensure study and ingest pipelines calling enrich_full and generate_concept_chapters run cleanly."""
+def test_scenario_o_ingest_compatibility():
+    """Ensure ingest pipeline calling build_card_fields runs cleanly."""
     from spark.ingest import build_card_fields
     card = build_card_fields("text", "Quick note on machine learning and gradient descent algorithms")
     assert card["kind"] == "text"

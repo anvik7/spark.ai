@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Chakra } from "./Chakra.jsx";
 
-// Core 6 Modules of the Unified Spark AI Workspace
+// Core 5 Modules of the Unified SparkDhi Workspace
 const MODULES = [
   {
     id: "tasks",
@@ -24,7 +24,7 @@ const MODULES = [
     id: "capture",
     label: "Capture",
     tagline: "Effortless Thought & Knowledge Recording",
-    summary: "Save thoughts, web links, documents, and voice recordings into a clean knowledge stream. Spark organizes, summarizes, and indexes everything.",
+    summary: "Save thoughts, web links, documents, and voice recordings into a clean knowledge stream. SparkDhi organizes, summarizes, and indexes everything.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
         <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
@@ -35,23 +35,6 @@ const MODULES = [
       "Built-in speech-to-text voice notes with automatic transcription",
       "Instant AI key insight extraction, topic tagging, and summaries",
       "Revisit ideas anytime with instant semantic search and exportable cards",
-    ],
-  },
-  {
-    id: "study",
-    label: "Study",
-    tagline: "Active Recall & Deep Understanding",
-    summary: "Turn dense learning material into structured chapters, targeted active recall questions, and progressive knowledge mastery.",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z" />
-      </svg>
-    ),
-    details: [
-      "Structured chapter breakdowns from your uploaded documents",
-      "Active recall testing that challenges understanding rather than memorization",
-      "Targeted interactive quizzes with immediate reasoning feedback",
-      "Visual mind mapping showing core conceptual relationships",
     ],
   },
   {
@@ -245,7 +228,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
               transition: "transform .15s ease",
             }}
           >
-            Start with Spark
+            Start Free Trial
           </button>
         </div>
       </header>
@@ -307,7 +290,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
           }}
         >
           Think, capture, learn, work, connect, and grow — in one intelligent workspace.
-          Spark brings your daily tasks, ideas, active study, conversations, and career
+          SparkDhi brings your daily tasks, ideas, conversations, and career
           readiness together.
         </p>
 
@@ -337,7 +320,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
               transition: "all .15s ease",
             }}
           >
-            Start with Spark →
+            Start your 14-day free trial →
           </button>
 
           <button
@@ -358,7 +341,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
         </div>
 
         <p style={{ fontSize: 13, color: "var(--ink-faint, #9CA3AF)", margin: 0 }}>
-          Free plan included · No credit card required · Works on desktop and mobile
+          Start your 14-day free trial · No credit card required · Works on desktop and mobile
         </p>
       </section>
 
@@ -481,14 +464,14 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
                   padding: "6px 0",
                 }}
               >
-                Experience {currentModule.label} in Spark →
+                Experience {currentModule.label} in SparkDhi →
               </button>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── 4. WHAT CAN I ACTUALLY DO WITH SPARK? ── */}
+      {/* ── 4. WHAT CAN I ACTUALLY DO WITH SPARKDHI? ── */}
       <section
         style={{
           width: "100%",
@@ -501,10 +484,10 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
             CORE CAPABILITIES
           </div>
           <h2 style={{ fontFamily: "var(--display)", fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 700, margin: "0 0 12px", color: "var(--ink)" }}>
-            What you can accomplish with Spark
+            What you can accomplish with SparkDhi
           </h2>
           <p style={{ fontSize: 16, color: "var(--ink-soft)", margin: 0, maxWidth: 580, marginLeft: "auto", marginRight: "auto" }}>
-            Six interconnected functions designed to support your daily workflow from first thought to tangible growth.
+            Five interconnected functions designed to support your daily workflow from first thought to tangible growth.
           </p>
         </div>
 
@@ -567,13 +550,13 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
         <div style={{ width: "100%", maxWidth: 960 }}>
           <div style={{ textAlign: "center", marginBottom: 40 }}>
             <div className="eyebrow" style={{ color: "var(--marigold-dark)", fontSize: 11.5, letterSpacing: ".1em", marginBottom: 8 }}>
-              THE SPARK ADVANTAGE
+              THE SPARKDHI ADVANTAGE
             </div>
             <h2 style={{ fontFamily: "var(--display)", fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 700, margin: "0 0 12px", color: "var(--ink)" }}>
-              Everything you do in Spark stays connected.
+              Everything you do in SparkDhi stays connected.
             </h2>
             <p style={{ fontSize: 16, color: "var(--ink-soft)", margin: "0 auto", maxWidth: 640, lineHeight: 1.6 }}>
-              Unlike separate tools that fragment your knowledge, Spark links your activities
+              Unlike separate tools that fragment your knowledge, SparkDhi links your activities
               into a compounding cycle: from ideas and learning to problem solving and career readiness.
             </p>
           </div>
@@ -624,7 +607,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
           One workspace. Whatever you are working toward.
         </h2>
         <p style={{ fontSize: 16.5, lineHeight: 1.65, color: "var(--ink-soft)", maxWidth: 680, margin: "0 auto 32px" }}>
-          Wherever you are and whatever you are building, Spark grows with you.
+          Wherever you are and whatever you are building, SparkDhi grows with you.
           It gives you clarity when thinking, depth when learning, execution when working,
           and genuine preparation when reaching for your next opportunity.
         </p>
@@ -807,7 +790,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
               cursor: "pointer",
             }}
           >
-            Start 14-Day Trial
+            Start your 14-day free trial
           </button>
         </div>
 
@@ -879,8 +862,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
               <div>✓ 25 downloads per month</div>
               <div>✓ Priority AI processing</div>
               <div>✓ Full Tasks reasoning & coding solutions</div>
-              <div>✓ Active recall study mode & quizzes</div>
-              <div>✓ Spark Circles public communities</div>
+              <div>✓ SparkDhi Circles public communities</div>
               <div>✓ Career Intelligence & resume audit</div>
             </div>
           </div>
@@ -984,7 +966,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
             lineHeight: 1.5,
           }}
         >
-          🎁 <strong>14-day full access trial included</strong> for every new member. No permanent free tier. Cancel anytime. All your notes, study data, and tasks are permanently preserved.
+          🎁 <strong>14-day full access trial included</strong> for every new member. No permanent free tier. Cancel anytime. All your notes, captures, and tasks are permanently preserved.
         </div>
       </section>
 
@@ -1010,7 +992,7 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
             <Chakra size={40} variant="dark" animated={true} />
           </div>
           <h2 style={{ fontFamily: "var(--display)", fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 700, margin: "0 0 12px" }}>
-            Make Spark your workspace.
+            Make SparkDhi your workspace.
           </h2>
           <p style={{ fontSize: 16, color: "#9CA3AF", maxWidth: 520, margin: "0 auto 28px", lineHeight: 1.6 }}>
             Bring your thoughts, learning, tasks, conversations, and career growth together into one intelligent place.
@@ -1030,8 +1012,11 @@ export default function Landing({ onGetStarted, onLogin, theme = "system", onCha
               transition: "transform .15s ease",
             }}
           >
-            Start with Spark — It's Free →
+            Start your 14-day free trial →
           </button>
+          <p style={{ fontSize: 13, color: "#9CA3AF", marginTop: 12, marginBottom: 0 }}>
+            No credit card required.
+          </p>
         </div>
       </section>
 

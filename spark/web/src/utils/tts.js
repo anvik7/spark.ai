@@ -243,7 +243,7 @@ export function createTTSManager({
             }
           };
 
-          // Hard timeout of 3000ms per utterance chunk
+          // Watchdog: If SpeechSynthesis hangs before starting, abort after 3000ms
           chunkTimer = setTimeout(() => {
             console.warn("[TTS] Browser SpeechSynthesis utterance timed out (3000ms limit)");
             try {
@@ -251,6 +251,23 @@ export function createTTSManager({
             } catch (e) {}
             done(false);
           }, 3000);
+
+          utter.onstart = () => {
+            if (chunkTimer) clearTimeout(chunkTimer);
+            const chunkDurationMs = Math.max(Math.ceil((chunk.length / 10) * 1000) + 6000, 15000);
+            chunkTimer = setTimeout(() => {
+              console.warn("[TTS] Browser SpeechSynthesis utterance exceeded duration limit");
+              try {
+                window.speechSynthesis.cancel();
+              } catch (e) {}
+              done(false);
+            }, chunkDurationMs);
+
+            if (!speechStarted && state.isSpeaking) {
+              speechStarted = true;
+              onStart?.();
+            }
+          };
 
           utter.onend = () => done(true);
           utter.onerror = (e) => {
@@ -304,23 +321,17 @@ export function createTTSManager({
     state.isPaused = false;
     state.isSpeaking = true;
 
-    let hasStarted = false;
-    const notifyStart = () => {
-      if (!hasStarted && state.isSpeaking) {
-        hasStarted = true;
-        onStart?.();
-      }
-    };
-
-    // Overall hard timeout safety (6000ms max wait) guaranteeing resolution
+    // Start hang watchdog & active playback safety
     return await new Promise((resolveOverall) => {
       let overallSettled = false;
-      let overallTimer = null;
+      let startHangTimer = null;
+      let playbackSafetyTimer = null;
 
       const finishOverall = (success) => {
         if (!overallSettled) {
           overallSettled = true;
-          if (overallTimer) clearTimeout(overallTimer);
+          if (startHangTimer) clearTimeout(startHangTimer);
+          if (playbackSafetyTimer) clearTimeout(playbackSafetyTimer);
           state.isSpeaking = false;
           state.lastSpeechEndedTs = Date.now();
           state.currentAudio = null;
@@ -329,8 +340,9 @@ export function createTTSManager({
         }
       };
 
-      overallTimer = setTimeout(() => {
-        console.warn("[TTS] speakAdaptive hard timeout exceeded (6000ms limit)");
+      // Watchdog: If audio synthesis/hardware hangs completely before starting, resolve within 6s
+      startHangTimer = setTimeout(() => {
+        console.warn("[TTS] speakAdaptive start safety timeout reached (audio failed to start or hung)");
         if (state.currentAudio) {
           try {
             state.currentAudio.pause();
@@ -346,6 +358,32 @@ export function createTTSManager({
         finishOverall(false);
       }, 6000);
 
+      let hasStarted = false;
+      const notifyStart = (audioEl = null) => {
+        if (!hasStarted && state.isSpeaking) {
+          hasStarted = true;
+          // Clear initial start hang watchdog: speech/playback has begun!
+          if (startHangTimer) {
+            clearTimeout(startHangTimer);
+            startHangTimer = null;
+          }
+
+          // Active playback watchdog: safety ceiling based on audio duration or text length
+          if (audioEl) {
+            const expectedMs = (audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0)
+              ? Math.ceil(audioEl.duration * 1000) + 8000
+              : Math.max(Math.ceil((cleaned.length / 10) * 1000) + 15000, 45000);
+            if (playbackSafetyTimer) clearTimeout(playbackSafetyTimer);
+            playbackSafetyTimer = setTimeout(() => {
+              console.warn("[TTS] Active audio playback watchdog reached expected duration limit");
+              finishOverall(true);
+            }, expectedMs);
+          }
+
+          onStart?.();
+        }
+      };
+
       (async () => {
         try {
           // 1. Try primary server-side TTS (Chatterbox /api/tts - MP3/WAV audio)
@@ -353,7 +391,7 @@ export function createTTSManager({
           try {
             audioUrl = await Promise.race([
               api.generateTTS(cleaned, { emotion, delivery }),
-              new Promise((resolve) => setTimeout(() => resolve(null), 4500)),
+              new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
             ]).catch((err) => {
               console.warn("[TTS] api.generateTTS failed:", err?.message || err);
               return null;
@@ -370,11 +408,26 @@ export function createTTSManager({
             audio.preload = "auto";
             state.currentAudio = audio;
 
-            audio.onplay = () => {
-              notifyStart();
+            const onAudioStarted = () => {
+              notifyStart(audio);
+            };
+
+            audio.onplay = onAudioStarted;
+            audio.onplaying = onAudioStarted;
+
+            audio.onloadedmetadata = () => {
+              if (hasStarted && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+                if (playbackSafetyTimer) clearTimeout(playbackSafetyTimer);
+                const expectedMs = Math.ceil(audio.duration * 1000) + 8000;
+                playbackSafetyTimer = setTimeout(() => {
+                  console.warn("[TTS] Active audio playback watchdog reached expected duration limit");
+                  finishOverall(true);
+                }, expectedMs);
+              }
             };
 
             audio.onended = () => {
+              if (playbackSafetyTimer) clearTimeout(playbackSafetyTimer);
               try {
                 URL.revokeObjectURL(audioUrl);
               } catch (e) {}
@@ -389,7 +442,7 @@ export function createTTSManager({
               } catch (err) {}
               if (state.isSpeaking && !overallSettled) {
                 speakBrowserSpeech(cleaned, {
-                  onStart: notifyStart,
+                  onStart: () => notifyStart(),
                   onEnd: () => finishOverall(true),
                   onError: (err) => {
                     onError?.(err);
@@ -405,7 +458,7 @@ export function createTTSManager({
             if (playPromise !== undefined) {
               playPromise
                 .then(() => {
-                  notifyStart();
+                  notifyStart(audio);
                 })
                 .catch((playErr) => {
                   console.warn("[TTS] HTMLAudioElement play rejected, falling back to Web Speech:", playErr?.message || playErr);
@@ -415,7 +468,7 @@ export function createTTSManager({
                   } catch (err) {}
                   if (state.isSpeaking && !overallSettled) {
                     speakBrowserSpeech(cleaned, {
-                      onStart: notifyStart,
+                      onStart: () => notifyStart(),
                       onEnd: () => finishOverall(true),
                       onError: (err) => {
                         onError?.(err);
@@ -433,7 +486,7 @@ export function createTTSManager({
           // 2. Fallback: Browser SpeechSynthesis
           if (state.isSpeaking && !overallSettled) {
             await speakBrowserSpeech(cleaned, {
-              onStart: notifyStart,
+              onStart: () => notifyStart(),
               onEnd: () => finishOverall(true),
               onError: (err) => {
                 console.warn("[TTS] Browser speech fallback notice:", err?.message || err);

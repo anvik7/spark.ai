@@ -4,6 +4,11 @@ import Avatar from "./components/Avatar.jsx";
 
 // SVG Icons matching Spark's design system
 const Ico = {
+  spark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  ),
   tasks: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
       <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
@@ -12,6 +17,12 @@ const Ico = {
   capture: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
       <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  ),
+  study: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
     </svg>
   ),
   chat: (
@@ -25,6 +36,13 @@ const Ico = {
   career: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
       <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />
+    </svg>
+  ),
+  target: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
     </svg>
   ),
   coach: (
@@ -132,14 +150,14 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
                 fontWeight: 700,
                 textTransform: "uppercase",
                 letterSpacing: ".08em",
-                color: "var(--marigold-dark)",
-                background: "var(--marigold-light)",
+                color: "var(--primary)",
+                background: "var(--primary-light)",
                 padding: "3px 10px",
                 borderRadius: 20,
                 marginBottom: 10,
               }}
             >
-              <span>⚡</span> Spark Workspace
+              {Ico.spark} SparkDhi Workspace
             </div>
 
             <h1
@@ -164,8 +182,8 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
                 maxWidth: 620,
               }}
             >
-              Welcome back, {firstName}. Spark brings your tasks, captured ideas,
-              collaborative conversations, career preparation, and AI assistance together in one
+              Welcome back, {firstName}. SparkDhi brings your tasks, captured ideas,
+              study repetition, career preparation, and AI assistance together in one
               unified system.
             </p>
           </div>
@@ -203,7 +221,7 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
             gap: 10,
           }}
         >
@@ -218,6 +236,12 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
             label="Capture"
             badge="Thoughts"
             onClick={() => onNavigate?.("capture")}
+          />
+          <QuickActionBtn
+            icon={Ico.study}
+            label="Study"
+            badge="Mastery"
+            onClick={() => onNavigate?.("study")}
           />
           <QuickActionBtn
             icon={Ico.chat}
@@ -258,7 +282,7 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
           Capture what matters. Turn it into knowledge. Act on it. Learn from it. Grow with it.
         </div>
         <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: 0, lineHeight: 1.5 }}>
-          Everything you record in Spark connects across your workflow — from quick thoughts and
+          Everything you record in SparkDhi connects across your workflow — from quick thoughts and
           problem solving to continuous recall and real-world career preparation.
         </p>
       </section>
@@ -384,6 +408,7 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
           ))}
         </ActivityCard>
 
+
         {/* Card D: Conversations & Career */}
         <ActivityCard
           title="Conversations & Career"
@@ -414,8 +439,11 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
                 marginBottom: 6,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                💬 {circle.name || "Conversation"}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+                <span style={{ color: "var(--primary)", display: "inline-flex" }}>{Ico.chat}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {circle.name || "Conversation"}
+                </span>
               </div>
               <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>Chat</span>
             </div>
@@ -436,8 +464,11 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
                 marginTop: 6,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                🎯 Target: {data.careerProfile.target_role}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+                <span style={{ color: "var(--c-career, #3B82F6)", display: "inline-flex" }}>{Ico.target}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Target: {data.careerProfile.target_role}
+                </span>
               </div>
               <span style={{ fontSize: 11, color: "var(--c-career, #3B82F6)" }}>View Roadmap</span>
             </div>
@@ -458,18 +489,19 @@ export default function Home({ user, onNavigate, onOpenUpgrade }) {
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 6 }}>
-            Getting Started with Spark
+            Getting Started with SparkDhi
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-soft)", margin: "0 0 14px" }}>
             Choose a starting point below to begin populating your personal workspace:
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-            <StarterAction title="Ask or Solve a Task" icon="📋" onClick={() => onNavigate?.("tasks")} />
-            <StarterAction title="Capture Ideas & Notes" icon="✏️" onClick={() => onNavigate?.("capture")} />
-            <StarterAction title="Start a Conversation" icon="👥" onClick={() => onNavigate?.("circles")} />
-            <StarterAction title="Audit Career Readiness" icon="🎯" onClick={() => onNavigate?.("career")} />
-            <StarterAction title="Practice with Coach" icon="💬" onClick={() => onNavigate?.("coach")} />
+            <StarterAction title="Ask or Solve a Task" icon={Ico.tasks} onClick={() => onNavigate?.("tasks")} />
+            <StarterAction title="Capture Ideas & Notes" icon={Ico.capture} onClick={() => onNavigate?.("capture")} />
+            <StarterAction title="Daily Spaced Review" icon={Ico.study} onClick={() => onNavigate?.("study")} />
+            <StarterAction title="Start a Conversation" icon={Ico.chat} onClick={() => onNavigate?.("circles")} />
+            <StarterAction title="Audit Career Readiness" icon={Ico.career} onClick={() => onNavigate?.("career")} />
+            <StarterAction title="Practice with Coach" icon={Ico.coach} onClick={() => onNavigate?.("coach")} />
           </div>
         </section>
       )}
@@ -485,7 +517,7 @@ function QuickActionBtn({ icon, label, badge, onClick }) {
       onClick={onClick}
       style={{
         background: "var(--surface)",
-        border: "1px solid var(--line)",
+        border: "1.5px solid var(--line)",
         borderRadius: "var(--r-s, 10px)",
         padding: "12px 10px",
         display: "flex",
@@ -501,14 +533,14 @@ function QuickActionBtn({ icon, label, badge, onClick }) {
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
-        e.currentTarget.style.borderColor = "var(--marigold)";
+        e.currentTarget.style.borderColor = "var(--primary)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";
         e.currentTarget.style.borderColor = "var(--line)";
       }}
     >
-      <div style={{ color: "var(--marigold-dark)" }}>{icon}</div>
+      <div style={{ color: "var(--primary)" }}>{icon}</div>
       <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
       <span style={{ fontSize: 10, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: ".04em" }}>
         {badge}
@@ -525,7 +557,7 @@ function ActivityCard({ title, icon, actionLabel, onAction, emptyState, children
     <div
       style={{
         background: "var(--surface)",
-        border: "1px solid var(--line)",
+        border: "1.5px solid var(--line)",
         borderRadius: "var(--r)",
         padding: 16,
         boxShadow: "var(--sh-sm)",
@@ -535,7 +567,7 @@ function ActivityCard({ title, icon, actionLabel, onAction, emptyState, children
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "var(--marigold-dark)" }}>{icon}</span>
+          <span style={{ color: "var(--primary)", display: "inline-flex" }}>{icon}</span>
           <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "var(--ink)" }}>{title}</h3>
         </div>
         <button
@@ -543,7 +575,7 @@ function ActivityCard({ title, icon, actionLabel, onAction, emptyState, children
           style={{
             background: "none",
             border: "none",
-            color: "var(--marigold-dark)",
+            color: "var(--primary)",
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
@@ -576,7 +608,7 @@ function EmptyStateItem({ text, actionText, onAction }) {
         style={{
           background: "none",
           border: "none",
-          color: "var(--marigold-dark)",
+          color: "var(--primary)",
           fontSize: 12,
           fontWeight: 700,
           cursor: "pointer",
@@ -605,9 +637,16 @@ function StarterAction({ title, icon, onClick }) {
         fontSize: 13,
         fontWeight: 600,
         color: "var(--ink)",
+        transition: "border-color .15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--primary)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--line)";
       }}
     >
-      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", color: "var(--primary)" }}>{icon}</span>
       <span style={{ flex: 1 }}>{title}</span>
       <span style={{ color: "var(--ink-faint)" }}>→</span>
     </button>

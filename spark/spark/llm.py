@@ -63,45 +63,6 @@ class TaskSolutionSchema(BaseModel):
     intuition: str = ""
     practice: list[str] = Field(default_factory=list)
 
-class StudyQuizItemSchema(BaseModel):
-    question_type: str = "mcq"
-    question_text: str
-    options: list[str] = Field(default_factory=list)
-    correct_answer: str = ""
-    explanation: str = ""
-    concept_tag: str = ""
-
-class StudyChapterSchema(BaseModel):
-    title: str
-    start_time: int = 0
-    end_time: int = 0
-    duration_seconds: int = 0
-    transcript_segment: str = ""
-    short_explanation: str = ""
-    key_concepts: list[str] = Field(default_factory=list)
-    learning_objective: str = ""
-    difficulty: str = "Beginner"
-    recall_prompt: str = ""
-    quiz: list[StudyQuizItemSchema] = Field(default_factory=list)
-
-class StudyMindmapNodeSchema(BaseModel):
-    node_key: str
-    label: str
-    parent_key: Optional[str] = None
-    concept_tag: str = ""
-    depth: int = 0
-
-class StudyChaptersSchema(BaseModel):
-    subject: str = "General Academic"
-    chapters: list[StudyChapterSchema]
-    mindmap_nodes: list[StudyMindmapNodeSchema] = Field(default_factory=list)
-
-class ActiveRecallSchema(BaseModel):
-    understanding_score: int
-    understood_concepts: list[str] = Field(default_factory=list)
-    missing_concepts: list[str] = Field(default_factory=list)
-    misconceptions: list[str] = Field(default_factory=list)
-    recommendation: str = ""
 
 # --- Safe Logging & JSON Extraction -----------------------------------------
 
@@ -827,7 +788,7 @@ _MOCK_TOPICS = {
 }
 
 _SYNTH_PROMPT = (
-    "You are a study assistant. The user asked: \"{q}\". Using ONLY their saved "
+    "You are a knowledge assistant. The user asked: \"{q}\". Using ONLY their saved "
     "notes below, write a tight structured briefing (<=180 words): a one-line "
     "thesis, then 3-5 bullet insights that connect the notes, surfacing any "
     "contradictions or gaps. Plain English. Notes:\n\n{notes}"
@@ -876,44 +837,6 @@ _SOLVE_TASK_PROMPT = (
     "- \"formulas\": array of strings (exact formulas, time/space complexity metrics, or core rules used, e.g. 'Time Complexity: O(n log n)')\n"
     "- \"intuition\": string (1-2 sentences explaining intuitive reasoning, key takeaway, or pitfall to avoid)\n"
     "- \"practice\": array of 2-3 strings (format: 'Problem: <exercise question> | Answer: <explicit solution>')\n"
-)
-
-_CHAPTERING_PROMPT = (
-    "You are SparkDhi Active Learning Engine. "
-    "You are processing ACTUAL LEARNING MATERIAL TEXT for topic: \"{title}\".\n"
-    "STRICT ANTI-HALLUCINATION REQUIREMENT: Use ONLY information contained in the provided material text below. "
-    "Do NOT infer concepts or lessons merely from the title. Do NOT invent concepts, examples, facts, or explanations that are not supported by the source content.\n\n"
-    "ACTUAL LEARNING MATERIAL:\n\"{transcript}\"\n\n"
-    "TASK:\n"
-    "1. Detect natural concept topic boundaries directly from the text.\n"
-    "2. Divide into 2 to 6 natural concept micro-chapters based on actual content covered.\n"
-    "3. For EACH chapter generate:\n"
-    "   - \"title\": concise concept topic name\n"
-    "   - \"start_time\": 0\n"
-    "   - \"end_time\": 0\n"
-    "   - \"transcript_segment\": actual text excerpt for this chapter\n"
-    "   - \"short_explanation\": 2-3 sentence core summary of the actual concept taught\n"
-    "   - \"key_concepts\": array of 2-4 string concept keywords directly from material\n"
-    "   - \"learning_objective\": clear objective statement grounded in material\n"
-    "   - \"difficulty\": \"Beginner\", \"Medium\", or \"Advanced\"\n"
-    "   - \"recall_prompt\": active-recall prompt asking learner to explain concept in their own words\n"
-    "   - \"quiz\": array of 2-4 questions grounded ONLY in this chapter's actual content (each with: \"question_type\": \"mcq\", \"question_text\", \"options\": [\"A\",\"B\",\"C\",\"D\"], \"correct_answer\", \"explanation\", \"concept_tag\")\n"
-    "4. Generate \"mindmap_nodes\": array of concepts extracted directly from material for graph visualization (each with: \"node_key\", \"label\", \"parent_key\", \"concept_tag\", \"depth\").\n\n"
-    "Return STRICT JSON with keys: \"subject\", \"chapters\", \"mindmap_nodes\"."
-)
-
-_ACTIVE_RECALL_PROMPT = (
-    "You are SparkDhi Active Learning Evaluator. "
-    "Evaluate the learner's self-explanation response for chapter: \"{chapter_title}\".\n\n"
-    "CHAPTER TRANSCRIPT CONTENT:\n\"{transcript_segment}\"\n\n"
-    "LEARNER ACTIVE RECALL RESPONSE:\n\"{user_response}\"\n\n"
-    "EVALUATION CRITERIA:\n"
-    "1. Calculate an \"understanding_score\" integer from 0 to 100 based on accuracy and completeness.\n"
-    "2. List \"understood_concepts\" (array of strings concepts correctly described).\n"
-    "3. List \"missing_concepts\" (array of strings important ideas omitted or incomplete).\n"
-    "4. List \"misconceptions\" (array of strings inaccurate or mistaken points, if any).\n"
-    "5. Provide a constructive 1-2 sentence \"recommendation\" highlighting strengths and guidance for next steps.\n\n"
-    "Return STRICT JSON with keys: \"understanding_score\", \"understood_concepts\", \"missing_concepts\", \"misconceptions\", \"recommendation\"."
 )
 
 # --- Offline / Deterministic Helpers ----------------------------------------
@@ -1081,158 +1004,6 @@ def _offline_dynamic_task_solver(prompt: str, subject_hint: str = "") -> dict:
         "practice": [
             f"Problem: What is the first step when tackling {clean_p}? | Answer: Identify baseline definitions and given conditions.",
         ],
-    }
-
-def _heuristic_concept_chapters(transcript_text: str, title: str = "Active Study Session") -> dict:
-    """Offline heuristic chapter generator derived directly from source transcript."""
-    raw_text = (transcript_text or "").strip()
-    words = raw_text.split()
-    total_words = max(50, len(words))
-    est_duration = max(300, int(total_words / 2.5))
-
-    stop_words = {
-        "the", "a", "an", "in", "on", "of", "and", "or", "to", "is", "are", "was", "were", "for", "with", "this", "that", "from", "by", "at", "it", "as", "be", "has", "have", "had",
-        "going", "just", "like", "want", "here", "there", "you", "your", "we", "our", "us", "they", "them", "their", "what", "which", "who", "whom", "where", "when", "why", "how",
-        "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "can", "will", "just",
-        "don't", "it's", "that's", "i'm", "we're", "you're", "they're", "there's", "here's", "know", "think", "mean", "right", "well", "look", "see", "get", "got", "make", "take",
-        "thing", "things", "way", "lot", "kind", "sort", "basically", "actually", "literally", "yeah", "okay", "alright", "hello", "welcome", "today", "now", "also", "into", "about"
-    }
-    clean_words = [w.strip(".,!?:;\"'()[]{}").capitalize() for w in words if len(w.strip(".,!?:;\"'()[]{}")) > 3 and w.lower() not in stop_words]
-    freq: dict[str, int] = {}
-    for w in clean_words:
-        freq[w] = freq.get(w, 0) + 1
-    top_terms = [k for k, v in sorted(freq.items(), key=lambda item: item[1], reverse=True)[:9]]
-
-    if len(top_terms) < 6:
-        top_terms.extend(["Concept Principles", "Analytical Framework", "System Interactions", "Practical Execution", "Problem Solving", "Key Synthesis"])
-
-    chunk_size = max(1, len(words) // 3)
-    chap1_text = " ".join(words[:chunk_size]) or raw_text[:500]
-    chap2_text = " ".join(words[chunk_size:chunk_size * 2]) or raw_text[500:1000]
-    chap3_text = " ".join(words[chunk_size * 2:]) or raw_text[1000:]
-
-    t1_end = int(est_duration * 0.33)
-    t2_end = int(est_duration * 0.67)
-
-    c1_tags = top_terms[0:3]
-    c2_tags = top_terms[3:6]
-    c3_tags = top_terms[6:9] if len(top_terms) >= 9 else top_terms[0:3]
-    clean_title = title[:40] if title else top_terms[0]
-
-    return {
-        "subject": "General Academic",
-        "chapters": [
-            {
-                "title": f"1. Introduction to {c1_tags[0]}",
-                "start_time": 0,
-                "end_time": t1_end,
-                "duration_seconds": t1_end,
-                "transcript_segment": chap1_text[:600],
-                "short_explanation": f"Examines foundational concepts around {c1_tags[0]} and {c1_tags[1]} in {clean_title}.",
-                "key_concepts": c1_tags,
-                "learning_objective": f"Understand core definitions of {c1_tags[0]} and how it establishes baseline principles.",
-                "difficulty": "Beginner",
-                "recall_prompt": f"Before continuing, explain the main idea of {c1_tags[0]} in your own words.",
-                "quiz": [
-                    {
-                        "question_type": "mcq",
-                        "question_text": f"What is the core focus of {c1_tags[0]} in this topic?",
-                        "options": [f"A. Establishing baseline principles of {c1_tags[0]}", "B. Ignoring foundational definitions", "C. Skipping preliminary analysis", "D. None of the above"],
-                        "correct_answer": f"A. Establishing baseline principles of {c1_tags[0]}",
-                        "explanation": f"Focusing on {c1_tags[0]} establishes essential baseline principles.",
-                        "concept_tag": c1_tags[0],
-                    },
-                    {
-                        "question_type": "true_false",
-                        "question_text": f"Understanding {c1_tags[1]} is essential for analyzing overall {clean_title} concepts.",
-                        "options": ["True", "False"],
-                        "correct_answer": "True",
-                        "explanation": f"{c1_tags[1]} provides key structural context.",
-                        "concept_tag": c1_tags[1],
-                    }
-                ],
-            },
-            {
-                "title": f"2. Mechanics of {c2_tags[0]}",
-                "start_time": t1_end,
-                "end_time": t2_end,
-                "duration_seconds": t2_end - t1_end,
-                "transcript_segment": chap2_text[:600],
-                "short_explanation": f"Analyzes relationships between {c2_tags[0]} and {c2_tags[1]}.",
-                "key_concepts": c2_tags,
-                "learning_objective": f"Analyze how {c2_tags[0]} interacts with other components to produce target outcomes.",
-                "difficulty": "Medium",
-                "recall_prompt": f"Describe the main mechanism of {c2_tags[0]} explained in this section.",
-                "quiz": [
-                    {
-                        "question_type": "mcq",
-                        "question_text": f"How does {c2_tags[0]} function within the system?",
-                        "options": [f"A. By interacting directly with {c2_tags[1]}", "B. Completely independently without input", "C. Randomly without structure", "D. Only during shutdown"],
-                        "correct_answer": f"A. By interacting directly with {c2_tags[1]}",
-                        "explanation": f"{c2_tags[0]} functions through structured interactions with {c2_tags[1]}.",
-                        "concept_tag": c2_tags[0],
-                    }
-                ],
-            },
-            {
-                "title": f"3. Applications of {c3_tags[0]}",
-                "start_time": t2_end,
-                "end_time": est_duration,
-                "duration_seconds": est_duration - t2_end,
-                "transcript_segment": chap3_text[:600],
-                "short_explanation": f"Synthesizes practical applications and advanced problem solving for {c3_tags[0]}.",
-                "key_concepts": c3_tags,
-                "learning_objective": f"Apply knowledge of {c3_tags[0]} to solve practical real-world problems.",
-                "difficulty": "Advanced",
-                "recall_prompt": f"How would you apply what you learned about {c3_tags[0]} to solve a new practical problem?",
-                "quiz": [
-                    {
-                        "question_type": "mcq",
-                        "question_text": f"Which strategy optimizes real-world execution of {c3_tags[0]}?",
-                        "options": [f"A. Applying structured methods for {c3_tags[0]}", "B. Ignoring edge conditions", "C. Avoiding testing", "D. Guessing outputs"],
-                        "correct_answer": f"A. Applying structured methods for {c3_tags[0]}",
-                        "explanation": f"Structured methods guarantee reliable execution for {c3_tags[0]}.",
-                        "concept_tag": c3_tags[0],
-                    }
-                ],
-            },
-        ],
-        "mindmap_nodes": [
-            {"node_key": "root", "label": clean_title, "parent_key": None, "concept_tag": "Main Topic", "depth": 0},
-            {"node_key": "c1", "label": c1_tags[0], "parent_key": "root", "concept_tag": c1_tags[0], "depth": 1},
-            {"node_key": "c2", "label": c2_tags[0], "parent_key": "root", "concept_tag": c2_tags[0], "depth": 1},
-            {"node_key": "c3", "label": c3_tags[0], "parent_key": "root", "concept_tag": c3_tags[0], "depth": 1},
-        ],
-    }
-
-def _heuristic_active_recall(user_recall_text: str) -> dict:
-    """Offline heuristic active recall evaluation."""
-    length = len((user_recall_text or "").strip().split())
-    if length > 25:
-        score = 85
-        recom = "Great job explaining the concept! You captured the main ideas well. Keep building on this understanding."
-        understood = ["Core Definition", "Primary Mechanism"]
-        missing: list[str] = []
-        misconceptions: list[str] = []
-    elif length >= 8:
-        score = 70
-        recom = "Good recall effort! You understand the primary idea, but try to include key relationships and details next time."
-        understood = ["Main Idea"]
-        missing = ["Specific Relationships & Details"]
-        misconceptions = []
-    else:
-        score = 45
-        recom = "Brief answer. Review the micro-chapter summary and try explaining the core relationships in your own words."
-        understood = ["General Topic"]
-        missing = ["Core Explanation", "Key Principles"]
-        misconceptions = ["Incomplete Coverage"]
-
-    return {
-        "understanding_score": score,
-        "understood_concepts": understood,
-        "missing_concepts": missing,
-        "misconceptions": misconceptions,
-        "recommendation": recom,
     }
 
 # --- Backward-Compatible Internal Callers -----------------------------------
@@ -1470,46 +1241,3 @@ def solve_task_followup(
         except Exception as e:
             raise AIServiceUnavailableError("AI service is temporarily unavailable. Please try again shortly.") from e
     return f"Explanation for '{followup_text}': Contextual clarification based on initial solution '{task_solution[:60]}'."
-
-
-def generate_concept_chapters(
-    transcript_text: str,
-    title: str = "Active Study Session",
-) -> dict:
-    """Analyze learning transcript and generate natural concept-based micro-chapters, quizzes, and mindmap."""
-    p_text = _CHAPTERING_PROMPT.format(title=title[:200], transcript=(transcript_text or "")[:25000])
-    router = get_model_router()
-    if router.has_configured_real_providers():
-        try:
-            parsed = router.generate_structured(p_text, schema=StudyChaptersSchema)
-            if parsed and "chapters" in parsed and len(parsed["chapters"]) > 0:
-                return parsed
-        except Exception as e:
-            print(f"[llm] generate_concept_chapters LLM error, using heuristic fallback: {_sanitize_log(str(e))}")
-
-    # Offline / heuristic fallback
-    return _heuristic_concept_chapters(transcript_text, title)
-
-
-def evaluate_active_recall(
-    chapter_title: str,
-    transcript_segment: str,
-    user_recall_text: str,
-) -> dict:
-    """Evaluate learner active recall response using LLM or intelligent heuristic parser."""
-    p_text = _ACTIVE_RECALL_PROMPT.format(
-        chapter_title=chapter_title[:100],
-        transcript_segment=(transcript_segment or "")[:3000],
-        user_response=(user_recall_text or "")[:2000],
-    )
-    router = get_model_router()
-    if router.has_configured_real_providers():
-        try:
-            parsed = router.generate_structured(p_text, schema=ActiveRecallSchema)
-            if parsed and "understanding_score" in parsed:
-                return parsed
-        except Exception as e:
-            print(f"[llm] evaluate_active_recall LLM error, using heuristic fallback: {_sanitize_log(str(e))}")
-
-    # Offline / heuristic fallback
-    return _heuristic_active_recall(user_recall_text)

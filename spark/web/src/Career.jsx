@@ -3,6 +3,52 @@ import { api } from "./api";
 import ConfirmationDialog from "./components/ui/ConfirmationDialog";
 import EmptyState from "./components/ui/EmptyState";
 
+// Clean SVG Icons for Career
+const Ico = {
+  file: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+  ),
+  upload: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 28, height: 28 }}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  ),
+  trash: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+    </svg>
+  ),
+  check: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  ),
+  alert: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  ),
+  spark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+  ),
+  copy: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+};
+
 const scoreColor = (s) =>
   s >= 75 ? "#10B981" : s >= 50 ? "var(--marigold)" : "#EF4444";
 
@@ -155,6 +201,7 @@ export default function Career({ onNavigate, user }) {
       setErr(e.message || "Failed to parse uploaded resume.");
     } finally {
       setBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -269,10 +316,10 @@ export default function Career({ onNavigate, user }) {
         onCancel={() => setShowDeleteModal(false)}
       />
 
-      <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Career Intelligence Engine</div>
+      <div className="eyebrow" style={{ color: "var(--primary)" }}>AI Career Intelligence Engine</div>
       <h1 className="title" style={{ fontSize: 26, margin: 0 }}>Career & Resume OS</h1>
       <p className="sub" style={{ margin: "4px 0 20px", fontSize: 14 }}>
-        Improve your resume and prepare for your next role. Spark AI scores your readiness against target roles, analyzes ATS compatibility, and gives actionable recommendations.
+        Improve your resume and prepare for your next role. SparkDhi scores your readiness against target roles, analyzes ATS compatibility, and gives actionable recommendations.
       </p>
 
       {/* Target Opportunity Section */}
@@ -288,7 +335,7 @@ export default function Career({ onNavigate, user }) {
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 12px", color: "var(--ink)" }}>1. Target Opportunity</h2>
         
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginBottom: 12 }}>
           <div className="field">
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>Target Role / Title *</label>
             <input
@@ -343,7 +390,7 @@ export default function Career({ onNavigate, user }) {
           boxShadow: "var(--sh-sm)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--ink)" }}>2. Resume Document</h2>
           {(resumeFilename || resumeText.trim()) && (
             <button
@@ -351,7 +398,7 @@ export default function Career({ onNavigate, user }) {
               onClick={() => setShowDeleteModal(true)}
               disabled={busy || isDeleting}
               style={{
-                padding: "4px 12px",
+                padding: "6px 14px",
                 borderRadius: 12,
                 border: "1px solid #FECACA",
                 background: "#FEF2F2",
@@ -361,10 +408,11 @@ export default function Career({ onNavigate, user }) {
                 cursor: busy || isDeleting ? "not-allowed" : "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
+                gap: 5,
               }}
             >
-              <span>🗑️ Remove Resume</span>
+              <span style={{ display: "inline-flex", alignItems: "center" }}>{Ico.trash}</span>
+              <span>Remove Resume</span>
             </button>
           )}
         </div>
@@ -376,6 +424,8 @@ export default function Career({ onNavigate, user }) {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              flexWrap: "wrap",
+              gap: 12,
               padding: "14px 16px",
               background: "var(--surface-2)",
               border: "1px solid var(--line)",
@@ -384,23 +434,27 @@ export default function Career({ onNavigate, user }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontSize: 24 }}>📄</div>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--primary-light)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {Ico.file}
+              </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
                   {resumeFilename}
                 </div>
-                <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginTop: 2 }}>
-                  ✓ Parsed & Ready for AI Audit
+                <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ display: "inline-flex" }}>{Ico.check}</span>
+                  <span>Parsed & Ready for AI Audit</span>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
                 style={{
+                  minHeight: 36,
                   padding: "6px 14px",
                   borderRadius: 8,
                   border: "1px solid var(--line)",
@@ -418,6 +472,7 @@ export default function Career({ onNavigate, user }) {
                 onClick={() => setShowDeleteModal(true)}
                 disabled={busy}
                 style={{
+                  minHeight: 36,
                   padding: "6px 14px",
                   borderRadius: 8,
                   border: "1px solid #FECACA",
@@ -442,15 +497,17 @@ export default function Career({ onNavigate, user }) {
             style={{
               padding: "24px 16px",
               textAlign: "center",
-              border: isDragging ? "2px dashed var(--marigold)" : "1.5px dashed var(--line)",
-              background: isDragging ? "var(--marigold-light)" : "var(--surface-2)",
+              border: isDragging ? "2px dashed var(--primary)" : "1.5px dashed var(--line)",
+              background: isDragging ? "var(--primary-light)" : "var(--surface-2)",
               borderRadius: 10,
               cursor: busy ? "not-allowed" : "pointer",
               marginBottom: 16,
               transition: "all .15s ease",
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 6 }}>📁</div>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--primary-light)", color: "var(--primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+              {Ico.upload}
+            </div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
               {uploadState === "uploading" ? "Uploading resume document…" :
                uploadState === "extracting" ? "Extracting text & analyzing structure…" :
@@ -461,7 +518,7 @@ export default function Career({ onNavigate, user }) {
             </div>
 
             {busy && (
-              <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: "var(--marigold-dark)" }}>
+              <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: "var(--primary)" }}>
                 <span className="spin" style={{ display: "inline-block", marginRight: 6 }} /> Processing resume…
               </div>
             )}
@@ -586,12 +643,13 @@ export default function Career({ onNavigate, user }) {
               marginBottom: 20,
               display: "flex",
               alignItems: "center",
-              gap: 24,
+              flexWrap: "wrap",
+              gap: 20,
             }}
           >
             <Ring score={analysis.overall_score ?? analysis.readiness ?? 0} />
-            <div style={{ flex: 1 }}>
-              <div className="eyebrow" style={{ color: "var(--marigold-dark)" }}>AI Target Match Assessment</div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div className="eyebrow" style={{ color: "var(--primary)" }}>AI Target Match Assessment</div>
               <h2 style={{ fontSize: 20, fontWeight: 800, margin: "2px 0 6px", color: "var(--ink)" }}>
                 {analysis.role_title || targetRole || "Career Role"} Analysis
               </h2>
@@ -605,8 +663,9 @@ export default function Career({ onNavigate, user }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
             {/* Strengths */}
             <div className="card" style={{ padding: 18, marginBottom: 0 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#059669" }}>
-                ✅ Verified Strengths ({analysis.strengths?.length || 0})
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#059669", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ display: "inline-flex" }}>{Ico.check}</span>
+                <span>Verified Strengths ({analysis.strengths?.length || 0})</span>
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(analysis.strengths || []).map((st, idx) => (
@@ -620,8 +679,9 @@ export default function Career({ onNavigate, user }) {
 
             {/* Gaps / Missing Skills */}
             <div className="card" style={{ padding: 18, marginBottom: 0 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#D97706" }}>
-                ⚠️ Missing Skills & Requirements ({analysis.gaps?.length || 0})
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "#D97706", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ display: "inline-flex" }}>{Ico.alert}</span>
+                <span>Missing Skills & Requirements ({analysis.gaps?.length || 0})</span>
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(analysis.gaps || []).map((gap, idx) => (
@@ -637,15 +697,16 @@ export default function Career({ onNavigate, user }) {
           {/* Action Plan */}
           {(analysis.action_plan || analysis.plan) && (
             <div className="card" style={{ padding: 18, marginBottom: 20 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "var(--ink)" }}>
-                🚀 AI Recommended Career Action Plan
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px", color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: "var(--primary)", display: "inline-flex" }}>{Ico.spark}</span>
+                <span>AI Recommended Career Action Plan</span>
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(analysis.action_plan || analysis.plan || []).map((act, idx) => {
                   const text = typeof act === "string" ? act : act?.plan || act?.why || act?.project || "";
                   return (
                     <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "var(--ink)", lineHeight: 1.5 }}>
-                      <span style={{ fontWeight: 800, color: "var(--marigold-dark)", background: "var(--surface-2)", width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                      <span style={{ fontWeight: 800, color: "var(--primary)", background: "var(--primary-light)", width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
                         {idx + 1}
                       </span>
                       <span>{text}</span>
@@ -658,16 +719,18 @@ export default function Career({ onNavigate, user }) {
 
           {/* Cover Letter Generator Section */}
           <div className="card" style={{ padding: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)" }}>
-                ✉️ AI Tailored Cover Letter Generator
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ display: "inline-flex" }}>{Ico.file}</span>
+                <span>AI Tailored Cover Letter Generator</span>
               </h3>
               <button
                 type="button"
                 onClick={draftCoverLetter}
                 disabled={clBusy}
                 style={{
-                  padding: "6px 14px",
+                  minHeight: 38,
+                  padding: "8px 16px",
                   borderRadius: 8,
                   border: "none",
                   background: clBusy ? "var(--line)" : "var(--p-gradient)",
@@ -712,9 +775,13 @@ export default function Career({ onNavigate, user }) {
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {copied ? "✓ Copied to Clipboard!" : "📋 Copy Cover Letter"}
+                  {copied ? Ico.check : Ico.copy}
+                  <span>{copied ? "Copied to Clipboard!" : "Copy Cover Letter"}</span>
                 </button>
               </div>
             )}

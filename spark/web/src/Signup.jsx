@@ -79,8 +79,8 @@ export default function Signup({ onAuthed, goToLogin, onBackToHome }) {
           }}
         >
           <div className="eyebrow" style={{ marginBottom: 4 }}>GET STARTED</div>
-          <h1 className="title" style={{ fontSize: 26, marginBottom: 4 }}>Create your Spark</h1>
-          <p className="sub" style={{ marginBottom: 20, fontSize: 14 }}>14-day full access trial included — upgrade any time.</p>
+          <h1 className="title" style={{ fontSize: 26, marginBottom: 4 }}>Create your SparkDhi account</h1>
+          <p className="sub" style={{ marginBottom: 20, fontSize: 14 }}>Start your 14-day free trial · No credit card required.</p>
 
           {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
 

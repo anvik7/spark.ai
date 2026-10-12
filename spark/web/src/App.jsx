@@ -10,7 +10,9 @@ import ModuleLoadingState from "./components/ui/ModuleLoadingState.jsx";
 const Home = lazy(() => import("./Home.jsx"));
 const Capture = lazy(() => import("./Capture.jsx"));
 const Tasks = lazy(() => import("./Tasks.jsx"));
+const Study = lazy(() => import("./Study.jsx"));
 const Career = lazy(() => import("./Career.jsx"));
+
 const Interview = lazy(() => import("./Interview.jsx"));
 const Circles = lazy(() => import("./Circles.jsx"));
 const Account = lazy(() => import("./Account.jsx"));
@@ -18,16 +20,23 @@ const Upgrade = lazy(() => import("./Upgrade.jsx"));
 const Landing = lazy(() => import("./Landing.jsx"));
 const Login = lazy(() => import("./Login.jsx"));
 const Signup = lazy(() => import("./Signup.jsx"));
+const ForgotPassword = lazy(() => import("./ForgotPassword.jsx"));
+const ResetPassword = lazy(() => import("./ResetPassword.jsx"));
 const SharedCapture = lazy(() => import("./SharedCapture.jsx"));
 
 /* ---------- SVG Navigation Icons ---------- */
 const Ico = {
+  home: <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>,
   capture: <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />,
   tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
+  study: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>,
   career: <path d="M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z" />,
   circles: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><circle cx="12" cy="16" r="3" /><path d="M10.5 10.5l1.5 2.5 M13.5 10.5l-1.5 2.5" /></>,
   coach: <path d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M4 21v-1a6 6 0 0 1 12 0v1 M18 8l2 2-2 2" />,
   more: <><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></>,
+  user: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
+  upgrade: <><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
 };
 
 const Svg = ({ d, cls = "ico" }) => (
@@ -44,6 +53,7 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // ── Theme system (Light / Dark / System) ──
   const [theme, setThemeState] = useState(() => localStorage.getItem("spark_theme") || "system");
@@ -87,18 +97,29 @@ export default function App() {
     );
   }
 
+  // Check password reset URL route
+  if (currentPath.startsWith("/reset-password")) {
+    const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    const token = searchParams.get("token") || "";
+    return (
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading…</div>}>
+        <ResetPassword
+          token={token}
+          onBackToLogin={() => {
+            if (typeof window !== "undefined") window.location.href = "/";
+          }}
+          onBackToHome={() => {
+            if (typeof window !== "undefined") window.location.href = "/";
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   useEffect(() => {
     if (!hasToken()) { setBooting(false); return; }
     api.me().then(setUser).catch(() => setToken("")).finally(() => setBooting(false));
   }, []);
-
-  useEffect(() => {
-    if (user?.avatar_url) {
-      document.body.setAttribute("data-persona", user.avatar_url);
-    } else {
-      document.body.removeAttribute("data-persona");
-    }
-  }, [user?.avatar_url]);
 
   useEffect(() => {
     const onUnauthorized = () => {
@@ -115,6 +136,7 @@ export default function App() {
 
   const handleNav = (targetTab) => {
     startTransition(() => {
+      setShowMoreMenu(false);
       setShowUpgrade(false);
       setShowAccount(false);
       setTab(targetTab);
@@ -122,10 +144,10 @@ export default function App() {
     });
   };
 
-  if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading Spark Workspace…</div>;
+  if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading SparkDhi Workspace…</div>;
   if (!user) {
     return showAuth ? (
-      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading Spark…</div>}>
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading SparkDhi…</div>}>
         <Auth
           onAuthed={(u) => {
             startTransition(() => {
@@ -139,7 +161,7 @@ export default function App() {
         />
       </Suspense>
     ) : (
-      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading Spark…</div>}>
+      <Suspense fallback={<div className="empty" style={{ paddingTop: 120 }}>Loading SparkDhi…</div>}>
         <Landing
           onGetStarted={() => { startTransition(() => { setAuthMode("signup"); setShowAuth(true); }); }}
           onLogin={() => { startTransition(() => { setAuthMode("login"); setShowAuth(true); }); }}
@@ -150,13 +172,22 @@ export default function App() {
     );
   }
 
-  // Exact 5 Global Modules Sequence (Tasks -> Capture -> Chat -> Career -> Coach)
-  const navItems = [
+  // Desktop Navigation: Core capability suite (Tasks primary)
+  const desktopNavItems = [
+    { id: "tasks", label: "Tasks", icon: Ico.tasks },
+    { id: "capture", label: "Capture", icon: Ico.capture },
+    { id: "career", label: "Career OS", icon: Ico.career },
+    { id: "circles", label: "Chat & Circles", icon: Ico.circles },
+    { id: "coach", label: "Interview Coach", icon: Ico.coach },
+    { id: "study", label: "Study Center", icon: Ico.study },
+  ];
+
+  // Mobile Bottom Navigation: Tasks as primary workspace, Home and Study moved to More
+  const mobileNavItems = [
     { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
     { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
-    { id: "circles", label: "Chat", shortLabel: "Chat", icon: Ico.circles },
-    { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career },
-    { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach },
+    { id: "career", label: "Career", shortLabel: "Career", icon: Ico.career },
+    { id: "more", label: "More", shortLabel: "More", icon: Ico.more },
   ];
 
   return (
@@ -170,20 +201,20 @@ export default function App() {
 
       {/* Desktop Persistent Sidebar */}
       <aside className="app-sidebar">
-        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="SparkDhi Home">
+        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("tasks")} style={{ cursor: "pointer" }} title="SparkDhi Tasks">
           <Chakra size={32} />
           <span className="logo-mark" style={{ fontSize: 22 }}>SparkDhi</span>
         </div>
 
-        <div className="sidebar-workspace" onClick={() => handleNav("home")} style={{ cursor: "pointer" }} title="Spark Home">
+        <div className="sidebar-workspace" onClick={() => handleNav("tasks")} style={{ cursor: "pointer" }} title="Spark Tasks">
           <span>⚡</span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Personal Workspace
+            Tasks Workspace
           </span>
         </div>
 
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
+          {desktopNavItems.map((item) => (
             <button
               key={item.id}
               className={`sidebar-link ${tab === item.id && !showAccount && !showUpgrade ? "active" : ""}`}
@@ -233,7 +264,7 @@ export default function App() {
       <main className="app-main">
         {/* Mobile Header (< 768px) */}
         <header className="topbar-mobile">
-          <div className="spark-logo-lockup" onClick={() => handleNav("home")} title="SparkDhi Home">
+          <div className="spark-logo-lockup" onClick={() => handleNav("tasks")} title="SparkDhi Tasks">
             <Chakra size={32} />
             <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
           </div>
@@ -313,7 +344,7 @@ export default function App() {
               className={`plan-chip ${user.plan === "pro" || user.plan === "plus" ? "pro" : ""}`}
               onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
             >
-              {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : "Free Plan"}
+              {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : (user.entitlements?.trial?.active || user.trial_active) ? "14-Day Trial" : "Upgrade"}
             </button>
 
             <button
@@ -398,6 +429,14 @@ export default function App() {
                 </ModuleErrorBoundary>
               )}
 
+              {tab === "study" && (
+                <ModuleErrorBoundary moduleName="Study">
+                  <Suspense fallback={<ModuleLoadingState moduleName="Study" />}>
+                    <Study onNavigate={handleNav} />
+                  </Suspense>
+                </ModuleErrorBoundary>
+              )}
+
               {tab === "circles" && (
                 <ModuleErrorBoundary moduleName="Chat">
                   <Suspense fallback={<ModuleLoadingState moduleName="Chat" />}>
@@ -426,34 +465,164 @@ export default function App() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation (Tasks | Capture | Chat | Career | Coach) */}
+      {/* Mobile Bottom Navigation (Tasks | Capture | Career | More) */}
       <nav className="nav">
-        {navItems.map((item) => (
-          <NavBtn
-            key={item.id}
-            id={item.id}
-            tab={showAccount || showUpgrade ? null : tab}
-            set={handleNav}
-            icon={item.icon}
-            label={item.shortLabel || item.label}
-          />
-        ))}
+        {mobileNavItems.map((item) => {
+          const isMore = item.id === "more";
+          const isMoreActive =
+            showMoreMenu ||
+            (!["tasks", "capture", "career"].includes(tab) && !showAccount && !showUpgrade) ||
+            showAccount ||
+            showUpgrade;
+          const isActive = isMore ? isMoreActive : (!showAccount && !showUpgrade && !showMoreMenu && tab === item.id);
+          return (
+            <button
+              key={item.id}
+              className={isActive ? "nav-btn active" : "nav-btn"}
+              onClick={() => {
+                if (isMore) {
+                  setShowMoreMenu((prev) => !prev);
+                } else {
+                  setShowMoreMenu(false);
+                  handleNav(item.id);
+                }
+              }}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
+            >
+              <Svg d={item.icon} />
+              <span>{item.shortLabel || item.label}</span>
+            </button>
+          );
+        })}
       </nav>
-    </div>
-  );
-}
 
-function NavBtn({ id, tab, set, icon, label }) {
-  const isActive = tab === id;
-  return (
-    <button
-      className={isActive ? "nav-btn active" : "nav-btn"}
-      onClick={() => set(id)}
-      aria-label={label}
-      aria-current={isActive ? "page" : undefined}
-    >
-      <Svg d={icon} /><span>{label}</span><span className="dot" />
-    </button>
+      {/* Mobile More Drawer / Bottom Sheet */}
+      {showMoreMenu && (
+        <div className="more-sheet-backdrop" onClick={() => setShowMoreMenu(false)}>
+          <div className="more-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="more-sheet-handle" />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)" }}>
+                Workspace & More
+              </div>
+              <button
+                onClick={() => setShowMoreMenu(false)}
+                style={{ background: "none", border: "none", color: "var(--ink-soft)", cursor: "pointer", fontSize: 18, padding: "2px 6px" }}
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="more-sheet-grid">
+              <button
+                className={`more-sheet-item ${tab === "home" && !showAccount && !showUpgrade ? "active" : ""}`}
+                onClick={() => handleNav("home")}
+              >
+                <Svg d={Ico.home} />
+                <span>Home</span>
+              </button>
+              <button
+                className={`more-sheet-item ${tab === "study" && !showAccount && !showUpgrade ? "active" : ""}`}
+                onClick={() => handleNav("study")}
+              >
+                <Svg d={Ico.study} />
+                <span>Study Center</span>
+              </button>
+              <button
+                className={`more-sheet-item ${tab === "circles" && !showAccount && !showUpgrade ? "active" : ""}`}
+                onClick={() => handleNav("circles")}
+              >
+                <Svg d={Ico.circles} />
+                <span>Chat & Circles</span>
+              </button>
+              <button
+                className={`more-sheet-item ${tab === "coach" && !showAccount && !showUpgrade ? "active" : ""}`}
+                onClick={() => handleNav("coach")}
+              >
+                <Svg d={Ico.coach} />
+                <span>Interview Coach</span>
+              </button>
+              <button
+                className={`more-sheet-item ${showAccount ? "active" : ""}`}
+                onClick={() => { setShowMoreMenu(false); setShowUpgrade(false); setShowAccount(true); }}
+              >
+                <Svg d={Ico.user} />
+                <span>Account Profile</span>
+              </button>
+              <button
+                className={`more-sheet-item ${showUpgrade ? "active" : ""}`}
+                onClick={() => { setShowMoreMenu(false); setShowAccount(false); setShowUpgrade(true); }}
+              >
+                <Svg d={Ico.upgrade} />
+                <span>Plan & Billing</span>
+              </button>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>Appearance</span>
+                <div style={{ display: "inline-flex", background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 8, padding: 2 }}>
+                  {[
+                    { id: "light", icon: "☀️", label: "Light" },
+                    { id: "dark", icon: "🌙", label: "Dark" },
+                    { id: "system", icon: "◐", label: "Auto" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleChangeTheme(m.id)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "none",
+                        fontSize: 12,
+                        fontWeight: theme === m.id ? 700 : 500,
+                        background: theme === m.id ? "var(--surface)" : "transparent",
+                        color: theme === m.id ? "var(--ink)" : "var(--ink-soft)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {m.icon} {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setShowAccount(false);
+                  setUser(null);
+                  setToken("");
+                  localStorage.removeItem("spark_token");
+                  localStorage.removeItem("spark_active_tab");
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: "var(--r-s, 8px)",
+                  background: "transparent",
+                  border: "1px solid rgba(220, 38, 38, 0.25)",
+                  color: "#DC2626",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Svg d={Ico.logout} />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -470,8 +639,24 @@ function Auth({ onAuthed, onBackToHome, initialMode = "signup" }) {
     onAuthed(user);
   };
 
+  if (mode === "forgot") {
+    return (
+      <ForgotPassword
+        goToLogin={() => setMode("login")}
+        onBackToHome={onBackToHome}
+      />
+    );
+  }
+
   if (mode === "login") {
-    return <Login onAuthed={handleAuth} goToSignup={() => setMode("signup")} onBackToHome={onBackToHome} />;
+    return (
+      <Login
+        onAuthed={handleAuth}
+        goToSignup={() => setMode("signup")}
+        onForgotPassword={() => setMode("forgot")}
+        onBackToHome={onBackToHome}
+      />
+    );
   }
   return <Signup onAuthed={handleAuth} goToLogin={() => setMode("login")} onBackToHome={onBackToHome} />;
 }

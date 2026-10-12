@@ -216,13 +216,15 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             Experience the complete SparkDhi workspace before choosing a plan.
           </div>
           {isTrial && (
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--marigold-dark)", marginTop: 4 }}>
-              🎁 Currently on 14-Day Full Access Trial: <strong>{trialDaysRemaining} {trialDaysRemaining === 1 ? "day" : "days"} remaining</strong>.
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--marigold-dark)", marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Currently on 14-Day Full Access Trial: <strong>{trialDaysRemaining} {trialDaysRemaining === 1 ? "day" : "days"} remaining</strong>.</span>
             </div>
           )}
           {!isTrial && !isPaidActive && (
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#EF4444", marginTop: 4 }}>
-              ⚠️ Your 14-day trial has concluded. Select Plus or Pro below to continue your workspace.
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#EF4444", marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Your 14-day trial has concluded. Select Plus or Pro below to continue your workspace.</span>
             </div>
           )}
         </div>
@@ -284,9 +286,13 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             color: "var(--ink)",
           }}
         >
-          <span>
-            {isCancelled ? "⏳" : "✓"} Currently on <strong>SparkDhi {currentPlan.toUpperCase()}</strong>
-            {isCancelled ? " (Cancels at period end)" : " (Active)"}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {isCancelled ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            )}
+            <span>Currently on <strong>SparkDhi {currentPlan.toUpperCase()}</strong>{isCancelled ? " (Cancels at period end)" : " (Active)"}</span>
           </span>
           {!isCancelled && (
             <button
@@ -319,9 +325,14 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             textAlign: "center",
             fontSize: 14,
             fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
           }}
         >
-          ⚠️ {err}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>{err}</span>
         </div>
       )}
 
@@ -370,6 +381,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             onClick={() => setInterval("monthly")}
             style={{
               padding: "8px 18px",
+              minHeight: 44,
               borderRadius: 8,
               border: "none",
               fontSize: 13.5,
@@ -387,6 +399,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             onClick={() => setInterval("yearly")}
             style={{
               padding: "8px 18px",
+              minHeight: 44,
               borderRadius: 8,
               border: "none",
               fontSize: 13.5,
@@ -433,6 +446,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             onClick={() => setCurrency("INR")}
             style={{
               padding: "8px 14px",
+              minHeight: 44,
               borderRadius: 8,
               border: "none",
               fontSize: 13,
@@ -444,12 +458,13 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
               transition: "all .15s ease",
             }}
           >
-            🇮🇳 India (INR)
+            India (INR)
           </button>
           <button
             onClick={() => setCurrency("USD")}
             style={{
               padding: "8px 14px",
+              minHeight: 44,
               borderRadius: 8,
               border: "none",
               fontSize: 13,
@@ -461,7 +476,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
               transition: "all .15s ease",
             }}
           >
-            🌐 Global (USD)
+            Global (USD)
           </button>
         </div>
       </div>
@@ -470,7 +485,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
           gap: 24,
           marginBottom: 44,
           alignItems: "stretch",
@@ -547,8 +562,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             <div>✓ 25 downloads per month</div>
             <div>✓ Priority AI processing</div>
             <div>✓ Tasks AI problem solving & code answers</div>
-            <div>✓ Active Recall & spaced review</div>
-            <div>✓ Spark Circles public communities</div>
+            <div>✓ SparkDhi Circles public communities</div>
             <div>✓ Career Intelligence & resume audit</div>
           </div>
         </div>
@@ -643,7 +657,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
             <div>✓ <strong>10 GB high-capacity storage</strong> (100 files)</div>
             <div>✓ <strong>1,000 downloads per month</strong></div>
             <div>✓ <strong>Highest priority AI processing</strong> (Zero queue wait)</div>
-            <div>✓ <strong>Advanced performance & study analytics</strong></div>
+            <div>✓ <strong>Advanced performance analytics</strong></div>
             <div>✓ <strong>Voice Interview AI simulator</strong> & coaching</div>
             <div>✓ <strong>Private 1-to-1 direct messaging</strong> in Circles</div>
             <div>✓ <strong>Early access</strong> to next-gen AI capabilities</div>
@@ -689,7 +703,6 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
                   rows: [
                     ["Tasks Workspace", "Full Access", "Full Access", "Full Priority Access"],
                     ["Capture & Quick Notes", "Included", "Included", "Included"],
-                    ["Active Study & Decks", "Spaced Repetition", "Spaced Repetition", "Spaced Repetition + Deck Export"],
                     ["Chat Assistant", "Included", "Included", "Included"],
                     ["Career Readiness OS", "Included", "Included", "Included"],
                     ["AI Coach & Guidance", "Included", "Included", "Included"],
@@ -701,9 +714,6 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
                     ["Tasks AI (Problem Solver)", "Full Solutions", "Full Solutions", "Full Solutions + Step-by-Step"],
                     ["Coding Answers & Exact Code", "Included", "Included", "Included + Multi-file context"],
                     ["AI Capture Insights & Synthesis", "Included", "Included", "Included"],
-                    ["Study Intelligence & Summaries", "Included", "Included", "Included"],
-                    ["Active Recall & AI Quizzes", "Included", "Included", "Included"],
-                    ["Mastery Tracking & Analytics", "Preview", "Standard", "Advanced Mastery Reports"],
                     ["Career Intelligence & Resume Audit", "Included", "Included", "Included"],
                     ["AI Cover Letters & Optimization", "Included", "Included", "Included"],
                     ["AI Coaching & Mentorship", "Included", "Included", "Included"],
@@ -715,7 +725,7 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
                   rows: [
                     ["Public Communities (Circles)", "Public Channels", "Public Channels", "Public Channels"],
                     ["Private 1-to-1 Direct Chat", "—", "—", "Direct Messaging Unlocked"],
-                    ["Private Study Groups", "Public Only", "Public Only", "Private Cohorts"],
+                    ["Private Discussion Groups", "Public Only", "Public Only", "Private Cohorts"],
                     ["Image & File Attachment Sharing", "Up to 25 MB", "Up to 50 MB", "Up to 200 MB"],
                   ],
                 },
@@ -784,9 +794,9 @@ export default function Upgrade({ user, onUpgraded, onBack }) {
           marginBottom: 28,
         }}
       >
-        <span style={{ fontSize: 20 }}>🔒</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2, color: "var(--primary)" }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <div>
-          <strong style={{ color: "var(--ink)" }}>SparkDhi Data Safety Guarantee:</strong> We never delete your tasks, captures, study sessions, chat history, or career records even if your subscription expires or is cancelled. Your knowledge always belongs to you.
+          <strong style={{ color: "var(--ink)" }}>SparkDhi Data Safety Guarantee:</strong> We never delete your tasks, captures, chat history, or career records even if your subscription expires or is cancelled. Your knowledge always belongs to you.
         </div>
       </div>
 

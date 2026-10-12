@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { api, setToken } from "./api.js";
 import { Chakra } from "./Chakra.jsx";
 
-export default function Login({ onAuthed, goToSignup, onBackToHome }) {
+export default function Login({ onAuthed, goToSignup, onBackToHome, onForgotPassword }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -68,7 +68,7 @@ export default function Login({ onAuthed, goToSignup, onBackToHome }) {
           }}
         >
           <div className="eyebrow" style={{ marginBottom: 4 }}>WELCOME BACK</div>
-          <h1 className="title" style={{ fontSize: 26, marginBottom: 4 }}>Log in to Spark</h1>
+          <h1 className="title" style={{ fontSize: 26, marginBottom: 4 }}>Log in to SparkDhi</h1>
           <p className="sub" style={{ marginBottom: 20, fontSize: 14 }}>Pick up where you left off.</p>
 
           {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
@@ -91,9 +91,27 @@ export default function Login({ onAuthed, goToSignup, onBackToHome }) {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--ink-soft)", marginBottom: 6 }}>
-                Password
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--marigold-dark)",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "2px 4px",
+                    textDecoration: "none",
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
               <div style={{ position: "relative" }}>
                 <input
                   className="field"

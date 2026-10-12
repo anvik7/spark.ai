@@ -121,8 +121,8 @@ def _llm(prompt: str, max_tokens: int = 1400) -> str:
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "HTTP-Referer": "https://spark.ai",
-                "X-Title": "Spark AI Career Intelligence",
+                "HTTP-Referer": "https://sparkdhi.ai",
+                "X-Title": "SparkDhi Career Intelligence",
                 "Content-Type": "application/json",
             },
             json={
@@ -419,7 +419,7 @@ def _dynamic_semantic_audit(
         "role_title": clean_role,
         "target_company": clean_company,
         "summary": summary_text,
-        "demand_source": "Spark AI Career Intelligence Engine",
+        "demand_source": "SparkDhi Career Intelligence Engine",
         "pro": True,
         "strengths": strengths,
         "gaps": gaps,

@@ -336,7 +336,7 @@ def test_authorized_retrieval(test_user, auth_headers):
     assert chat_res.status_code == 200
     media_url = chat_res.json()["url"]
 
-    media_dl = client.get(media_url)
+    media_dl = client.get(media_url, headers=auth_headers)
     assert media_dl.status_code == 200
     assert media_dl.content == png_bytes
 
@@ -444,7 +444,7 @@ def test_missing_object_handling(temp_storage, auth_headers):
     assert res.status_code == 404
 
     # API level: /api/circles/media/
-    media_res = client.get("/api/circles/media/chat_9999_missing_token.png")
+    media_res = client.get("/api/circles/media/chat_9999_missing_token.png", headers=auth_headers)
     assert media_res.status_code == 404
 
 
@@ -531,3 +531,95 @@ def test_existing_upload_endpoints_regression(test_user, auth_headers):
     clear_res = client.post("/api/career/clear-resume", headers=auth_headers)
     assert clear_res.status_code == 200
     assert storage.exists(resume_key) is False
+
+
+# ============================================================================
+# 14. Production Storage Safety & Ephemeral Fallback Prevention
+# ============================================================================
+
+def test_local_dev_storage_defaults_without_storage_local_dir():
+    """Local development without STORAGE_LOCAL_DIR still works according to existing defaults."""
+    with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=False):
+        os.environ.pop("RENDER", None)
+        with patch("spark.storage.get_settings") as mock_settings:
+            mock_settings.return_value.storage_local_dir = ""
+            adapter = LocalStorageAdapter()
+            assert adapter.base_dir.name == "uploads"
+            assert adapter.base_dir.exists()
+
+
+def test_production_without_storage_local_dir_fails_safely():
+    """Production without STORAGE_LOCAL_DIR fails safely with StorageConfigError."""
+    with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
+        with patch("spark.storage.get_settings") as mock_settings:
+            mock_settings.return_value.storage_local_dir = ""
+            with pytest.raises(StorageConfigError) as exc_info:
+                LocalStorageAdapter()
+            assert "STORAGE_LOCAL_DIR must be explicitly configured" in str(exc_info.value)
+            assert "Ephemeral fallback to container storage is disallowed" in str(exc_info.value)
+
+
+def test_production_with_valid_persistent_directory_starts():
+    """Production with a valid persistent directory starts and verifies writability."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
+            with patch("spark.storage.get_settings") as mock_settings:
+                mock_settings.return_value.storage_local_dir = tmpdir
+                adapter = LocalStorageAdapter()
+                assert adapter.base_dir == Path(tmpdir).resolve()
+                # Test write and read
+                test_key = "test_object.txt"
+                adapter.put(test_key, b"persistent-content")
+                assert adapter.get(test_key) == b"persistent-content"
+                adapter.delete(test_key)
+
+
+def test_production_with_unwritable_directory_fails_safely():
+    """Production with an unwritable or inaccessible directory fails safely with StorageConfigError."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target_dir = Path(tmpdir) / "sub_unwritable"
+        target_dir.mkdir()
+
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
+            with patch("spark.storage.get_settings") as mock_settings:
+                mock_settings.return_value.storage_local_dir = str(target_dir)
+                # Mock write failure to simulate read-only mount or permission denied
+                with patch("pathlib.Path.write_bytes", side_effect=PermissionError("Permission denied: read-only volume")):
+                    with pytest.raises(StorageConfigError) as exc_info:
+                        LocalStorageAdapter()
+                    assert "is not writable" in str(exc_info.value)
+
+
+# ============================================================================
+# 15. Genuine Cloud Storage Integration (Opt-in via RUN_LIVE_CLOUD_STORAGE_TESTS=1)
+# ============================================================================
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_LIVE_CLOUD_STORAGE_TESTS") != "1",
+    reason="Genuine live cloud storage integration tests require RUN_LIVE_CLOUD_STORAGE_TESTS=1",
+)
+def test_live_cloud_storage_integration():
+    """Verify live S3/R2 cloud storage connectivity when explicitly opted-in.
+    Uses configured credentials from environment without hardcoding or leaking secrets.
+    """
+    from spark.config import get_settings
+    settings = get_settings()
+    if not settings.s3_bucket or not settings.s3_access_key_id or not settings.s3_secret_access_key:
+        pytest.skip("Live cloud storage credentials are not configured in settings.")
+
+    adapter = S3StorageAdapter(
+        bucket_name=settings.s3_bucket,
+        endpoint_url=settings.s3_endpoint_url or None,
+        access_key_id=settings.s3_access_key_id,
+        secret_access_key=settings.s3_secret_access_key,
+        region_name=settings.s3_region or "auto",
+    )
+    test_key = f"integration_tests/{uuid.uuid4().hex}/ping.txt"
+    try:
+        saved_key = adapter.put(test_key, b"spark-live-storage-ping", content_type="text/plain")
+        assert saved_key == test_key
+        assert adapter.exists(test_key) is True
+        data = adapter.get(test_key)
+        assert data == b"spark-live-storage-ping"
+    finally:
+        adapter.delete(test_key)

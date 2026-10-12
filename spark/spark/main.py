@@ -14,7 +14,7 @@ from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile, status)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlmodel import col, select, func
@@ -26,7 +26,7 @@ except ImportError:
 
 from . import career, content_understanding, embeddings, interview, llm, memory, stats, storage, subscription
 from .content_understanding import UnsupportedFileError
-from .storage import build_object_key, get_storage, guess_content_type
+from .storage import build_object_key, get_storage, guess_content_type, sanitize_object_key, StoragePathTraversalError
 from .tts import get_tts_provider
 from .auth import (current_user, find_by_email, get_or_create_user, make_token,
                    verify_password, check_reset_rate_limit, create_password_reset_token,
@@ -45,6 +45,7 @@ settings = get_settings()
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     init_db()
+    get_storage()
     yield
 
 app = FastAPI(title=settings.app_name, lifespan=_lifespan)
@@ -602,12 +603,26 @@ def optional_upload_user(
         uid = _user_id_from_token(creds.credentials)
         with get_session() as session:
             user = session.get(User, uid)
-            if not user:
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
-            session.expunge(user)
-            return user
+            if user:
+                session.expunge(user)
+                return user
     except Exception:
         return None
+    return None
+
+
+def authenticated_upload_user(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_upload_bearer),
+) -> User:
+    if not creds or not creds.credentials:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    uid = _user_id_from_token(creds.credentials)
+    with get_session() as session:
+        user = session.get(User, uid)
+        if not user:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
+        session.expunge(user)
+        return user
 
 
 def _serve_storage_or_file(storage_key: Optional[str], filename: str) -> Response:
@@ -730,7 +745,6 @@ def serve_upload(filename: str, user: Optional[User] = Depends(optional_upload_u
     raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
 
 
-
 @app.get("/assets/fonts/{font_name}")
 def serve_font_fallback(font_name: str):
     return Response(content=b"", media_type="font/woff2")
@@ -778,12 +792,35 @@ def create_card(body: CardIn, user: User = Depends(current_user)):
         return _card_out(_save_card(session, user, fields))
 
 
+MAX_CAPTURE_FILE_SIZE = 15 * 1024 * 1024  # 15 MB
+MAX_CAPTURE_VOICE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+ALLOWED_CAPTURE_EXTENSIONS = {
+    ".pdf",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic",
+    ".txt", ".md", ".csv", ".json",
+}
+
+ALLOWED_VOICE_EXTENSIONS = {".webm", ".wav", ".m4a", ".ogg", ".mp3"}
+
+
 @app.post("/api/cards/voice")
 @app.post("/api/captures/voice")
 async def create_voice_card(file: UploadFile = File(...),
                             lang_hint: str = Form("auto"),
                             user: User = Depends(current_user)):
-    audio = await file.read()
+    raw_filename = file.filename or "voice.webm"
+    ext = Path(raw_filename).suffix.lower() or ".webm"
+    if ext not in ALLOWED_VOICE_EXTENSIONS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unsupported audio format '{ext}'.")
+
+    chunk = await file.read(MAX_CAPTURE_VOICE_SIZE + 1)
+    if len(chunk) > MAX_CAPTURE_VOICE_SIZE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Audio recording exceeds 10MB limit.")
+    if len(chunk) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Audio recording is empty.")
+    audio = chunk
+
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
         if not db_user:
@@ -797,7 +834,6 @@ async def create_voice_card(file: UploadFile = File(...),
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
         
         # Save voice recording file to storage
-        ext = Path(file.filename or "voice.webm").suffix or ".webm"
         token = uuid.uuid4().hex[:12]
         filename = f"voice_{user.id}_{token}{ext}"
         object_key = build_object_key("captures", user.id, filename, identifier=token)
@@ -814,10 +850,46 @@ async def create_voice_card(file: UploadFile = File(...),
 @app.post("/api/captures/file")
 async def create_file_card(file: UploadFile = File(...),
                            user: User = Depends(current_user)):
-    data = await file.read()
-    is_pdf = data[:5] == b"%PDF-" or (file.filename and file.filename.lower().endswith(".pdf"))
-    is_image = (file.content_type and file.content_type.startswith("image/")) or \
-               (file.filename and Path(file.filename).suffix.lower() in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"])
+    raw_filename = file.filename or "file.bin"
+    ext = Path(raw_filename).suffix.lower()
+    if not ext and file.content_type:
+        ext = ".pdf" if "pdf" in file.content_type else (".jpg" if "image" in file.content_type else "")
+
+    if ext not in ALLOWED_CAPTURE_EXTENSIONS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"File format '{ext}' is not supported. Allowed formats: PDF, PNG, JPG, JPEG, WEBP, GIF, TXT, MD, CSV, JSON."
+        )
+
+    # Read up to MAX_CAPTURE_FILE_SIZE + 1 to prevent unbounded memory consumption
+    chunk = await file.read(MAX_CAPTURE_FILE_SIZE + 1)
+    if len(chunk) > MAX_CAPTURE_FILE_SIZE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File size exceeds 15MB limit.")
+    if len(chunk) == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty.")
+    data = chunk
+
+    # Content type / magic byte validation
+    is_pdf = False
+    is_image = False
+    if ext == ".pdf":
+        if data[:5] != b"%PDF-":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid PDF: file header does not match PDF format.")
+        is_pdf = True
+    elif ext in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"}:
+        is_valid_img = (
+            data.startswith(b"\x89PNG\r\n\x1a\n") or
+            data.startswith(b"\xff\xd8\xff") or
+            data.startswith(b"GIF87a") or data.startswith(b"GIF89a") or
+            (data.startswith(b"RIFF") and b"WEBP" in data[:16]) or
+            (b"ftypheic" in data[:16] or b"ftypmif1" in data[:16])
+        )
+        if not is_valid_img:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image: file header does not match supported image formats.")
+        is_image = True
+    elif ext in {".txt", ".md", ".csv", ".json"}:
+        if b"\x00" in data[:1024]:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid text file: binary data detected.")
 
     with get_session() as session:
         db_user: User | None = session.get(User, user.id)
@@ -831,7 +903,6 @@ async def create_file_card(file: UploadFile = File(...),
         if not ok:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg)
 
-        ext = Path(file.filename or "file.bin").suffix or (".pdf" if is_pdf else ".jpg")
         token = uuid.uuid4().hex[:12]
         filename = f"file_{user.id}_{token}{ext}"
         object_key = build_object_key("captures", user.id, filename, identifier=token)
@@ -914,28 +985,62 @@ def delete_card(card_id: int, user: User = Depends(current_user)):
         if emb:
             session.delete(emb)
 
-        # Delete media file from storage if present
+        # Delete media file from storage if present and unreferenced by any other record
+        storage_delete_warning = None
         if card.storage_key:
-            try:
-                get_storage().delete(card.storage_key)
-            except Exception as e:
-                print(f"[delete_card] Error removing storage object {card.storage_key}: {e}")
+            sk = card.storage_key.strip()
+            # Check if another card references this storage key
+            other_card_ref = session.exec(
+                select(Card.id).where(
+                    Card.id != card_id,
+                    Card.storage_key == sk
+                )
+            ).first()
+
+            if not other_card_ref:
+                # Also verify no student task references the storage key
+                other_task_ref = session.exec(
+                    select(StudentTask.id).where(StudentTask.storage_key == sk)
+                ).first()
+
+                if not other_task_ref:
+                    try:
+                        safe_k = sanitize_object_key(sk)
+                        if safe_k.startswith("users/") and "/captures/" in safe_k:
+                            get_storage().delete(safe_k)
+                    except StoragePathTraversalError as e:
+                        storage_delete_warning = f"Invalid storage key: {e}"
+                        print(f"[delete_card] Blocked unsafe storage key '{sk}': {e}")
+                    except Exception as e:
+                        storage_delete_warning = f"Storage delete error: {e}"
+                        print(f"[delete_card] Error removing storage object {sk}: {e}")
         elif card.source_url and card.source_url.startswith("/api/uploads/"):
-            fn = card.source_url.replace("/api/uploads/", "")
-            try:
-                get_storage().delete(fn)
-            except Exception:
-                pass
-            fp = _UPLOAD_FILES_DIR / fn
-            if fp.exists():
-                try:
-                    fp.unlink()
-                except Exception as e:
-                    print(f"[delete_card] Error removing file {fp}: {e}")
+            fn = card.source_url.replace("/api/uploads/", "").strip()
+            if fn and not ("/" in fn or "\\" in fn or ".." in fn):
+                other_source_ref = session.exec(
+                    select(Card.id).where(
+                        Card.id != card_id,
+                        Card.source_url == card.source_url
+                    )
+                ).first()
+                if not other_source_ref:
+                    try:
+                        get_storage().delete(fn)
+                    except Exception:
+                        pass
+                    fp = _UPLOAD_FILES_DIR / fn
+                    if fp.exists():
+                        try:
+                            fp.unlink()
+                        except Exception as e:
+                            print(f"[delete_card] Error removing legacy file {fp}: {e}")
 
         session.delete(card)
         session.commit()
-        return {"deleted": card_id}
+        res = {"deleted": card_id}
+        if storage_delete_warning:
+            res["storage_warning"] = storage_delete_warning
+        return res
 
 
 # --- capture sharing --------------------------------------------------------
@@ -994,6 +1099,7 @@ def get_public_capture(share_token: str):
 
 
 @app.patch("/api/cards/{card_id}")
+@app.patch("/api/captures/{card_id}")
 def update_card(card_id: int, body: CardUpdateIn, user: User = Depends(current_user)):
     with get_session() as session:
         card = session.get(Card, card_id)
