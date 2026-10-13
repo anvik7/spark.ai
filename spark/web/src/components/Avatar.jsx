@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { resolveApiUrl } from "../api.js";
 import { AVATAR_PRESETS, getInitials, isImageAvatarUrl, getPreset } from "../utils/avatar.js";
 
 export { AVATAR_PRESETS, getInitials, isImageAvatarUrl, getPreset };
@@ -38,7 +39,7 @@ export function Avatar({ src, name = "User", size = 36, style = {}, className = 
         }}
       >
         <img
-          src={src}
+          src={resolveApiUrl(src)}
           alt={name || "Profile picture"}
           onError={() => setImgError(true)}
           style={{

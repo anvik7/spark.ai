@@ -209,6 +209,13 @@ def _card_out(c: Card, creator: User | None = None) -> dict:
     }
 
 
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    """Lightweight health check endpoint for Render service readiness probes."""
+    return {"status": "ok", "service": "sparkdhi-api"}
+
+
 @app.get("/api/public/captures/{share_token}")
 def get_public_capture(share_token: str):
     """Public endpoint to view a shared capture cleanly without authentication.

@@ -183,3 +183,13 @@ def test_jwt_error_message_never_leaks_secret_value():
     finally:
         os.environ.clear()
         os.environ.update(old_env)
+
+
+def test_health_endpoints_return_200_ok():
+    """Verify that /health and /api/health respond with 200 OK for Render readiness probes."""
+    for path in ("/health", "/api/health"):
+        res = client.get(path)
+        assert res.status_code == 200
+        data = res.json()
+        assert data.get("status") == "ok"
+        assert data.get("service") == "sparkdhi-api"

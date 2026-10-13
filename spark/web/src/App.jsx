@@ -26,6 +26,24 @@ const SharedCapture = lazy(() => import("./SharedCapture.jsx"));
 
 /* ---------- SVG Navigation Icons ---------- */
 const Ico = {
+  hamburger: (
+    <>
+      <line x1="4" y1="8.5" x2="20" y2="8.5" />
+      <line x1="4" y1="15.5" x2="15" y2="15.5" />
+    </>
+  ),
+  sidebarToggle: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="9" y1="4" x2="9" y2="20" />
+    </>
+  ),
+  close: (
+    <>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </>
+  ),
   home: <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>,
   capture: <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />,
   tasks: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
@@ -39,10 +57,21 @@ const Ico = {
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
 };
 
-const Svg = ({ d, cls = "ico" }) => (
+const Svg = ({ d, cls = "ico", size = 18 }) => (
   <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>{d}</svg>
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: size, height: size, flexShrink: 0 }}>{d}</svg>
 );
+
+// Unified Navigation Destinations (Tasks primary, all modules preserved)
+export const NAVIGATION_ITEMS = [
+  { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks, desc: "AI Problem Solver" },
+  { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture, desc: "Notes, Files & Vault" },
+  { id: "career", label: "Career OS", shortLabel: "Career", icon: Ico.career, desc: "Resume & Readiness" },
+  { id: "circles", label: "Chat & Circles", shortLabel: "Circles", icon: Ico.circles, desc: "Peer Study Groups" },
+  { id: "coach", label: "Interview Coach", shortLabel: "Coach", icon: Ico.coach, desc: "Live Mock Interviews" },
+  { id: "study", label: "Study Center", shortLabel: "Study", icon: Ico.study, desc: "Spaced Repetition" },
+  { id: "home", label: "Home", shortLabel: "Home", icon: Ico.home, desc: "Overview & Activity" },
+];
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -53,7 +82,10 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showCmdMenu, setShowCmdMenu] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("spark_sidebar_collapsed") === "true"
+  );
 
   // ── Theme system (Light / Dark / System) ──
   const [theme, setThemeState] = useState(() => localStorage.getItem("spark_theme") || "system");
@@ -66,7 +98,6 @@ export default function App() {
     } else {
       document.documentElement.removeAttribute("data-theme");
     }
-    // Update meta theme-color
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", isDark ? "#141419" : "#ECE9E2");
   }, []);
@@ -85,6 +116,88 @@ export default function App() {
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
   }, [theme, applyTheme]);
+
+  // Desktop sidebar collapse toggle (persisted)
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("spark_sidebar_collapsed", String(next));
+      return next;
+    });
+  }, []);
+
+  // Mobile drawer open/close with browser history back-button support
+  const openMobileDrawer = useCallback(() => {
+    setMobileDrawerOpen((wasOpen) => {
+      if (!wasOpen && typeof window !== "undefined" && window.history?.pushState) {
+        try {
+          window.history.pushState({ sparkMobileDrawer: true }, "");
+        } catch (_) {
+          // Ignore history push errors in constrained environments
+        }
+      }
+      return true;
+    });
+  }, []);
+
+  const closeMobileDrawer = useCallback(() => {
+    setMobileDrawerOpen(false);
+  }, []);
+
+  const toggleMobileDrawer = useCallback(() => {
+    setMobileDrawerOpen((wasOpen) => {
+      if (wasOpen) return false;
+      if (typeof window !== "undefined" && window.history?.pushState) {
+        try {
+          window.history.pushState({ sparkMobileDrawer: true }, "");
+        } catch (_) {
+          // Ignore history push errors
+        }
+      }
+      return true;
+    });
+  }, []);
+
+  // Close mobile drawer on browser Back navigation (popstate), Escape key, or viewport resize to desktop
+  useEffect(() => {
+    const onPopState = () => {
+      setMobileDrawerOpen(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setMobileDrawerOpen(false);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    const onResize = () => {
+      if (typeof window !== "undefined" && window.innerWidth >= 768) {
+        setMobileDrawerOpen(false);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [toggleSidebar]);
+
+  // Prevent background body scrolling while mobile navigation drawer is open
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (mobileDrawerOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileDrawerOpen]);
 
   // Check public shared capture URL route
   const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
@@ -124,6 +237,7 @@ export default function App() {
   useEffect(() => {
     const onUnauthorized = () => {
       startTransition(() => {
+        setMobileDrawerOpen(false);
         setUser(null);
         setShowAuth(true);
       });
@@ -136,12 +250,23 @@ export default function App() {
 
   const handleNav = (targetTab) => {
     startTransition(() => {
-      setShowMoreMenu(false);
+      setMobileDrawerOpen(false);
       setShowUpgrade(false);
       setShowAccount(false);
       setTab(targetTab);
       localStorage.setItem("spark_active_tab", targetTab);
     });
+  };
+
+  const handleLogout = () => {
+    setMobileDrawerOpen(false);
+    setShowAccount(false);
+    setShowUpgrade(false);
+    setUser(null);
+    setToken("");
+    localStorage.removeItem("spark_token");
+    localStorage.removeItem("spark_active_tab");
+    setTab("tasks");
   };
 
   if (booting) return <div className="empty" style={{ paddingTop: 120 }}>Loading SparkDhi Workspace…</div>;
@@ -172,26 +297,15 @@ export default function App() {
     );
   }
 
-  // Desktop Navigation: Core capability suite (Tasks primary)
-  const desktopNavItems = [
-    { id: "tasks", label: "Tasks", icon: Ico.tasks },
-    { id: "capture", label: "Capture", icon: Ico.capture },
-    { id: "career", label: "Career OS", icon: Ico.career },
-    { id: "circles", label: "Chat & Circles", icon: Ico.circles },
-    { id: "coach", label: "Interview Coach", icon: Ico.coach },
-    { id: "study", label: "Study Center", icon: Ico.study },
-  ];
-
-  // Mobile Bottom Navigation: Tasks as primary workspace, Home and Study moved to More
-  const mobileNavItems = [
-    { id: "tasks", label: "Tasks", shortLabel: "Tasks", icon: Ico.tasks },
-    { id: "capture", label: "Capture", shortLabel: "Capture", icon: Ico.capture },
-    { id: "career", label: "Career", shortLabel: "Career", icon: Ico.career },
-    { id: "more", label: "More", shortLabel: "More", icon: Ico.more },
-  ];
+  const activeNavItem = NAVIGATION_ITEMS.find((item) => item.id === tab) || NAVIGATION_ITEMS[0];
+  const activeWorkspaceLabel = showAccount
+    ? "Account Profile"
+    : showUpgrade
+      ? "Plan & Billing"
+      : activeNavItem.label;
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {/* Command Palette (⌘K) */}
       <CommandMenu
         isOpen={showCmdMenu}
@@ -199,35 +313,70 @@ export default function App() {
         onNavigate={handleNav}
       />
 
-      {/* Desktop Persistent Sidebar */}
-      <aside className="app-sidebar">
-        <div className="sidebar-header spark-logo-lockup" onClick={() => handleNav("tasks")} style={{ cursor: "pointer" }} title="SparkDhi Tasks">
-          <Chakra size={32} />
-          <span className="logo-mark" style={{ fontSize: 22 }}>SparkDhi</span>
+      {/* Desktop Collapsible Sidebar */}
+      <aside
+        id="desktop-sidebar"
+        className={`app-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
+        aria-label="Primary Sidebar Navigation"
+        aria-hidden={sidebarCollapsed}
+      >
+        <div className="sidebar-header">
+          <div
+            className="spark-logo-lockup"
+            onClick={() => handleNav("tasks")}
+            style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
+            title="SparkDhi Tasks"
+          >
+            <Chakra size={28} />
+            <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
+          </div>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={toggleSidebar}
+            aria-label="Collapse sidebar"
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="desktop-sidebar"
+            title="Collapse sidebar (Ctrl+B)"
+          >
+            <Svg d={Ico.sidebarToggle} size={17} />
+          </button>
         </div>
 
-        <div className="sidebar-workspace" onClick={() => handleNav("tasks")} style={{ cursor: "pointer" }} title="Spark Tasks">
+        <button
+          type="button"
+          className="sidebar-workspace"
+          onClick={() => handleNav("tasks")}
+          style={{ cursor: "pointer", textAlign: "left" }}
+          title="Spark Tasks Workspace"
+        >
           <span>⚡</span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Tasks Workspace
           </span>
-        </div>
+        </button>
 
-        <nav className="sidebar-nav">
-          {desktopNavItems.map((item) => (
-            <button
-              key={item.id}
-              className={`sidebar-link ${tab === item.id && !showAccount && !showUpgrade ? "active" : ""}`}
-              onClick={() => handleNav(item.id)}
-            >
-              <Svg d={item.icon} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+        <nav className="sidebar-nav" aria-label="Workspace modules">
+          {NAVIGATION_ITEMS.map((item) => {
+            const isActive = tab === item.id && !showAccount && !showUpgrade;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`sidebar-link ${isActive ? "active" : ""}`}
+                onClick={() => handleNav(item.id)}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <Svg d={item.icon} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
           <button
+            type="button"
             className={`plan-chip ${user.plan === "pro" || user.plan === "plus" ? "pro" : ""}`}
             style={{ width: "100%", justifyContent: "center" }}
             onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
@@ -260,71 +409,229 @@ export default function App() {
         </div>
       </aside>
 
+      {/* Mobile Slide-Over Navigation Drawer (Hidden when closed) */}
+      {mobileDrawerOpen && (
+        <div
+          className="nav-drawer-backdrop"
+          onClick={closeMobileDrawer}
+          data-testid="mobile-drawer-backdrop"
+        >
+          <aside
+            id="mobile-nav-drawer"
+            className="mobile-nav-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="drawer-header">
+              <div
+                className="spark-logo-lockup"
+                onClick={() => handleNav("tasks")}
+                style={{ cursor: "pointer", flex: 1, minWidth: 0 }}
+                title="SparkDhi Tasks"
+              >
+                <Chakra size={28} />
+                <span className="logo-mark" style={{ fontSize: 19 }}>SparkDhi</span>
+              </div>
+              <button
+                type="button"
+                className="drawer-close-btn"
+                onClick={closeMobileDrawer}
+                aria-label="Close navigation menu"
+              >
+                <Svg d={Ico.close} size={18} />
+              </button>
+            </div>
+
+            <div className="drawer-quick-actions">
+              <button
+                type="button"
+                className="drawer-new-task-btn"
+                onClick={() => handleNav("tasks")}
+              >
+                <span>⚡</span>
+                <span>Tasks Workspace</span>
+              </button>
+              <button
+                type="button"
+                className="drawer-search-btn"
+                onClick={() => {
+                  closeMobileDrawer();
+                  setShowCmdMenu(true);
+                }}
+                aria-label="Search captures and tasks"
+                title="Search (⌘K)"
+              >
+                🔍
+              </button>
+            </div>
+
+            <div className="drawer-section-label">Workspaces</div>
+            <nav className="drawer-nav" aria-label="Mobile workspace navigation">
+              {NAVIGATION_ITEMS.map((item) => {
+                const isActive = tab === item.id && !showAccount && !showUpgrade;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`drawer-nav-item ${isActive ? "active" : ""}`}
+                    onClick={() => handleNav(item.id)}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    <Svg d={item.icon} size={18} />
+                    <div className="drawer-nav-text">
+                      <span className="drawer-nav-title">{item.label}</span>
+                      <span className="drawer-nav-desc">{item.desc}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="drawer-footer">
+              <div className="drawer-secondary-links">
+                <button
+                  type="button"
+                  className={`drawer-nav-item compact ${showUpgrade ? "active" : ""}`}
+                  onClick={() => {
+                    closeMobileDrawer();
+                    setShowAccount(false);
+                    setShowUpgrade(true);
+                  }}
+                >
+                  <Svg d={Ico.upgrade} size={17} />
+                  <span className="drawer-nav-title">Plan & Billing</span>
+                  <span className="drawer-plan-pill">
+                    {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : "Trial"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`drawer-nav-item compact ${showAccount ? "active" : ""}`}
+                  onClick={() => {
+                    closeMobileDrawer();
+                    setShowUpgrade(false);
+                    setShowAccount(true);
+                  }}
+                >
+                  <Svg d={Ico.user} size={17} />
+                  <span className="drawer-nav-title">Account Profile</span>
+                </button>
+              </div>
+
+              <div className="drawer-theme-row">
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-soft)" }}>Theme</span>
+                <div className="drawer-theme-segmented" role="group" aria-label="Appearance theme">
+                  {[
+                    { id: "light", icon: "☀️", label: "Light" },
+                    { id: "dark", icon: "🌙", label: "Dark" },
+                    { id: "system", icon: "◐", label: "Auto" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleChangeTheme(m.id)}
+                      className={theme === m.id ? "active" : ""}
+                    >
+                      {m.icon} {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="drawer-user-row">
+                <div
+                  className="drawer-user-info"
+                  onClick={() => {
+                    closeMobileDrawer();
+                    setShowUpgrade(false);
+                    setShowAccount(true);
+                  }}
+                >
+                  <Avatar src={user?.avatar_url} name={user?.name || "User"} size={32} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {user?.name || "Spark User"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--ink-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {user?.email}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="drawer-logout-btn"
+                  onClick={handleLogout}
+                  aria-label="Sign out"
+                  title="Sign out"
+                >
+                  <Svg d={Ico.logout} size={17} />
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {/* Main Content Workspace */}
       <main className="app-main">
-        {/* Mobile Header (< 768px) */}
+        {/* Mobile Header (< 768px) — ChatGPT-style top-left two-line hamburger + active workspace */}
         <header className="topbar-mobile">
-          <div className="spark-logo-lockup" onClick={() => handleNav("tasks")} title="SparkDhi Tasks">
-            <Chakra size={32} />
-            <span className="logo-mark" style={{ fontSize: 20 }}>SparkDhi</span>
+          <div className="topbar-mobile-left">
+            <button
+              type="button"
+              className="hamburger-btn"
+              onClick={toggleMobileDrawer}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileDrawerOpen}
+              aria-controls="mobile-nav-drawer"
+              title="Menu"
+            >
+              <Svg d={Ico.hamburger} size={20} />
+            </button>
+
+            <div
+              className="spark-logo-lockup mobile-header-brand"
+              onClick={() => handleNav("tasks")}
+              title="SparkDhi Tasks"
+            >
+              <Chakra size={24} />
+              <span className="logo-mark" style={{ fontSize: 17 }}>SparkDhi</span>
+              <span className="mobile-workspace-pill">{activeWorkspaceLabel}</span>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="topbar-mobile-right">
             <button
+              type="button"
               onClick={() => setShowCmdMenu(true)}
-              style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--line)",
-                borderRadius: 8,
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 14,
-                cursor: "pointer",
-                color: "var(--ink-soft)",
-              }}
+              className="mobile-icon-btn"
+              aria-label="Search captures and tasks"
               title="Search (⌘K)"
             >
               🔍
             </button>
 
             <button
-              className={`plan-chip ${user.plan === "pro" || user.plan === "plus" ? "pro" : ""}`}
-              onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
-              style={{ fontSize: 11, padding: "3px 8px" }}
-            >
-              {user.plan === "pro" ? "Pro" : user.plan === "plus" ? "Plus" : "Free"}
-            </button>
-
-            <button
+              type="button"
               onClick={() => {
                 const nextTheme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
                 handleChangeTheme(nextTheme);
               }}
               aria-label={`Current theme: ${theme}. Click to switch theme`}
               title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
-              style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--line)",
-                borderRadius: 8,
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 14,
-                cursor: "pointer",
-                color: "var(--ink)",
-              }}
+              className="mobile-icon-btn"
             >
               {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "◐"}
             </button>
 
             <button
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              type="button"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}
               onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
+              aria-label="Account profile"
             >
               <Avatar src={user?.avatar_url} name={user?.name || "User"} size={28} />
             </button>
@@ -333,14 +640,42 @@ export default function App() {
 
         {/* Desktop Header (>= 768px) */}
         <header className="topbar-desktop">
-          <div className="cmd-search-trigger" onClick={() => setShowCmdMenu(true)}>
-            <span>🔍</span>
-            <span style={{ flex: 1 }}>Search captures, tasks...</span>
-            <kbd style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 4, padding: "1px 5px", fontSize: 11 }}>⌘K</kbd>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {sidebarCollapsed && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  type="button"
+                  className="sidebar-expand-btn"
+                  onClick={toggleSidebar}
+                  aria-label="Expand sidebar"
+                  aria-expanded={!sidebarCollapsed}
+                  aria-controls="desktop-sidebar"
+                  title="Expand sidebar (Ctrl+B)"
+                >
+                  <Svg d={Ico.hamburger} size={19} />
+                </button>
+                <div
+                  className="spark-logo-lockup"
+                  onClick={() => handleNav("tasks")}
+                  style={{ cursor: "pointer", marginRight: 4 }}
+                  title="SparkDhi Tasks"
+                >
+                  <Chakra size={26} />
+                  <span className="logo-mark" style={{ fontSize: 18 }}>SparkDhi</span>
+                </div>
+              </div>
+            )}
+
+            <div className="cmd-search-trigger" onClick={() => setShowCmdMenu(true)}>
+              <span>🔍</span>
+              <span style={{ flex: 1 }}>Search captures, tasks...</span>
+              <kbd style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 4, padding: "1px 5px", fontSize: 11 }}>⌘K</kbd>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button
+              type="button"
               className={`plan-chip ${user.plan === "pro" || user.plan === "plus" ? "pro" : ""}`}
               onClick={() => { setShowAccount(false); setShowUpgrade(true); }}
             >
@@ -348,6 +683,7 @@ export default function App() {
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 const nextTheme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
                 handleChangeTheme(nextTheme);
@@ -372,8 +708,10 @@ export default function App() {
             </button>
 
             <button
+              type="button"
               style={{ background: "none", border: "none", cursor: "pointer", padding: 2, borderRadius: "50%" }}
               onClick={() => { setShowUpgrade(false); setShowAccount((a) => !a); }}
+              aria-label="Account profile"
             >
               <Avatar src={user?.avatar_url} name={user?.name || "User"} size={32} />
             </button>
@@ -387,7 +725,7 @@ export default function App() {
               <Suspense fallback={<ModuleLoadingState moduleName="Account" />}>
                 <Account
                   user={user}
-                  onLogout={() => { setShowAccount(false); setUser(null); setTab("tasks"); localStorage.removeItem("spark_active_tab"); }}
+                  onLogout={handleLogout}
                   onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
                   theme={theme}
                   onChangeTheme={handleChangeTheme}
@@ -464,164 +802,6 @@ export default function App() {
           )}
         </div>
       </main>
-
-      {/* Mobile Bottom Navigation (Tasks | Capture | Career | More) */}
-      <nav className="nav">
-        {mobileNavItems.map((item) => {
-          const isMore = item.id === "more";
-          const isMoreActive =
-            showMoreMenu ||
-            (!["tasks", "capture", "career"].includes(tab) && !showAccount && !showUpgrade) ||
-            showAccount ||
-            showUpgrade;
-          const isActive = isMore ? isMoreActive : (!showAccount && !showUpgrade && !showMoreMenu && tab === item.id);
-          return (
-            <button
-              key={item.id}
-              className={isActive ? "nav-btn active" : "nav-btn"}
-              onClick={() => {
-                if (isMore) {
-                  setShowMoreMenu((prev) => !prev);
-                } else {
-                  setShowMoreMenu(false);
-                  handleNav(item.id);
-                }
-              }}
-              aria-label={item.label}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <Svg d={item.icon} />
-              <span>{item.shortLabel || item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Mobile More Drawer / Bottom Sheet */}
-      {showMoreMenu && (
-        <div className="more-sheet-backdrop" onClick={() => setShowMoreMenu(false)}>
-          <div className="more-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="more-sheet-handle" />
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-faint)" }}>
-                Workspace & More
-              </div>
-              <button
-                onClick={() => setShowMoreMenu(false)}
-                style={{ background: "none", border: "none", color: "var(--ink-soft)", cursor: "pointer", fontSize: 18, padding: "2px 6px" }}
-                aria-label="Close menu"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="more-sheet-grid">
-              <button
-                className={`more-sheet-item ${tab === "home" && !showAccount && !showUpgrade ? "active" : ""}`}
-                onClick={() => handleNav("home")}
-              >
-                <Svg d={Ico.home} />
-                <span>Home</span>
-              </button>
-              <button
-                className={`more-sheet-item ${tab === "study" && !showAccount && !showUpgrade ? "active" : ""}`}
-                onClick={() => handleNav("study")}
-              >
-                <Svg d={Ico.study} />
-                <span>Study Center</span>
-              </button>
-              <button
-                className={`more-sheet-item ${tab === "circles" && !showAccount && !showUpgrade ? "active" : ""}`}
-                onClick={() => handleNav("circles")}
-              >
-                <Svg d={Ico.circles} />
-                <span>Chat & Circles</span>
-              </button>
-              <button
-                className={`more-sheet-item ${tab === "coach" && !showAccount && !showUpgrade ? "active" : ""}`}
-                onClick={() => handleNav("coach")}
-              >
-                <Svg d={Ico.coach} />
-                <span>Interview Coach</span>
-              </button>
-              <button
-                className={`more-sheet-item ${showAccount ? "active" : ""}`}
-                onClick={() => { setShowMoreMenu(false); setShowUpgrade(false); setShowAccount(true); }}
-              >
-                <Svg d={Ico.user} />
-                <span>Account Profile</span>
-              </button>
-              <button
-                className={`more-sheet-item ${showUpgrade ? "active" : ""}`}
-                onClick={() => { setShowMoreMenu(false); setShowAccount(false); setShowUpgrade(true); }}
-              >
-                <Svg d={Ico.upgrade} />
-                <span>Plan & Billing</span>
-              </button>
-            </div>
-
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>Appearance</span>
-                <div style={{ display: "inline-flex", background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 8, padding: 2 }}>
-                  {[
-                    { id: "light", icon: "☀️", label: "Light" },
-                    { id: "dark", icon: "🌙", label: "Dark" },
-                    { id: "system", icon: "◐", label: "Auto" },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => handleChangeTheme(m.id)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        border: "none",
-                        fontSize: 12,
-                        fontWeight: theme === m.id ? 700 : 500,
-                        background: theme === m.id ? "var(--surface)" : "transparent",
-                        color: theme === m.id ? "var(--ink)" : "var(--ink-soft)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {m.icon} {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowMoreMenu(false);
-                  setShowAccount(false);
-                  setUser(null);
-                  setToken("");
-                  localStorage.removeItem("spark_token");
-                  localStorage.removeItem("spark_active_tab");
-                }}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  borderRadius: "var(--r-s, 8px)",
-                  background: "transparent",
-                  border: "1px solid rgba(220, 38, 38, 0.25)",
-                  color: "#DC2626",
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                <Svg d={Ico.logout} />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

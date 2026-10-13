@@ -1,11 +1,38 @@
 // Thin API client. Token lives in memory + localStorage; every call attaches it.
-const BASE = "/api";
-let token = localStorage.getItem("spark_token") || "";
+const RAW_API_URL =
+  typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL
+    ? String(import.meta.env.VITE_API_URL).trim()
+    : "";
+export const API_ORIGIN = RAW_API_URL.replace(/\/+$/, "").replace(/\/api$/, "");
+const BASE = `${API_ORIGIN}/api`;
+
+export function resolveApiUrl(pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== "string") return pathOrUrl;
+  const s = pathOrUrl.trim();
+  if (
+    s.startsWith("http://") ||
+    s.startsWith("https://") ||
+    s.startsWith("blob:") ||
+    s.startsWith("data:")
+  ) {
+    return s;
+  }
+  const normalized = s.startsWith("/api")
+    ? s
+    : s.startsWith("/")
+      ? `/api${s}`
+      : `/api/${s}`;
+  return `${API_ORIGIN}${normalized}`;
+}
+
+let token = (typeof localStorage !== "undefined" && localStorage.getItem("spark_token")) || "";
 
 export function setToken(t) {
   token = t || "";
-  if (t) localStorage.setItem("spark_token", t);
-  else localStorage.removeItem("spark_token");
+  if (typeof localStorage !== "undefined") {
+    if (t) localStorage.setItem("spark_token", t);
+    else localStorage.removeItem("spark_token");
+  }
 }
 
 export function hasToken() {
@@ -238,9 +265,7 @@ export const api = {
   // Authenticated Media Fetch
   fetchMediaBlob: async (mediaUrl) => {
     if (!mediaUrl) return null;
-    const path = mediaUrl.startsWith("/api")
-      ? mediaUrl
-      : (mediaUrl.startsWith("/") ? `/api${mediaUrl}` : `/api/${mediaUrl}`);
+    const path = resolveApiUrl(mediaUrl);
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
 
